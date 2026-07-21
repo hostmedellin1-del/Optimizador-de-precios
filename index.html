@@ -60,6 +60,8 @@ button.ghost:hover{color:var(--text);border-color:var(--faint);}
 .alert.bad .tag{background:var(--accent);color:#fff;}
 .alert.warn .tag{background:var(--warn-chip);color:#14151A;}
 .alert.ok .tag{background:var(--safe-chip);color:#14151A;}
+.alert .goto{background:none;border:none;color:inherit;text-decoration:underline;font-weight:600;font-size:inherit;font-family:inherit;cursor:pointer;padding:0;white-space:nowrap;}
+.alert .goto:hover{opacity:.75;}
 /* discount catalog */
 .d-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;}
 .d-item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0;}
@@ -82,12 +84,21 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .cell-ch .warn{color:var(--warn);}
 .lm-val{font-weight:600;}
 .lm-breach{color:var(--accent);font-weight:600;}
+/* intro / plain-language explainer */
+.intro-card{background:var(--accent-soft);border-color:rgba(214,65,44,.25);}
+.intro-text{margin:0;font-size:14px;line-height:1.6;color:var(--text);}
+.intro-text strong{color:var(--accent);}
+/* jargon tooltips — subrayado punteado + title nativo, sin JS/librerías nuevas */
+.term{border-bottom:1px dotted var(--faint);cursor:help;}
 /* simulator */
 .sim-inputs{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;}
 .sim-inputs .fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);}
+.sim-summary{font-size:14px;line-height:1.6;color:var(--text);background:var(--accent-soft);border:1px solid rgba(214,65,44,.25);border-radius:8px;padding:10px 14px;margin-bottom:14px;}
+.sim-group{margin:14px 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);}
+.sim-group:first-of-type{margin-top:0;}
 .wf{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:13px;}
 .wf-line{display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:var(--dim);}
-.wf-line .why{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--faint);flex:1;padding-left:14px;}
+.wf-line .why{font-family:'Space Grotesk',sans-serif;font-size:12.5px;color:var(--dim);flex:1;padding-left:14px;}
 .wf-line.total{border-top:1px solid var(--border);margin-top:6px;padding-top:8px;color:var(--text);font-weight:600;}
 .wf-line.net{color:var(--safe);font-weight:600;}
 .wf-line.netbad{color:var(--accent);font-weight:600;}
@@ -111,6 +122,10 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .chpage-discounts{display:flex;flex-direction:column;gap:0;}
 .chpage-discounts .d-item{padding:9px 0;font-size:13px;}
 .chpage-discounts .d-name{font-size:13px;}
+.discounts-more{margin-top:12px;}
+.discounts-more summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
+.discounts-more summary:hover{color:var(--text);}
+.discounts-more[open] summary{margin-bottom:4px;}
 </style>
 </head>
 <body>
@@ -138,6 +153,9 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div class="row stack" id="tabbarMount"></div>
 
 <div class="tab-panel active" data-tab="resumen">
+<section class="card intro-card">
+  <p class="intro-text">PriceLabs pone un precio por noche. Cada plataforma (Airbnb, Booking, Expedia) le resta sus propios descuentos y su comisión — cada una con sus reglas. Tu banco cobra aparte. <strong>Lo que sobra después de todo eso es tu ganancia real</strong>, no el precio que pusiste. Esta herramienta calcula ese precio mínimo y ese precio base para que no vendas por debajo del costo sin darte cuenta.</p>
+</section>
 <div class="row stack">
   <div class="card">
     <h2>Costos por noche</h2>
@@ -153,10 +171,11 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <div class="kpis">
       <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
       <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
-      <div class="kpi accent"><span class="l">Min Price → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
-      <div class="kpi accent"><span class="l">Base Price → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
+      <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que puedes aceptar. Ni un peso menos, en ningún canal, ni con el peor descuento activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
+      <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos actuales, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
     </div>
-    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales. Las diferencias de comisión ya no se resuelven inflando este número — se resuelven con el Offset % de cada canal (pestaña de cada OTA). Ajusta ahí.</p>
+    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales. Las diferencias de comisión ya no se resuelven inflando este número — se resuelven con el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> % de cada canal (pestaña de cada OTA). Ajusta ahí.</p>
+    <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
 </div>
@@ -174,8 +193,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>Ventana</th><th>Techo total %</th><th>Nativo combinado por canal</th>
-        <th>LM PriceLabs</th><th>Total huésped por canal</th><th>Neto por canal (Base × Offset)</th>
+        <th>Ventana</th><th><span class="term" title="El % máximo de descuento total que aceptas ver en el precio del huésped en esta ventana, sumando nativos + LM.">Techo</span> total %</th><th><span class="term" title="Lo que ya descuentan los promos propios de cada plataforma (Genius, early-bird, etc.), combinados según sus reglas — sin contar el LM de PriceLabs.">Nativo</span> combinado por canal</th>
+        <th><span class="term" title="El last-minute que PriceLabs puede aplicar en esta ventana sin que, sumado a los nativos, se pase del techo.">LM</span> PriceLabs</th><th>Total huésped por canal</th><th>Neto por canal (Base × Offset)</th>
       </tr></thead>
       <tbody id="matrixBody"></tbody>
     </table>
@@ -439,59 +458,59 @@ function buildAlerts(model){
     const mid=Math.min(w.lo+1,w.hi);
     let maxN=0,maxCh='';
     state.channels.forEach(c=>{const t=combineChannel(c.id,mid,1).totalPct;if(t>maxN){maxN=t;maxCh=c.name;}});
-    if(maxN>ceil+0.5) A.push({lvl:'bad',tag:'TECHO',msg:`${w.label}: solo los nativos de ${maxCh} ya suman ${fP(maxN)} y tu techo es ${fP(ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
+    if(maxN>ceil+0.5) A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label}: solo los nativos de ${maxCh} ya suman ${fP(maxN)} y tu techo es ${fP(ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
     const lm = maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
     state.channels.forEach(c=>{
       const nat=combineChannel(c.id,mid,1).totalPct/100, cm=pct(c.comm)/100;
       const netAtBase = model.effBase*(1-lm/100)*(1-nat)*(1-cm);
       if(model.base>0 && netAtBase < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',msg:`${w.label} · ${c.name}: al precio de referencia (${f$(model.effBase)}) con LM ${fP(lm)} + nativos ${fP(nat*100)} + comisión, netearías ${f$(netAtBase)} < costo ${f$(model.cost)}.`});
+        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} · ${c.name}: al precio de referencia (${f$(model.effBase)}) con LM ${fP(lm)} + nativos ${fP(nat*100)} + comisión, netearías ${f$(netAtBase)} < costo ${f$(model.cost)}.`});
     });
   });
   /* config contradictions */
   const ebActive = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='window'&&d.on&&pct(d.pct)>0&&(d.from??0)>=14);
   ebActive.forEach(eb=>{
     if((eb.from??30)>(parseFloat(state.marketWindow)||16))
-      A.push({lvl:'warn',tag:'CONFIG',msg:`${eb.name} arranca a ${eb.from} días pero tu mercado reserva a ~${state.marketWindow} días (mediana). Casi nunca se activa, y cuando lo hace regala margen en las pocas reservas anticipadas. Evalúa apagarlo o subir el umbral.`});
+      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`${eb.name} arranca a ${eb.from} días pero tu mercado reserva a ~${state.marketWindow} días (mediana). Casi nunca se activa, y cuando lo hace regala margen en las pocas reservas anticipadas. Evalúa apagarlo o subir el umbral.`});
   });
   if(on('bk_mob')&&(on('bk_cty')||on('bk_ltd')))
-    A.push({lvl:'warn',tag:'CONFLICTO',msg:'Booking: Mobile Rate no combina con Country Rate / Limited-time. El motor ya ignora Mobile en ese caso, pero tenlos claros en la extranet.'});
+    A.push({lvl:'warn',tag:'CONFLICTO',tab:'ch-booking',msg:'Booking: Mobile Rate no combina con Country Rate / Limited-time. El motor ya ignora Mobile en ese caso, pero tenlos claros en la extranet.'});
   const abLm=state.discounts.find(d=>d.id==='ab_lm');
   const abEbOverlap = ebActive.find(eb=>pct(abLm?.pct||0)>0 && abLm?.on && (abLm.to??3)>=(eb.from??30));
   if(abEbOverlap)
-    A.push({lvl:'warn',tag:'CONFIG',msg:`Airbnb: la ventana de Last-minute se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
+    A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: la ventana de Last-minute se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
   const losOn = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='los'&&d.on&&pct(d.pct)>0);
   if(losOn.length>1){
     const sorted=[...losOn].sort((a,b)=>a.minN-b.minN);
     for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
-      A.push({lvl:'warn',tag:'CONFIG',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más descuento que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a exigir menos noches. Al huésped que califica para ambas gana el umbral más profundo (${sorted[i+1].name}), así que el de menos noches nunca se aplica realmente — revisa la escala.`});
+      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más descuento que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a exigir menos noches. Al huésped que califica para ambas gana el umbral más profundo (${sorted[i+1].name}), así que el de menos noches nunca se aplica realmente — revisa la escala.`});
   }
   const ebOn = ebActive;
   if(ebOn.length>1){
     const sorted=[...ebOn].sort((a,b)=>a.from-b.from);
     for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
-      A.push({lvl:'warn',tag:'CONFIG',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a activarse antes. Gana el umbral más profundo (${sorted[i+1].name}) cuando ambos aplican — revisa la escala para que suba con la anticipación.`});
+      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a activarse antes. Gana el umbral más profundo (${sorted[i+1].name}) cuando ambos aplican — revisa la escala para que suba con la anticipación.`});
   }
   const bkStack=combineChannel('booking',1,1).totalPct;
-  if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
+  if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',tab:'ch-booking',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
   /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí. */
   state.channels.forEach(c=>{
     state.discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
       const r = combineChannel(c.id, 45, d.minN||1);
       const netLos = model.effBase*(1+pct2(c.offsetPct)/100)*(1-r.totalPct/100)*payoutFactor(c);
       if(netLos < model.cost-0.5)
-        A.push({lvl:'bad',tag:'DURACIÓN',msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)} por noche, bajo tu costo de ${f$(model.cost)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
+        A.push({lvl:'bad',tag:'DURACIÓN',tab:CH_TAB[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)} por noche, bajo tu costo de ${f$(model.cost)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
       else if(netLos < model.net)
-        A.push({lvl:'warn',tag:'DURACIÓN',msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net)}. Válido si priorizas ocupación larga; revísalo si no.`});
+        A.push({lvl:'warn',tag:'DURACIÓN',tab:CH_TAB[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net)}. Válido si priorizas ocupación larga; revísalo si no.`});
     });
   });
   if(model.floor>model.base&&model.base>0)
-    A.push({lvl:'bad',tag:'MODELO',msg:`Tu piso (${f$(model.floor)}) quedó por ENCIMA del Base (${f$(model.base)}): con estos descuentos y margen, el modelo no cierra. Baja descuentos, baja margen objetivo o revisa costos.`});
+    A.push({lvl:'bad',tag:'MODELO',tab:'resumen',msg:`Tu piso (${f$(model.floor)}) quedó por ENCIMA del Base (${f$(model.base)}): con estos descuentos y margen, el modelo no cierra. Baja descuentos, baja margen objetivo o revisa costos.`});
   /* Chequeo de realidad contra el mercado */
   const mb=parseFloat(state.marketBase)||0;
   if(mb>0){
     if(model.floor>mb)
-      A.push({lvl:'bad',tag:'INVIABLE',msg:`Tu piso (${f$(model.floor)}) está POR ENCIMA de la base de mercado (${f$(mb)}). A precio de mercado y con estos descuentos, esta unidad no cubre costo. No es un problema de pricing: es costos, descuentos o producto.`});
+      A.push({lvl:'bad',tag:'INVIABLE',tab:'resumen',msg:`Tu piso (${f$(model.floor)}) está POR ENCIMA de la base de mercado (${f$(mb)}). A precio de mercado y con estos descuentos, esta unidad no cubre costo. No es un problema de pricing: es costos, descuentos o producto.`});
     else if(model.base>mb*1.05){
       /* margen alcanzable al precio de mercado, en el canal que peor te deja */
       let peorNeto=Infinity, peorCh='';
@@ -500,7 +519,7 @@ function buildAlerts(model){
         if(n<peorNeto){peorNeto=n;peorCh=c.name;}
       });
       const achievable = peorNeto>0 ? 100*(1-model.cost/peorNeto) : 0;
-      A.push({lvl:'warn',tag:'REALIDAD',msg:`El Base que exige tu margen de ${fP(pct(state.margin))} es ${f$(model.base)}, pero el mercado paga ~${f$(mb)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso (${peorCh}): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
+      A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(state.margin))} es ${f$(model.base)}, pero el mercado paga ~${f$(mb)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso (${peorCh}): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
     }
   }
   if(!A.length) A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
@@ -529,7 +548,9 @@ function renderChannelPages(model){
   state.channels.forEach(c=>{
     const panel = document.querySelector(`.tab-panel[data-tab="${CH_TAB[c.id]}"]`);
     if(!panel) return;
-    const items = state.discounts.filter(d=>d.ch===c.id).map(discountRowHTML).join('') || '<div class="hint">sin descuentos definidos para este canal</div>';
+    const chDiscounts = state.discounts.filter(d=>d.ch===c.id);
+    const activeD = chDiscounts.filter(d=>d.on).map(discountRowHTML).join('') || '<div class="hint">ningún descuento activo hoy en este canal</div>';
+    const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
     const netHoy = model.effBase*(1+pct2(c.offsetPct)/100)*(1-combineChannel(c.id,45,1).totalPct/100)*payoutFactor(c);
     panel.innerHTML = `
@@ -537,14 +558,15 @@ function renderChannelPages(model){
         <div class="chpage-head">
           <div class="fld"><span>Comisión ${c.name} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${c.bankFeePct||0}"></div>
-          <div class="fld"><span>Offset % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
+          <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${c.cleanFeeShort||0}"></div>
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${c.cleanFeeLong||0}"></div>` : ''}
           <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado a 45 días (ya con comisión OTA + bancaria): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}${c.id==='airbnb'?'<br>La tarifa de aseo es fija por reserva (no se descuenta) y no está incluida en este neto a 45 días — se aplica en el Simulador, prorrateada por noche.':''}</div>
         </div>
-        <h2>Catálogo de descuentos — ${c.name}</h2>
-        <div class="chpage-discounts">${items}</div>
+        <h2>Descuentos activos hoy — ${c.name}</h2>
+        <div class="chpage-discounts">${activeD}</div>
+        ${restD.length ? `<details class="discounts-more"><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${restD.map(discountRowHTML).join('')}</div></details>` : ''}
       </section>`;
   });
 }
@@ -578,7 +600,8 @@ function renderMatrix(model){
   }).join('');
 }
 function renderAlerts(model){
-  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}</span></div>`).join('');
+  const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
+  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${tabLabel(a.tab)} →</button>`:''}</span></div>`).join('');
 }
 function renderSim(model){
   const price=parseFloat(simPrice.value)||model.effBase||0;
@@ -591,22 +614,26 @@ function renderSim(model){
   const maxN=Math.max(0,...state.channels.map(c=>combineChannel(c.id,Math.min(w.lo+1,w.hi),1).totalPct));
   const lm=maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
   const r=combineChannel(chId,days,nights);
+  const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
   let running=price;
-  let html=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
+  let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
+  html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
   const afterLm=running*(1-lm/100);
-  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">curva de la ventana ${w.label}, derivada del techo ${fP(ceil)}</span><span class="amt">${f$(afterLm)}</span></div>`;
+  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(afterLm)}</span></div>`;
   running=afterLm;
   const off=pct2(ch.offsetPct);
   if(off!==0){
     const afterOff=running*(1+off/100);
-    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${ch.name} ${fP(Math.abs(off))}</span><span class="why">Pricing Offset de PriceLabs, aplicado solo a este canal antes de empujar (verifica en Hospy)</span><span class="amt">${f$(afterOff)}</span></div>`;
+    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${ch.name} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Hospy que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
     running=afterOff;
   }
+  html+=`<div class="sim-group">2 · Lo que descuenta ${ch.name}</div>`;
   r.applied.forEach(a=>{
     const nx=running*(1-a.pct/100);
     html+=`<div class="wf-line"><span>− ${a.name} ${fP(a.pct)}</span><span class="why">${a.why}</span><span class="amt">${f$(nx)}</span></div>`;
     running=nx;
   });
+  if(!r.applied.length) html+=`<div class="wf-line"><span class="why" style="padding-left:0;">ningún descuento nativo activo aplica en esta ventana/duración</span></div>`;
   const guest=running;
   html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
   /* Tarifa de aseo: fija por reserva en Airbnb (no la tocan los descuentos de noche),
@@ -622,6 +649,7 @@ function renderSim(model){
     }
   }
   const feeNote = feeTotal>0 ? ' + aseo prorrateado' : '';
+  html+=`<div class="sim-group">3 · Lo que te queda a ti</div>`;
   const commAmt = guestForFees*pct(ch.comm)/100;
   const afterComm = guestForFees - commAmt;
   html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
@@ -631,33 +659,35 @@ function renderSim(model){
     afterBank = afterComm - bankAmt;
     html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
-  const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
   const margin=afterBank-cost;
   html+=`<div class="wf-line ${afterBank>=cost?'net':'netbad'}"><span>Neto para ti (vs costo ${f$(cost)})</span><span class="amt">${f$(afterBank)} · margen ${f$(margin)}</span></div>`;
   const totalDisc=100*(1-guest/price);
   html+=`<div class="wf-line"><span class="hint">Descuento total visto por el huésped: ${fP(totalDisc)} · techo de la ventana: ${fP(ceil)} ${totalDisc>ceil+0.5?'⚠ EXCEDIDO':''}</span></div>`;
-  simResult.innerHTML=html;
+  const summary = afterBank>=cost
+    ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
+    : `⚠ De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
+  simResult.innerHTML=`<div class="sim-summary">${summary}</div>${html}`;
   simIgnored.innerHTML=r.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+r.ignored.map(i=>`${i.name} — ${i.reason}`).join(' · ')):'';
 }
 const TABS = [
   {id:'resumen', label:'Resumen'},
+  {id:'simulador', label:'¿Cómo se calcula?'},
   {id:'ch-airbnb', label:'Airbnb'},
   {id:'ch-booking', label:'Booking.com'},
   {id:'ch-expedia', label:'Expedia'},
   {id:'ch-direct', label:'Directo'},
-  {id:'comparacion', label:'Comparación'},
-  {id:'simulador', label:'Simulador'}
+  {id:'comparacion', label:'Comparación'}
 ];
+/* Único punto de cambio de pestaña — lo usan el tabbar, el botón "ver paso a paso"
+   de Resumen y los links "Ver →" de las alertas, para no duplicar la lógica. */
+function goToTab(tabId){
+  document.querySelectorAll('[data-tabbtn]').forEach(b=>b.classList.toggle('active', b.dataset.tabbtn===tabId));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.dataset.tab===tabId));
+}
 function buildTabbar(){
   tabbarMount.innerHTML = `<div class="tabbar">${TABS.map((t,i)=>`<button class="tabbtn ${i===0?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div>`;
   document.querySelectorAll('[data-tabbtn]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      document.querySelectorAll('[data-tabbtn]').forEach(b=>b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-      btn.classList.add('active');
-      const panel=document.querySelector(`.tab-panel[data-tab="${btn.dataset.tabbtn}"]`);
-      if(panel) panel.classList.add('active');
-    });
+    btn.addEventListener('click',()=>goToTab(btn.dataset.tabbtn));
   });
 }
 function renderAll(){
@@ -678,7 +708,7 @@ document.addEventListener('change',e=>{
     const d=state.discounts.find(x=>x.id===t.dataset.did);
     if(!d)return;
     const f=t.dataset.f;
-    if(f==='on'){d.on=t.checked;renderCatalog();}
+    if(f==='on'){d.on=t.checked;}
     else if(f==='to'){d.to=t.value===''?9999:(parseFloat(t.value)||0);}
     else d[f]=parseFloat(t.value)||0;
     renderAll();
@@ -689,6 +719,16 @@ document.addEventListener('change',e=>{
   }
   else if(t.dataset.ceil){state.ceilings[t.dataset.ceil]=parseFloat(t.value)||0;renderAll();}
   else if(['simPrice','simDays','simNights','simChannel'].includes(t.id)){renderSim(compute());}
+});
+document.addEventListener('click',e=>{
+  const goto=e.target.closest('[data-goto]');
+  if(goto){ goToTab(goto.dataset.goto); return; }
+  if(e.target.id==='goSimBtn'){
+    const model=compute();
+    simPrice.value=Math.round(model.base||model.effBase||0);
+    goToTab('simulador');
+    renderSim(model);
+  }
 });
 const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
