@@ -521,7 +521,7 @@ function discountRowHTML(d){
     <input type="checkbox" data-did="${d.id}" data-f="on" ${d.on?'checked':''}>
     <span class="d-name">${d.name}${d.note?`<span class="d-meta">${d.note}</span>`:''}</span>
     ${win}
-    <input type="number" data-did="${d.id}" data-f="pct" value="${d.pct}" ${d.on?'':'disabled'}><span class="hint">%</span>
+    <input type="number" data-did="${d.id}" data-f="pct" value="${d.pct}"><span class="hint">%</span>
   </div>`;
 }
 const CH_TAB = {airbnb:'ch-airbnb', booking:'ch-booking', expedia:'ch-expedia', direct:'ch-direct'};
