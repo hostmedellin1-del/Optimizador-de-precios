@@ -33,8 +33,11 @@ qué ve el huésped al final, y qué margen real queda después de todo.
 Dentro de un rule set, orden de prioridad FIJO — gana SOLO UNA promo del grupo `'promo'`:
 1. Anuncio nuevo (20%, primeras 3 reservas)
 2. Promoción personalizada (fechas específicas)
-3. Duración — semanal/mensual (`kind:'los'`, ej. ≥3, ≥7, ≥14, ≥49 noches)
-4. Early-bird (`kind:'window'`, ej. ≥14, ≥30, ≥60 días de anticipación)
+3. Duración — semanal/mensual (`kind:'los'`, ej. ≥3, ≥7, ≥14, ≥28 noches — 28 es el
+   umbral real de "estadía larga" de Airbnb, confirmado por Dani; antes decía ≥49, que
+   era un valor inventado sin base real)
+4. Early-bird (`kind:'window'`, en meses exactos: ≥30/≥60/≥90 días = 1/2/3 meses,
+   confirmado por Dani que se maneja por mes, no por corte de días arbitrario)
 5. Last-minute (`kind:'window'`, ventana cercana al check-in)
 
 Con varios escalones en el mismo nivel de prioridad (4 de duración, 3 de early-bird),
