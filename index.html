@@ -8,11 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#14151A; --surface:#1B1D24; --surface-2:#21232C; --border:#2B2E38;
-  --text:#ECEDF0; --dim:#9498A3; --faint:#5C6070;
-  --accent:#D6412C; --accent-soft:rgba(214,65,44,0.14);
-  --safe:#3FB876; --safe-soft:rgba(63,184,118,0.12);
-  --warn:#E8A23D; --warn-soft:rgba(232,162,61,0.12);
+  --bg:#F2F2F0; --surface:#FFFFFF; --surface-2:#ECECE9; --border:#DDDFE3;
+  --text:#1B1D24; --dim:#565A64; --faint:#8F939C;
+  --accent:#D6412C; --accent-soft:rgba(214,65,44,0.10);
+  --safe:#1B7A45; --safe-soft:rgba(27,122,69,0.12); --safe-chip:#3FB876;
+  --warn:#8A5A0A; --warn-soft:rgba(138,90,10,0.12); --warn-chip:#E8A23D;
   --radius:10px;
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
@@ -58,8 +58,8 @@ button.ghost:hover{color:var(--text);border-color:var(--faint);}
 .alert.ok{background:var(--safe-soft);border-color:rgba(63,184,118,.35);color:var(--dim);}
 .alert .tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;margin-top:1px;}
 .alert.bad .tag{background:var(--accent);color:#fff;}
-.alert.warn .tag{background:var(--warn);color:#14151A;}
-.alert.ok .tag{background:var(--safe);color:#14151A;}
+.alert.warn .tag{background:var(--warn-chip);color:#14151A;}
+.alert.ok .tag{background:var(--safe-chip);color:#14151A;}
 /* discount catalog */
 .d-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;}
 .d-item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0;}
