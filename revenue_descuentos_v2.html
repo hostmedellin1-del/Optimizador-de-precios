@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Revenue · Precios y Descuentos — Host Medellín</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14151A; --surface:#1B1D24; --surface-2:#21232C; --border:#2B2E38;
+  --text:#ECEDF0; --dim:#9498A3; --faint:#5C6070;
+  --accent:#D6412C; --accent-soft:rgba(214,65,44,0.14);
+  --safe:#3FB876; --safe-soft:rgba(63,184,118,0.12);
+  --warn:#E8A23D; --warn-soft:rgba(232,162,61,0.12);
+  --radius:10px;
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Space Grotesk',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;}
+.mono{font-family:'JetBrains Mono',monospace;}
+.app{max-width:1240px;margin:0 auto;padding:28px 20px 80px;}
+header{margin-bottom:20px;}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;color:var(--accent);font-weight:600;margin-bottom:8px;}
+h1{font-size:28px;font-weight:700;margin:0 0 6px;letter-spacing:-.01em;}
+.sub{color:var(--dim);font-size:14px;margin:0;max-width:640px;line-height:1.5;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;}
+h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px;display:flex;align-items:baseline;gap:8px;}
+.hint{font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint);}
+p.hint{margin:-4px 0 12px;max-width:720px;line-height:1.55;}
+input,select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;font-family:inherit;font-size:13px;}
+input[type=number]{font-family:'JetBrains Mono',monospace;text-align:right;width:72px;}
+input:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+button{background:var(--accent-soft);color:var(--accent);border:1px solid rgba(214,65,44,.35);padding:8px 13px;border-radius:7px;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer;}
+button:hover{background:rgba(214,65,44,.24);}
+button.ghost{background:transparent;color:var(--dim);border:1px solid var(--border);}
+button.ghost:hover{color:var(--text);border-color:var(--faint);}
+.unit-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:12px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);}
+#unitName{flex:1;min-width:170px;}
+#saveStatus{font-size:12px;color:var(--safe);font-family:'JetBrains Mono',monospace;}
+.row{display:flex;flex-wrap:wrap;gap:14px;}
+.row>.card{flex:1;min-width:280px;margin-bottom:0;}
+.stack{display:flex;flex-direction:column;gap:14px;margin-bottom:14px;}
+.field{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;font-size:13px;color:var(--dim);}
+.field input{width:90px;}
+.kpis{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;}
+.kpi{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:140px;flex:1;}
+.kpi.accent{border-color:rgba(214,65,44,.4);background:var(--accent-soft);}
+.kpi .l{display:block;font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+.kpi .v{display:block;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;}
+.kpi.accent .v{color:var(--accent);}
+.kpi .s{display:block;font-size:10.5px;color:var(--faint);margin-top:2px;}
+/* alerts */
+.alerts{display:flex;flex-direction:column;gap:8px;}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;border:1px solid;}
+.alert.bad{background:var(--accent-soft);border-color:rgba(214,65,44,.4);color:var(--text);}
+.alert.warn{background:var(--warn-soft);border-color:rgba(232,162,61,.4);}
+.alert.ok{background:var(--safe-soft);border-color:rgba(63,184,118,.35);color:var(--dim);}
+.alert .tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;margin-top:1px;}
+.alert.bad .tag{background:var(--accent);color:#fff;}
+.alert.warn .tag{background:var(--warn);color:#14151A;}
+.alert.ok .tag{background:var(--safe);color:#14151A;}
+/* discount catalog */
+.d-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;}
+.d-item input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;flex-shrink:0;}
+.d-item .d-name{flex:1;color:var(--dim);line-height:1.3;}
+.d-item.on .d-name{color:var(--text);}
+.d-item .d-meta{font-size:10px;color:var(--faint);display:block;}
+.d-item input[type=number]{width:52px;padding:4px 5px;font-size:11.5px;}
+.d-item input[type=number]:disabled{opacity:.3;}
+.d-win{display:flex;gap:3px;align-items:center;font-size:10px;color:var(--faint);}
+.d-win input{width:44px;padding:3px 4px;font-size:10.5px;}
+/* matrix */
+.table-wrap{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;min-width:900px;}
+thead th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top;font-size:12.5px;}
+td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.cell-ch{display:flex;flex-direction:column;gap:2px;font-family:'JetBrains Mono',monospace;font-size:11px;}
+.cell-ch .ok{color:var(--safe);}
+.cell-ch .bad{color:var(--accent);font-weight:600;}
+.cell-ch .warn{color:var(--warn);}
+.lm-val{font-weight:600;}
+.lm-breach{color:var(--accent);font-weight:600;}
+/* simulator */
+.sim-inputs{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;}
+.sim-inputs .fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);}
+.wf{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:13px;}
+.wf-line{display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:var(--dim);}
+.wf-line .why{font-family:'Space Grotesk',sans-serif;font-size:11px;color:var(--faint);flex:1;padding-left:14px;}
+.wf-line.total{border-top:1px solid var(--border);margin-top:6px;padding-top:8px;color:var(--text);font-weight:600;}
+.wf-line.net{color:var(--safe);font-weight:600;}
+.wf-line.netbad{color:var(--accent);font-weight:600;}
+.wf-line .amt{white-space:nowrap;}
+.ignored{margin-top:10px;font-size:11.5px;color:var(--faint);line-height:1.6;font-family:'Space Grotesk',sans-serif;}
+.footer-note{font-size:11.5px;color:var(--faint);line-height:1.7;padding:14px 16px;border:1px dashed var(--border);border-radius:var(--radius);margin-top:6px;}
+@media(max-width:720px){h1{font-size:24px;}}
+/* tabs */
+.tabbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px;}
+.tabbtn{background:transparent;border:1px solid var(--border);color:var(--dim);padding:8px 14px;border-radius:8px;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer;}
+.tabbtn:hover{color:var(--text);}
+.tabbtn.active{background:var(--accent-soft);color:var(--accent);border-color:rgba(214,65,44,.4);}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+/* channel page */
+.chpage-head{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.chpage-head .fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);}
+.chpage-head .fld input{width:80px;}
+.offset-hint{font-size:11px;color:var(--dim);margin-top:2px;}
+.offset-hint b{color:var(--accent);font-family:'JetBrains Mono',monospace;}
+.chpage-discounts{display:flex;flex-direction:column;gap:0;}
+.chpage-discounts .d-item{padding:9px 0;font-size:13px;}
+.chpage-discounts .d-name{font-size:13px;}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="eyebrow">HOST MEDELLÍN · REVENUE OPS · v2</div>
+  <h1>Precios y Descuentos por Canal</h1>
+  <p class="sub">Un catálogo de descuentos, un motor con las reglas reales de combinación de cada OTA, y la respuesta a: qué precio poner, qué activar, cuánto ve el huésped y cuánto te queda.</p>
+</header>
+
+<div class="unit-bar">
+  <input type="text" id="unitName" placeholder="Unidad (ej. Alcázar 902)">
+  <button id="saveUnit">Guardar</button>
+  <select id="unitList"><option value="">Cargar unidad…</option></select>
+  <button class="ghost" id="deleteUnit">Eliminar</button>
+  <span id="saveStatus"></span>
+</div>
+
+<section class="card" id="alertsCard">
+  <h2>Alertas <span class="hint">el motor revisa tu configuración completa en cada cambio</span></h2>
+  <div class="alerts" id="alertsBox"></div>
+</section>
+
+<div class="row stack" id="tabbarMount"></div>
+
+<div class="tab-panel active" data-tab="resumen">
+<div class="row stack">
+  <div class="card">
+    <h2>Costos por noche</h2>
+    <div class="field"><span>Moneda de esta unidad</span><select data-k="currency"><option value="USD">USD</option><option value="COP">COP</option></select></div>
+    <div class="field"><span>Fijos (arriendo, admin, servicios, seguros, tech)</span><input type="number" data-k="fixedCost" step="1"></div>
+    <div class="field"><span>Variables (limpieza, lavandería, consumos, insumos)</span><input type="number" data-k="varCost" step="1"></div>
+    <div class="field"><span>Margen objetivo total %</span><input type="number" data-k="margin" step="1"></div>
+    <div class="field"><span>Ventana de reserva del mercado (días, mediana)</span><input type="number" data-k="marketWindow" step="1"></div>
+    <div class="field"><span>Base que recomienda PriceLabs / mercado</span><input type="number" data-k="marketBase" step="1"></div>
+  </div>
+  <div class="card">
+    <h2>Resultado del modelo</h2>
+    <div class="kpis">
+      <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
+      <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
+      <div class="kpi accent"><span class="l">Min Price → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
+      <div class="kpi accent"><span class="l">Base Price → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
+    </div>
+    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales. Las diferencias de comisión ya no se resuelven inflando este número — se resuelven con el Offset % de cada canal (pestaña de cada OTA). Ajusta ahí.</p>
+  </div>
+</div>
+</div>
+
+<div class="tab-panel" data-tab="ch-airbnb"></div>
+<div class="tab-panel" data-tab="ch-booking"></div>
+<div class="tab-panel" data-tab="ch-expedia"></div>
+<div class="tab-panel" data-tab="ch-direct"></div>
+
+<div class="tab-panel" data-tab="comparacion">
+<section class="card">
+  <h2>Panel de decisión por ventana de reserva</h2>
+  <p class="hint">Por cada ventana: el techo de descuento total que aceptas, lo que ya descuentan los nativos combinados de cada canal, el last-minute que le queda a PriceLabs sin romper el techo en ningún canal, y el margen resultante por canal — ya incluyendo el Offset de cada uno. Rojo = ese canal rompe el techo o vende bajo el piso.</p>
+  <div class="field" style="max-width:320px;"><span>Noches de estadía a evaluar <span class="hint">activa descuentos por duración si califican</span></span><input type="number" data-k="matrixNights" step="1" min="1"></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Ventana</th><th>Techo total %</th><th>Nativo combinado por canal</th>
+        <th>LM PriceLabs</th><th>Total huésped por canal</th><th>Neto por canal (Base × Offset)</th>
+      </tr></thead>
+      <tbody id="matrixBody"></tbody>
+    </table>
+  </div>
+</section>
+</div>
+
+<div class="tab-panel" data-tab="simulador">
+<section class="card">
+  <h2>Simulador de reserva <span class="hint">una reserva concreta, paso a paso, con el porqué de cada línea</span></h2>
+  <div class="sim-inputs">
+    <div class="fld"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><input type="number" id="simPrice" step="1"></div>
+    <div class="fld"><span>Canal</span><select id="simChannel"></select></div>
+    <div class="fld"><span>Días antes del check-in</span><input type="number" id="simDays" step="1" value="2"></div>
+    <div class="fld"><span>Noches de estadía</span><input type="number" id="simNights" step="1" value="2"></div>
+  </div>
+  <div class="wf" id="simResult"></div>
+  <div class="ignored" id="simIgnored"></div>
+</section>
+</div>
+
+<div class="footer-note" id="rulesNote">
+  <strong>Reglas de combinación aplicadas (verificadas jul 2026):</strong><br>
+  · <strong>Airbnb</strong>: orden precio → duración → early-bird/last-minute. Si duración y EB/LM califican a la vez, solo aplica duración (regla oficial de rule sets); EB y LM nunca aplican juntos. Hay reportes de hosts de apilamiento fuera de rule sets — verifica una reserva de prueba en tu anuncio.<br>
+  · <strong>Booking</strong>: categorías distintas se multiplican (Genius × Mobile × un deal reactivo). Misma categoría no combina: solo un deal reactivo (Basic/Early/Last-Minute/Getaway) a la vez — el motor usa el mayor aplicable. Mobile no combina con Country Rate ni Limited-time Deal.<br>
+  · <strong>Expedia</strong>: una sola promo base por reserva (el motor usa la mayor aplicable); Member Only Deal apila encima de esa promo.<br>
+  · <strong>PriceLabs</strong>: su precio (con LM incluido) es la base; el <strong>Offset por canal</strong> (Pricing Offset de PriceLabs, Dynamic Pricing → Customizations) se aplica DESPUÉS, específico por canal — confirmado con soporte de PriceLabs. Ojo: si tu PMS (Hospy) distribuye el offset a todos los canales conectados en vez de aplicarlo solo al elegido, verifica en Hospy antes de confiar en la separación. Los nativos de cada OTA se aplican después de eso, y la comisión al final sobre lo que paga el huésped.<br>
+  · <strong>Comisión bancaria/pasarela</strong>: Booking y Directo tienen 6% adicional configurado (tarjeta virtual, transferencia, pasarela de pago) — se descuenta DESPUÉS de la comisión de la OTA, sobre lo que efectivamente te transfieren. Ajusta el % real por canal en su pestaña; Airbnb y Expedia están en 0% por defecto (paga por depósito directo) — cámbialo si tu banco te cobra algo distinto.
+</div>
+
+</div>
+<script>
+/* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
+   Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
+   para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
+if (typeof window.storage === 'undefined') {
+  window.storage = {
+    async get(key, shared){
+      const v = localStorage.getItem('rev:'+key);
+      if (v===null) throw new Error('not found');
+      return {key, value:v, shared:!!shared};
+    },
+    async set(key, value, shared){
+      localStorage.setItem('rev:'+key, value);
+      return {key, value, shared:!!shared};
+    },
+    async delete(key, shared){
+      localStorage.removeItem('rev:'+key);
+      return {key, deleted:true, shared:!!shared};
+    },
+    async list(prefix, shared){
+      const keys=[];
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k && k.startsWith('rev:')){
+          const bare=k.slice(4);
+          if(!prefix || bare.startsWith(prefix)) keys.push(bare);
+        }
+      }
+      return {keys, prefix, shared:!!shared};
+    }
+  };
+}
+/* ================== MODEL ================== */
+const CHANNELS = [
+  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0},
+  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6},
+  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0},
+  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6}
+];
+/* Discount catalog. kind: constant | window (booking-window days) | los (min nights)
+   group drives combination rules per channel. */
+function defaultDiscounts(){ return [
+  /* AIRBNB — grupo 'promo': solo UNA aplica, por orden de prioridad fijo (prio menor = gana) */
+  {id:'ab_new', ch:'airbnb', name:'Promo anuncio nuevo (20%)', kind:'constant', group:'promo', prio:1, pct:20, on:false, note:'primeras 3 reservas; máxima prioridad'},
+  {id:'ab_cus', ch:'airbnb', name:'Promoción personalizada', kind:'window', group:'promo', prio:2, pct:0, from:0, to:9999, on:false, note:'fechas específicas'},
+  {id:'ab_los1', ch:'airbnb', name:'Estadía media (≥3 noches)',  kind:'los', group:'promo', prio:3, pct:5,  minN:3,  on:false, note:'sugerido — ajusta o apaga'},
+  {id:'ab_los2', ch:'airbnb', name:'Semanal (≥7 noches)',        kind:'los', group:'promo', prio:3, pct:10, minN:7,  on:false, note:'sugerido — ajusta o apaga'},
+  {id:'ab_los3', ch:'airbnb', name:'Quincenal (≥14 noches)',     kind:'los', group:'promo', prio:3, pct:15, minN:14, on:false, note:'sugerido — ajusta o apaga'},
+  {id:'ab_los4', ch:'airbnb', name:'Larga estadía (≥49 noches)', kind:'los', group:'promo', prio:3, pct:25, minN:49, on:true,  note:'activo hoy: ≥49 noches → 25%'},
+  {id:'ab_eb1',  ch:'airbnb', name:'Early-bird (≥14 días)',      kind:'window', group:'promo', prio:4, pct:10, from:14, to:9999, on:false, note:'sugerido — ajusta o apaga'},
+  {id:'ab_eb2',  ch:'airbnb', name:'Early-bird (≥30 días)',      kind:'window', group:'promo', prio:4, pct:15, from:30, to:9999, on:true,  note:'activo hoy: 30 días → 15%'},
+  {id:'ab_eb3',  ch:'airbnb', name:'Early-bird (≥60 días)',      kind:'window', group:'promo', prio:4, pct:20, from:60, to:9999, on:false, note:'sugerido — ajusta o apaga'},
+  {id:'ab_lm',  ch:'airbnb', name:'Last-minute', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:3,  on:false, note:'0–28 días; hoy vacío en tu cuenta'},
+  {id:'ab_rs',  ch:'airbnb', name:'Ajuste de rule set / temporada', kind:'constant', group:'stackable', prio:0, pct:0, on:false, note:'apila sobre la promo ganadora'},
+  /* BOOKING — proactive stack; reactive exclusive; mobile conflicts w/ country & limited */
+  {id:'bk_gen', ch:'booking', name:'Genius (constante)', kind:'constant', group:'proactive', pct:10, on:true, note:'lo funde el host; L1=10%'},
+  {id:'bk_mob', ch:'booking', name:'Mobile Rate', kind:'constant', group:'proactive-mobile', pct:10, on:true, note:'apila con Genius; no con Country/Limited'},
+  {id:'bk_cty', ch:'booking', name:'Country Rate', kind:'constant', group:'proactive-country', pct:0, on:false},
+  {id:'bk_lmd', ch:'booking', name:'Last-Minute Deal', kind:'window', group:'reactive', pct:0, from:0, to:3, on:false},
+  {id:'bk_ebd', ch:'booking', name:'Early Booker Deal', kind:'window', group:'reactive', pct:0, from:30, to:9999, on:false},
+  {id:'bk_bas', ch:'booking', name:'Basic Deal', kind:'constant', group:'reactive', pct:0, on:false},
+  {id:'bk_ltd', ch:'booking', name:'Limited-time Deal', kind:'constant', group:'reactive-limited', pct:0, on:false, note:'no combina con Mobile'},
+  /* EXPEDIA — base promos exclusive (max); MOD stacks on top */
+  {id:'ex_mod', ch:'expedia', name:'Member Only Deal', kind:'constant', group:'mod', pct:10, on:true, note:'apila sobre la promo base; ≥10% para badge'},
+  {id:'ex_mob', ch:'expedia', name:'Mobile-only', kind:'constant', group:'base', pct:0, on:false},
+  {id:'ex_sd',  ch:'expedia', name:'Same-day / last-minute', kind:'window', group:'base', pct:0, from:0, to:1, on:false},
+  {id:'ex_eb',  ch:'expedia', name:'Early booking', kind:'window', group:'base', pct:0, from:30, to:9999, on:false},
+  {id:'ex_bas', ch:'expedia', name:'Basic promo', kind:'constant', group:'base', pct:0, on:false},
+  /* DIRECT */
+  {id:'di_lm',  ch:'direct', name:'Last-minute directo', kind:'window', group:'any', pct:0, from:0, to:3, on:false}
+];}
+const WINDOWS = [
+  {id:'w0', label:'0–1 día', lo:0, hi:1, ceil:35},
+  {id:'w1', label:'2–3 días', lo:2, hi:3, ceil:28},
+  {id:'w2', label:'4–7 días', lo:4, hi:7, ceil:18},
+  {id:'w3', label:'8–14 días', lo:8, hi:14, ceil:8},
+  {id:'w4', label:'15–29 días', lo:15, hi:29, ceil:0},
+  {id:'w5', label:'30+ días', lo:30, hi:9999, ceil:15}
+];
+let state = {
+  name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
+  matrixNights:1,
+  channels: CHANNELS.map(c=>({...c})),
+  discounts: defaultDiscounts(),
+  ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil]))
+};
+
+/* ================== ENGINE ================== */
+const pct = v=>Math.min(Math.max(parseFloat(v)||0,0),95);
+const pct2 = v=>parseFloat(v)||0; /* offset puede ser negativo, no lo recortamos a 0-95 */
+const f$ = x=>!isFinite(x)?'—':(state.currency||'USD')+' '+new Intl.NumberFormat('es-CO',{maximumFractionDigits:0}).format(Math.round(x));
+const fP = x=>x.toFixed(x<10&&x>0?1:0)+'%';
+
+function windowApplies(d, daysOut){
+  if(d.kind==='constant') return true;
+  if(d.kind==='window') return daysOut>= (d.from??0) && daysOut<=(d.to??9999);
+  return false; /* los handled separately */
+}
+function losApplies(d, nights){ return d.kind==='los' && nights>=(d.minN||0); }
+
+/* Returns {factor, applied:[{name,pct,why}], ignored:[{name,reason}]} for one channel */
+function combineChannel(chId, daysOut, nights){
+  const ds = state.discounts.filter(d=>d.ch===chId && d.on && pct(d.pct)>0);
+  const applied=[], ignored=[];
+  let factor=1;
+  const add=(d,why)=>{factor*=(1-pct(d.pct)/100); applied.push({name:d.name,pct:pct(d.pct),why});};
+
+  if(chId==='airbnb'){
+    /* Capa apilable (rule sets / ajuste estacional) se aplica primero y NO compite */
+    ds.filter(d=>d.group==='stackable').forEach(d=>add(d,'rule set: apila sobre la promo ganadora'));
+    /* Grupo promo: solo UNA aplica. 1º por prioridad de tipo (nuevo>personalizada>duración>early-bird>last-minute).
+       2º, dentro del mismo tipo con varios escalones, gana el umbral MÁS PROFUNDO que se cumple
+       (más noches para duración, más días de anticipación para early-bird) — no el % más alto. */
+    const cands = ds.filter(d=> d.group==='promo' &&
+      (d.kind==='constant' || windowApplies(d,daysOut) || losApplies(d,nights)));
+    if(cands.length){
+      const minPrio = Math.min(...cands.map(c=>c.prio??9));
+      const top = cands.filter(c=>(c.prio??9)===minPrio);
+      top.sort((a,b)=>{
+        const av = a.kind==='los' ? (a.minN||0) : (a.from||0);
+        const bv = b.kind==='los' ? (b.minN||0) : (b.from||0);
+        return bv-av;
+      });
+      const win = top[0];
+      const tieBreak = top.length>1 ? `, umbral más profundo dentro del mismo tipo (${win.kind==='los'?'≥'+win.minN+' noches':'≥'+win.from+' días'})` : '';
+      add(win, `gana por prioridad Airbnb (nivel ${win.prio??'—'}: nuevo > personalizada > duración > early-bird > last-minute)${tieBreak}`);
+      cands.filter(c=>c!==win).forEach(d=>ignored.push({name:d.name,reason: (d.prio??9)!==minPrio
+        ? `Airbnb aplica solo una promo por noche; ganó ${win.name} por prioridad`
+        : `mismo tipo que ${win.name}; ese umbral es más profundo y gana`}));
+    }
+  }
+  else if(chId==='booking'){
+    const limited = ds.find(d=>d.group==='reactive-limited');
+    const country = ds.find(d=>d.group==='proactive-country');
+    const mobile = ds.find(d=>d.group==='proactive-mobile');
+    const genius = ds.find(d=>d.group==='proactive');
+    if(genius) add(genius,'Genius combina con todo (categoría propia)');
+    if(country) add(country,'Country Rate activa');
+    if(mobile){
+      if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
+      else add(mobile,'apila sobre Genius (categorías distintas)');
+    }
+    const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
+      .sort((a,b)=>pct(b.pct)-pct(a.pct));
+    if(reactives.length){
+      add(reactives[0],'único deal reactivo aplicado (misma categoría no combina)');
+      reactives.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo un deal reactivo aplica; ganó '+reactives[0].name}));
+    }
+  }
+  else if(chId==='expedia'){
+    const bases = ds.filter(d=>d.group==='base' && windowApplies(d,daysOut)).sort((a,b)=>pct(b.pct)-pct(a.pct));
+    if(bases.length){
+      add(bases[0],'promo base mayor (Expedia no combina promos base)');
+      bases.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo la promo base mayor aplica'}));
+    }
+    const mod = ds.find(d=>d.group==='mod');
+    if(mod) add(mod,'Member Only apila sobre la promo base');
+  }
+  else { /* direct: stack all */
+    ds.filter(d=>windowApplies(d,daysOut)||losApplies(d,nights)).forEach(d=>add(d,'canal directo: apila'));
+  }
+  return {factor, totalPct: (1-factor)*100, applied, ignored};
+}
+
+/* Worst-case native per channel: escanea ventanas de reserva Y duraciones de estadía.
+   Antes solo usaba nights=1, así que los descuentos por duración (LOS) quedaban invisibles
+   para el piso — una reserva larga podía vender bajo costo sin que el modelo lo detectara. */
+function worstNative(chId){
+  let worst=0;
+  const losNights = state.discounts.filter(d=>d.ch===chId && d.kind==='los' && d.on)
+    .map(d=>(d.minN||1));
+  const nightsToTest = [1, ...losNights];
+  WINDOWS.forEach(w=>{
+    const mid = Math.min(w.lo+1, w.hi);
+    nightsToTest.forEach(n=>{
+      const t = combineChannel(chId, mid, n).totalPct;
+      if(t>worst) worst=t;
+    });
+  });
+  return worst;
+}
+/* Factor de lo que realmente te queda tras comisión OTA + comisión bancaria (tarjeta virtual, transferencia, pasarela) */
+function payoutFactor(c){
+  return (1-pct(c.comm)/100) * (1-pct(c.bankFeePct)/100);
+}
+function compute(){
+  const cost = (parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
+  const m = Math.min(parseFloat(state.margin)||0,90);
+  const net = cost/(1-m/100);
+  /* floor: pushed price such that worst channel still nets >= cost */
+  let floor=0, floorCh='';
+  state.channels.forEach(c=>{
+    const wn = worstNative(c.id)/100, pf = payoutFactor(c);
+    const p = cost/((1-wn)*pf);
+    if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+')';}
+  });
+  /* base: pushed price that nets target on every channel using its CONSTANT natives (window natives are tactical) */
+  let base=0, baseCh='';
+  state.channels.forEach(c=>{
+    const cn = combineChannel(c.id, 45, 1).totalPct/100; /* 45 días: fuera de ventanas tácticas cortas */
+    const pf = payoutFactor(c);
+    const p = net/((1-cn)*pf);
+    if(p>base){base=p;baseCh=c.name;}
+  });
+  const mb=parseFloat(state.marketBase)||0;
+  const effBase = mb>0 ? mb : base;   /* evaluar contra el precio que realmente vas a poner */
+  return {cost, net, floor, floorCh, base, baseCh, effBase};
+}
+
+/* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase) */
+function suggestedOffset(chId, effBase, netObjetivo){
+  const c = state.channels.find(x=>x.id===chId);
+  if(!c || effBase<=0) return 0;
+  const nat = combineChannel(chId, 45, 1).totalPct/100; /* nativo constante, fuera de ventanas tácticas */
+  const pf = payoutFactor(c);
+  const denom = effBase*(1-nat)*pf;
+  if(denom<=0) return 0;
+  return (netObjetivo/denom - 1)*100;
+}
+
+/* ================== ALERTS ================== */
+function buildAlerts(model){
+  const A=[];
+  const on = id=>{const d=state.discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
+  /* ceiling breaches & floor breaches per window */
+  WINDOWS.forEach(w=>{
+    const ceil=pct(state.ceilings[w.id]);
+    const mid=Math.min(w.lo+1,w.hi);
+    let maxN=0,maxCh='';
+    state.channels.forEach(c=>{const t=combineChannel(c.id,mid,1).totalPct;if(t>maxN){maxN=t;maxCh=c.name;}});
+    if(maxN>ceil+0.5) A.push({lvl:'bad',tag:'TECHO',msg:`${w.label}: solo los nativos de ${maxCh} ya suman ${fP(maxN)} y tu techo es ${fP(ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
+    const lm = maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
+    state.channels.forEach(c=>{
+      const nat=combineChannel(c.id,mid,1).totalPct/100, cm=pct(c.comm)/100;
+      const netAtBase = model.effBase*(1-lm/100)*(1-nat)*(1-cm);
+      if(model.base>0 && netAtBase < model.cost-0.5)
+        A.push({lvl:'bad',tag:'PISO',msg:`${w.label} · ${c.name}: al precio de referencia (${f$(model.effBase)}) con LM ${fP(lm)} + nativos ${fP(nat*100)} + comisión, netearías ${f$(netAtBase)} < costo ${f$(model.cost)}.`});
+    });
+  });
+  /* config contradictions */
+  const ebActive = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='window'&&d.on&&pct(d.pct)>0&&(d.from??0)>=14);
+  ebActive.forEach(eb=>{
+    if((eb.from??30)>(parseFloat(state.marketWindow)||16))
+      A.push({lvl:'warn',tag:'CONFIG',msg:`${eb.name} arranca a ${eb.from} días pero tu mercado reserva a ~${state.marketWindow} días (mediana). Casi nunca se activa, y cuando lo hace regala margen en las pocas reservas anticipadas. Evalúa apagarlo o subir el umbral.`});
+  });
+  if(on('bk_mob')&&(on('bk_cty')||on('bk_ltd')))
+    A.push({lvl:'warn',tag:'CONFLICTO',msg:'Booking: Mobile Rate no combina con Country Rate / Limited-time. El motor ya ignora Mobile en ese caso, pero tenlos claros en la extranet.'});
+  const abLm=state.discounts.find(d=>d.id==='ab_lm');
+  const abEbOverlap = ebActive.find(eb=>pct(abLm?.pct||0)>0 && abLm?.on && (abLm.to??3)>=(eb.from??30));
+  if(abEbOverlap)
+    A.push({lvl:'warn',tag:'CONFIG',msg:`Airbnb: la ventana de Last-minute se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
+  const losOn = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='los'&&d.on&&pct(d.pct)>0);
+  if(losOn.length>1){
+    const sorted=[...losOn].sort((a,b)=>a.minN-b.minN);
+    for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
+      A.push({lvl:'warn',tag:'CONFIG',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más descuento que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a exigir menos noches. Al huésped que califica para ambas gana el umbral más profundo (${sorted[i+1].name}), así que el de menos noches nunca se aplica realmente — revisa la escala.`});
+  }
+  const ebOn = ebActive;
+  if(ebOn.length>1){
+    const sorted=[...ebOn].sort((a,b)=>a.from-b.from);
+    for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
+      A.push({lvl:'warn',tag:'CONFIG',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a activarse antes. Gana el umbral más profundo (${sorted[i+1].name}) cuando ambos aplican — revisa la escala para que suba con la anticipación.`});
+  }
+  const bkStack=combineChannel('booking',1,1).totalPct;
+  if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
+  /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí. */
+  state.channels.forEach(c=>{
+    state.discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
+      const r = combineChannel(c.id, 45, d.minN||1);
+      const netLos = model.effBase*(1+pct2(c.offsetPct)/100)*(1-r.totalPct/100)*payoutFactor(c);
+      if(netLos < model.cost-0.5)
+        A.push({lvl:'bad',tag:'DURACIÓN',msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)} por noche, bajo tu costo de ${f$(model.cost)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
+      else if(netLos < model.net)
+        A.push({lvl:'warn',tag:'DURACIÓN',msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net)}. Válido si priorizas ocupación larga; revísalo si no.`});
+    });
+  });
+  if(model.floor>model.base&&model.base>0)
+    A.push({lvl:'bad',tag:'MODELO',msg:`Tu piso (${f$(model.floor)}) quedó por ENCIMA del Base (${f$(model.base)}): con estos descuentos y margen, el modelo no cierra. Baja descuentos, baja margen objetivo o revisa costos.`});
+  /* Chequeo de realidad contra el mercado */
+  const mb=parseFloat(state.marketBase)||0;
+  if(mb>0){
+    if(model.floor>mb)
+      A.push({lvl:'bad',tag:'INVIABLE',msg:`Tu piso (${f$(model.floor)}) está POR ENCIMA de la base de mercado (${f$(mb)}). A precio de mercado y con estos descuentos, esta unidad no cubre costo. No es un problema de pricing: es costos, descuentos o producto.`});
+    else if(model.base>mb*1.05){
+      /* margen alcanzable al precio de mercado, en el canal que peor te deja */
+      let peorNeto=Infinity, peorCh='';
+      state.channels.forEach(c=>{
+        const n = mb*(1+pct2(c.offsetPct)/100)*(1-worstNative(c.id)/100)*payoutFactor(c);
+        if(n<peorNeto){peorNeto=n;peorCh=c.name;}
+      });
+      const achievable = peorNeto>0 ? 100*(1-model.cost/peorNeto) : 0;
+      A.push({lvl:'warn',tag:'REALIDAD',msg:`El Base que exige tu margen de ${fP(pct(state.margin))} es ${f$(model.base)}, pero el mercado paga ~${f$(mb)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso (${peorCh}): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
+    }
+  }
+  if(!A.length) A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
+  return A;
+}
+
+/* ================== RENDER ================== */
+function renderKpis(model){
+  kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
+  kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
+  kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
+}
+function discountRowHTML(d){
+  const win = d.kind==='window'
+    ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${d.from}">–<input type="number" data-did="${d.id}" data-f="to" value="${d.to>=9999?'':d.to}" placeholder="∞">d</span>`
+    : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${d.minN}">n</span>` : '';
+  return `<div class="d-item ${d.on?'on':''}">
+    <input type="checkbox" data-did="${d.id}" data-f="on" ${d.on?'checked':''}>
+    <span class="d-name">${d.name}${d.note?`<span class="d-meta">${d.note}</span>`:''}</span>
+    ${win}
+    <input type="number" data-did="${d.id}" data-f="pct" value="${d.pct}" ${d.on?'':'disabled'}><span class="hint">%</span>
+  </div>`;
+}
+const CH_TAB = {airbnb:'ch-airbnb', booking:'ch-booking', expedia:'ch-expedia', direct:'ch-direct'};
+function renderChannelPages(model){
+  state.channels.forEach(c=>{
+    const panel = document.querySelector(`.tab-panel[data-tab="${CH_TAB[c.id]}"]`);
+    if(!panel) return;
+    const items = state.discounts.filter(d=>d.ch===c.id).map(discountRowHTML).join('') || '<div class="hint">sin descuentos definidos para este canal</div>';
+    const sugg = suggestedOffset(c.id, model.effBase, model.net);
+    const netHoy = model.effBase*(1+pct2(c.offsetPct)/100)*(1-combineChannel(c.id,45,1).totalPct/100)*payoutFactor(c);
+    panel.innerHTML = `
+      <section class="card">
+        <div class="chpage-head">
+          <div class="fld"><span>Comisión ${c.name} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
+          <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${c.bankFeePct||0}"></div>
+          <div class="fld"><span>Offset % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
+          <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado a 45 días (ya con comisión OTA + bancaria): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>
+        </div>
+        <h2>Catálogo de descuentos — ${c.name}</h2>
+        <div class="chpage-discounts">${items}</div>
+      </section>`;
+  });
+}
+function renderMatrix(model){
+  const nights=Math.max(1,parseFloat(state.matrixNights)||1);
+  matrixBody.innerHTML = WINDOWS.map(w=>{
+    const ceil=pct(state.ceilings[w.id]);
+    const mid=Math.min(w.lo+1,w.hi);
+    const per=state.channels.map(c=>({c,r:combineChannel(c.id,mid,nights)}));
+    const maxN=Math.max(0,...per.map(p=>p.r.totalPct));
+    const breach=maxN>ceil;
+    const lm=breach?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
+    const natCol=per.map(p=>`<span class="${p.r.totalPct>ceil+0.5?'bad':''}">${p.c.name}: ${fP(p.r.totalPct)}${p.r.applied.length?' <span style="color:var(--faint)">('+p.r.applied.map(a=>a.name.split(' ')[0]).join('+')+')</span>':''}</span>`).join('');
+    const totCol=per.map(p=>{
+      const t=100*(1-(1-lm/100)*(1-p.r.totalPct/100));
+      return `<span class="${t>ceil+0.5?'bad':'ok'}">${p.c.name}: ${fP(t)}</span>`;
+    }).join('');
+    const netCol=per.map(p=>{
+      const netV=model.effBase*(1+pct2(p.c.offsetPct)/100)*(1-lm/100)*(1-p.r.totalPct/100)*payoutFactor(p.c);
+      const cls=netV<model.cost?'bad':(netV<model.net?'warn':'ok');
+      return `<span class="${cls}">${p.c.name}: ${f$(netV)}</span>`;
+    }).join('');
+    return `<tr>
+      <td>${w.label}</td>
+      <td><input type="number" data-ceil="${w.id}" value="${state.ceilings[w.id]}" style="width:58px"></td>
+      <td><div class="cell-ch">${natCol}</div></td>
+      <td class="out"><span class="${breach?'lm-breach':'lm-val'}">${breach?'0% ⚠':fP(lm)}</span></td>
+      <td><div class="cell-ch">${totCol}</div></td>
+      <td><div class="cell-ch">${netCol}</div></td>
+    </tr>`;
+  }).join('');
+}
+function renderAlerts(model){
+  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}</span></div>`).join('');
+}
+function renderSim(model){
+  const price=parseFloat(simPrice.value)||model.effBase||0;
+  const chId=simChannel.value||'airbnb';
+  const ch=state.channels.find(c=>c.id===chId);
+  const days=Math.max(0,parseFloat(simDays.value)||0);
+  const nights=Math.max(1,parseFloat(simNights.value)||1);
+  const w=WINDOWS.find(w=>days>=w.lo&&days<=w.hi)||WINDOWS[5];
+  const ceil=pct(state.ceilings[w.id]);
+  const maxN=Math.max(0,...state.channels.map(c=>combineChannel(c.id,Math.min(w.lo+1,w.hi),1).totalPct));
+  const lm=maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
+  const r=combineChannel(chId,days,nights);
+  let running=price;
+  let html=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
+  const afterLm=running*(1-lm/100);
+  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">curva de la ventana ${w.label}, derivada del techo ${fP(ceil)}</span><span class="amt">${f$(afterLm)}</span></div>`;
+  running=afterLm;
+  const off=pct2(ch.offsetPct);
+  if(off!==0){
+    const afterOff=running*(1+off/100);
+    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${ch.name} ${fP(Math.abs(off))}</span><span class="why">Pricing Offset de PriceLabs, aplicado solo a este canal antes de empujar (verifica en Hospy)</span><span class="amt">${f$(afterOff)}</span></div>`;
+    running=afterOff;
+  }
+  r.applied.forEach(a=>{
+    const nx=running*(1-a.pct/100);
+    html+=`<div class="wf-line"><span>− ${a.name} ${fP(a.pct)}</span><span class="why">${a.why}</span><span class="amt">${f$(nx)}</span></div>`;
+    running=nx;
+  });
+  const guest=running;
+  html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
+  const afterComm=guest*(1-pct(ch.comm)/100);
+  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))}</span><span class="amt">${f$(afterComm)}</span></div>`;
+  let afterBank=afterComm;
+  if(pct(ch.bankFeePct)>0){
+    afterBank=afterComm*(1-pct(ch.bankFeePct)/100);
+    html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))}</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
+  }
+  const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
+  const margin=afterBank-cost;
+  html+=`<div class="wf-line ${afterBank>=cost?'net':'netbad'}"><span>Neto para ti (vs costo ${f$(cost)})</span><span class="amt">${f$(afterBank)} · margen ${f$(margin)}</span></div>`;
+  const totalDisc=100*(1-guest/price);
+  html+=`<div class="wf-line"><span class="hint">Descuento total visto por el huésped: ${fP(totalDisc)} · techo de la ventana: ${fP(ceil)} ${totalDisc>ceil+0.5?'⚠ EXCEDIDO':''}</span></div>`;
+  simResult.innerHTML=html;
+  simIgnored.innerHTML=r.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+r.ignored.map(i=>`${i.name} — ${i.reason}`).join(' · ')):'';
+}
+const TABS = [
+  {id:'resumen', label:'Resumen'},
+  {id:'ch-airbnb', label:'Airbnb'},
+  {id:'ch-booking', label:'Booking.com'},
+  {id:'ch-expedia', label:'Expedia'},
+  {id:'ch-direct', label:'Directo'},
+  {id:'comparacion', label:'Comparación'},
+  {id:'simulador', label:'Simulador'}
+];
+function buildTabbar(){
+  tabbarMount.innerHTML = `<div class="tabbar">${TABS.map((t,i)=>`<button class="tabbtn ${i===0?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div>`;
+  document.querySelectorAll('[data-tabbtn]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('[data-tabbtn]').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+      btn.classList.add('active');
+      const panel=document.querySelector(`.tab-panel[data-tab="${btn.dataset.tabbtn}"]`);
+      if(panel) panel.classList.add('active');
+    });
+  });
+}
+function renderAll(){
+  const model=compute();
+  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model);
+}
+function hydrate(){
+  document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
+  simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+}
+buildTabbar();
+
+/* ================== EVENTS / STORAGE ================== */
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.k!==undefined){state[t.dataset.k]=t.value;renderAll();}
+  else if(t.dataset.did){
+    const d=state.discounts.find(x=>x.id===t.dataset.did);
+    if(!d)return;
+    const f=t.dataset.f;
+    if(f==='on'){d.on=t.checked;renderCatalog();}
+    else if(f==='to'){d.to=t.value===''?9999:(parseFloat(t.value)||0);}
+    else d[f]=parseFloat(t.value)||0;
+    renderAll();
+  }
+  else if(t.dataset.chid){
+    const c=state.channels.find(x=>x.id===t.dataset.chid);
+    if(c){ c[t.dataset.chf]=parseFloat(t.value)||0; renderAll(); }
+  }
+  else if(t.dataset.ceil){state.ceilings[t.dataset.ceil]=parseFloat(t.value)||0;renderAll();}
+  else if(['simPrice','simDays','simNights','simChannel'].includes(t.id)){renderSim(compute());}
+});
+const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
+saveUnit.addEventListener('click',async()=>{
+  const n=unitName.value.trim(); if(!n){alert('Nombre de unidad primero.');return;}
+  try{const r=await window.storage.set('v2:'+slug(n),JSON.stringify({...state,name:n}),false);
+    if(r){status('Guardado ✓');refreshList();}else status('Error');}catch(e){console.error(e);status('Error al guardar');}
+});
+deleteUnit.addEventListener('click',async()=>{
+  const k=unitList.value; if(!k){alert('Selecciona una unidad.');return;}
+  try{await window.storage.delete(k,false);refreshList();status('Eliminado');}catch(e){status('Error');}
+});
+unitList.addEventListener('change',async e=>{
+  const k=e.target.value; if(!k)return;
+  try{const r=await window.storage.get(k,false);
+    if(r&&r.value){const d=JSON.parse(r.value);
+      state={...state,...d};
+      /* merge new catalog entries added after save */
+      const have=new Set(state.discounts.map(x=>x.id));
+      defaultDiscounts().forEach(x=>{if(!have.has(x.id))state.discounts.push(x);});
+      /* merge new channel fields (offsetPct, bankFeePct) added after save */
+      state.channels = CHANNELS.map(def=>{
+        const saved = (d.channels||[]).find(x=>x.id===def.id);
+        return saved ? {...def, ...saved} : {...def};
+      });
+      /* garantizar techos por ventana */
+      if(!state.ceilings) state.ceilings={};
+      WINDOWS.forEach(w=>{ if(state.ceilings[w.id]===undefined) state.ceilings[w.id]=w.ceil; });
+      unitName.value=d.name||''; hydrate(); renderAll(); status('Cargado ✓');}
+  }catch(e){console.error(e);status('No encontrado');}
+});
+async function refreshList(){
+  try{const r=await window.storage.list('v2:',false);
+    const keys=(r&&r.keys)||[];
+    unitList.innerHTML='<option value="">Cargar unidad…</option>'+keys.map(k=>`<option value="${k}">${k.replace('v2:','')}</option>`).join('');
+  }catch(e){unitList.innerHTML='<option value="">Cargar unidad…</option>';}
+}
+hydrate(); renderAll(); refreshList();
+</script>
+</body>
+</html>
