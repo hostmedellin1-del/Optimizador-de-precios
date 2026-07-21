@@ -150,6 +150,15 @@ objetivo (no es una aproximación).
   peor canal + peor descuento), base (Base Price PriceLabs, para netear objetivo en todos
   con sus nativos constantes).
 - `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2.
+- Tarifa de aseo de Airbnb (`cleanFeeShort`/`cleanFeeLong` en `state.channels` — solo el
+  canal `airbnb` tiene estos campos, no se agregaron a Booking/Expedia/Directo porque no
+  se pidieron ahí). Fija por reserva, no por noche: 1–2 noches usa `cleanFeeShort`, 3+
+  usa `cleanFeeLong`. Airbnb no la descuenta con los promos de noche, pero SÍ cobra
+  comisión sobre ella (modelo Host-Only Fee). Implementada SOLO en el Simulador
+  (`renderSim`), que prorratea la tarifa entre las noches de esa reserva concreta para
+  poder compararla contra el costo/noche — Resumen/Comparación NO la incluyen todavía
+  porque son modelos agregados por noche sin una reserva puntual con noches fijas; no
+  construir eso sin que Dani lo pida.
 - Pestañas (`TABS` array + `.tab-panel[data-tab=...]`): Resumen, `ch-airbnb`,
   `ch-booking`, `ch-expedia`, `ch-direct`, Comparación, Simulador.
 - Storage: prefijo `v2:` + slug del nombre de unidad. `shared:false` siempre (datos
@@ -162,6 +171,10 @@ objetivo (no es una aproximación).
 1. Costos reales de la unidad 902 (Alcázar de Oviedo). Hoy el modelo usa el ejemplo
    genérico del webinar de Kunas ($54 costo/noche, $98 neto objetivo, margen 45%) — son
    ilustrativos, NO son los costos reales de Dani. Todo lo demás depende de esto.
+7. Monto real de la tarifa de aseo de Airbnb (corta 1–2 noches / larga 3+ noches) —
+   hoy en 0 por defecto ("cambia según cada listing", confirmado por Dani), cada unidad
+   guardada debe traer su propio valor. No inventar un número — queda en 0 hasta que se
+   cargue el dato real de cada unidad.
 2. Confirmar en la extranet real de Booking.com: ¿Genius y Mobile Rate están AMBOS
    activos hoy? Se asumió que sí (10% + 10%) — cambia cuál canal termina fijando el piso.
 3. % real de comisión bancaria por canal. Hoy: Booking 6%, Directo 6%, Airbnb 0%,
