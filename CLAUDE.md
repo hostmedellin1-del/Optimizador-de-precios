@@ -102,6 +102,15 @@ objetivo (no es una aproximación).
 
 ## 3. Por qué está armado como está (decisiones de arquitectura, para no revertirlas sin querer)
 
+- Tema claro (jul 2026, a pedido de Dani — antes era oscuro). Las variables de color
+  viven todas en `:root`. `--safe`/`--warn` se oscurecieron respecto al original
+  (`#3FB876`/`#E8A23D`) porque esos valores brillantes no pasan contraste AA como texto
+  sobre fondo blanco (si se usan como color de texto en `.cell-ch .ok/.warn`, `.wf-line.net`,
+  `#saveStatus`). Se agregaron `--safe-chip`/`--warn-chip` que SÍ conservan el valor
+  brillante original, usados solo como fondo de las etiquetas de alerta (`.alert.ok .tag`,
+  `.alert.warn .tag`), donde van con texto oscuro encima y necesitan ser vívidos, no legibles
+  como texto plano. `--accent` (#D6412C) no cambió — ya pasa AA en ambos sentidos (texto
+  sobre blanco y texto blanco sobre el color), se usa igual en los dos roles.
 - Un solo archivo HTML, sin build. Se decidió así para poder desplegarlo en GitHub Pages
   / Netlify / donde sea sin pipeline. Mantenerlo así salvo que Dani pida lo contrario.
 - Pestañas, no una sola página larga. La primera versión (v1) tenía todo en una grilla
@@ -180,6 +189,10 @@ objetivo (no es una aproximación).
   defaults, nunca sobrescribir el arreglo completo — si no, unidades guardadas antes de
   agregar `bankFeePct`/`offsetPct` los pierden en silencio.
 - La comisión bancaria NO se compone con la comisión de la OTA — ver sección 2.
+- El input de `%` de cada descuento (`discountRowHTML()`) tenía `disabled` cuando el
+  checkbox `on` estaba apagado — impedía configurar el porcentaje antes de activar el
+  descuento. El checkbox controla si el motor lo cuenta, no si se puede editar; el input
+  debe estar siempre habilitado.
 
 ---
 
