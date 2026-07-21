@@ -123,6 +123,26 @@ objetivo (no es una aproximación).
   La Comparación NO se eliminó al hacer las pestañas por canal — ahí es donde el motor
   detecta contradicciones ENTRE canales (ej. Booking rompiendo el techo mientras Airbnb
   está bien), que se perdería si todo quedara aislado por pestaña.
+- Orden de pestañas: Resumen, **¿Cómo se calcula?** (id interno sigue siendo `simulador`,
+  solo cambió el label y la posición en `TABS`), Airbnb/Booking/Expedia/Directo,
+  Comparación (jul 2026). Dani dijo "no lo entiendo" sobre el flujo de cálculo — el motor
+  estaba bien, pero el Simulador (que SÍ narra el flujo paso a paso) era la última de 7
+  pestañas, detrás de 6 pantallas de configuración. Se movió a 2ª posición porque es la
+  respuesta a "por qué este precio", no un extra al final. No revertir el orden sin volver
+  a tener este problema de comprensión.
+- `goToTab(tabId)` es el único punto de cambio de pestaña — lo usan el tabbar, el botón
+  `#goSimBtn` (Resumen → Simulador con el Base precargado) y los links `data-goto` de las
+  alertas (`renderAlerts`, `buildAlerts` con campo `tab` por alerta). Si se agrega una
+  forma nueva de cambiar de pestaña por código, debe llamar a `goToTab()`, no duplicar la
+  lógica de toggle de clases.
+- Tooltips de jerga: clase CSS `.term` (subrayado punteado + `title` nativo del navegador,
+  cero JS/librerías nuevas) en la primera aparición de Piso, Base, Offset, Nativo, LM,
+  Techo. Deliberadamente simple — no construir un sistema de tooltips custom sin que Dani
+  lo pida.
+- Catálogo de descuentos por canal: solo los `on:true` se muestran siempre visibles
+  arriba ("Descuentos activos hoy"); el resto vive detrás de un `<details>` nativo
+  colapsado ("Ver catálogo completo (N más)"). Antes se mostraban los ~11 descuentos de
+  cada canal de una vez, la mayoría apagados/sugeridos — abrumaba más que ayudaba.
 - `window.storage` con polyfill a `localStorage`. El storage nativo de Claude.ai
   (`window.storage`) no existe fuera de Claude.ai. Se agregó un polyfill al inicio del
   `<script>` que detecta si `window.storage` ya existe; si no, lo simula con
@@ -209,6 +229,13 @@ objetivo (no es una aproximación).
   checkbox `on` estaba apagado — impedía configurar el porcentaje antes de activar el
   descuento. El checkbox controla si el motor lo cuenta, no si se puede editar; el input
   debe estar siempre habilitado.
+- El listener de `change` llamaba a `renderCatalog()` cuando se marcaba/desmarcaba el
+  checkbox `on` de un descuento — esa función NUNCA existió en el archivo. Cada toggle
+  tiraba un `ReferenceError` no capturado que abortaba el resto del handler, así que
+  `renderAll()` (la línea siguiente) nunca se ejecutaba: alertas/KPIs/matriz quedaban
+  congelados sin avisar nada en la UI. `renderAll()` ya reconstruye el catálogo completo
+  (vía `renderChannelPages()`), así que no hace falta ninguna función aparte — se quitó la
+  llamada rota, no se creó `renderCatalog()`.
 
 ---
 
