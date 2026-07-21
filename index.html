@@ -203,7 +203,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   · <strong>Booking</strong>: categorías distintas se multiplican (Genius × Mobile × un deal reactivo). Misma categoría no combina: solo un deal reactivo (Basic/Early/Last-Minute/Getaway) a la vez — el motor usa el mayor aplicable. Mobile no combina con Country Rate ni Limited-time Deal.<br>
   · <strong>Expedia</strong>: una sola promo base por reserva (el motor usa la mayor aplicable); Member Only Deal apila encima de esa promo.<br>
   · <strong>PriceLabs</strong>: su precio (con LM incluido) es la base; el <strong>Offset por canal</strong> (Pricing Offset de PriceLabs, Dynamic Pricing → Customizations) se aplica DESPUÉS, específico por canal — confirmado con soporte de PriceLabs. Ojo: si tu PMS (Hospy) distribuye el offset a todos los canales conectados en vez de aplicarlo solo al elegido, verifica en Hospy antes de confiar en la separación. Los nativos de cada OTA se aplican después de eso, y la comisión al final sobre lo que paga el huésped.<br>
-  · <strong>Comisión bancaria/pasarela</strong>: Booking y Directo tienen 6% adicional configurado (tarjeta virtual, transferencia, pasarela de pago) — se descuenta DESPUÉS de la comisión de la OTA, sobre lo que efectivamente te transfieren. Ajusta el % real por canal en su pestaña; Airbnb y Expedia están en 0% por defecto (paga por depósito directo) — cámbialo si tu banco te cobra algo distinto.
+  · <strong>Comisión bancaria/pasarela</strong>: Booking y Directo tienen 6% adicional configurado (tarjeta virtual, transferencia, pasarela de pago) — se calcula SOBRE EL PRECIO QUE PAGA EL HUÉSPED, igual que la comisión de la OTA; ambas se restan del mismo número, no se acumulan una sobre la otra (confirmado por Dani con sus facturas reales). Ajusta el % real por canal en su pestaña; Airbnb y Expedia están en 0% por defecto (paga por depósito directo) — cámbialo si tu banco te cobra algo distinto.
 </div>
 
 </div>
@@ -388,9 +388,11 @@ function worstNative(chId){
   });
   return worst;
 }
-/* Factor de lo que realmente te queda tras comisión OTA + comisión bancaria (tarjeta virtual, transferencia, pasarela) */
+/* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas
+   sobre el precio que paga el huésped (no se acumulan una sobre la otra, se restan las dos
+   del mismo número — así es como se factura en la práctica, confirmado por Dani). */
 function payoutFactor(c){
-  return (1-pct(c.comm)/100) * (1-pct(c.bankFeePct)/100);
+  return Math.max(0, 1 - pct(c.comm)/100 - pct(c.bankFeePct)/100);
 }
 function compute(){
   const cost = (parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
@@ -604,12 +606,14 @@ function renderSim(model){
   });
   const guest=running;
   html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
-  const afterComm=guest*(1-pct(ch.comm)/100);
-  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))}</span><span class="amt">${f$(afterComm)}</span></div>`;
+  const commAmt = guest*pct(ch.comm)/100;
+  const afterComm = guest - commAmt;
+  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped)</span><span class="amt">${f$(afterComm)}</span></div>`;
   let afterBank=afterComm;
   if(pct(ch.bankFeePct)>0){
-    afterBank=afterComm*(1-pct(ch.bankFeePct)/100);
-    html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))}</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
+    const bankAmt = guest*pct(ch.bankFeePct)/100; /* también sobre el precio del huésped, no sobre afterComm */
+    afterBank = afterComm - bankAmt;
+    html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped)</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
   const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
   const margin=afterBank-cost;
