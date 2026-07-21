@@ -241,7 +241,7 @@ if (typeof window.storage === 'undefined') {
 }
 /* ================== MODEL ================== */
 const CHANNELS = [
-  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0},
+  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0},
   {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6},
   {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0},
   {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6}
@@ -538,7 +538,10 @@ function renderChannelPages(model){
           <div class="fld"><span>Comisión ${c.name} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${c.bankFeePct||0}"></div>
           <div class="fld"><span>Offset % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
-          <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado a 45 días (ya con comisión OTA + bancaria): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>
+          ${c.id==='airbnb' ? `
+          <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${c.cleanFeeShort||0}"></div>
+          <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${c.cleanFeeLong||0}"></div>` : ''}
+          <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado a 45 días (ya con comisión OTA + bancaria): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}${c.id==='airbnb'?'<br>La tarifa de aseo es fija por reserva (no se descuenta) y no está incluida en este neto a 45 días — se aplica en el Simulador, prorrateada por noche.':''}</div>
         </div>
         <h2>Catálogo de descuentos — ${c.name}</h2>
         <div class="chpage-discounts">${items}</div>
@@ -606,14 +609,27 @@ function renderSim(model){
   });
   const guest=running;
   html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
-  const commAmt = guest*pct(ch.comm)/100;
-  const afterComm = guest - commAmt;
-  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped)</span><span class="amt">${f$(afterComm)}</span></div>`;
+  /* Tarifa de aseo: fija por reserva en Airbnb (no la tocan los descuentos de noche),
+     se prorratea por noche aquí para poder compararla contra tu costo/noche. La
+     comisión y la comisión bancaria SÍ se cobran sobre ella (modelo Host-Only Fee). */
+  let guestForFees=guest, feeTotal=0;
+  if(chId==='airbnb'){
+    feeTotal = nights<=2 ? (parseFloat(ch.cleanFeeShort)||0) : (parseFloat(ch.cleanFeeLong)||0);
+    if(feeTotal>0){
+      const feePerNight=feeTotal/nights;
+      guestForFees=guest+feePerNight;
+      html+=`<div class="wf-line"><span>+ Tarifa de aseo (${f$(feeTotal)} fijo ÷ ${nights} noche${nights===1?'':'s'})</span><span class="why">no se descuenta; se prorratea por noche para comparar contra tu costo</span><span class="amt">${f$(guestForFees)}</span></div>`;
+    }
+  }
+  const feeNote = feeTotal>0 ? ' + aseo prorrateado' : '';
+  const commAmt = guestForFees*pct(ch.comm)/100;
+  const afterComm = guestForFees - commAmt;
+  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
   let afterBank=afterComm;
   if(pct(ch.bankFeePct)>0){
-    const bankAmt = guest*pct(ch.bankFeePct)/100; /* también sobre el precio del huésped, no sobre afterComm */
+    const bankAmt = guestForFees*pct(ch.bankFeePct)/100; /* también sobre el precio del huésped, no sobre afterComm */
     afterBank = afterComm - bankAmt;
-    html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped)</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
+    html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
   const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
   const margin=afterBank-cost;
