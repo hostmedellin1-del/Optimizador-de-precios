@@ -17,21 +17,28 @@
    devuelve `markupPct` (ganancia sobre COSTO) ademas de `marginPct` (ganancia
    sobre VENTA/payout) — son numeros distintos, no intercambiables.
 
-   Deliberadamente NO to ca en esta Fase 2/3 (fuera de alcance, ver reglas del
+   Fase 4 (jul 2026): el LM ya no es SIEMPRE "techo por ventana" — si
+   config.lmConfig esta presente, se despacha por src/domain/pricelabs-lm.js (5
+   modos: automatico/flat/gradual/precio fijo/tramos). Sin lmConfig, cae al modo
+   automatico de siempre (cero regresion). El descuento no reembolsable de Airbnb
+   (ab_nonref, catalogo) ya se aplica dentro de combineChannel() como capa
+   apilable post-promo — no necesita codigo aparte aqui, ya viene incluido en
+   `r.applied`/`r.factor`. config.verification (opcional, src/domain/verification.js)
+   agrega una nota explicita cuando el Offset de Hospy no esta confirmado.
+
+   Deliberadamente NO toca en esta fase (fuera de alcance, ver reglas del
    encargo):
-   - Reglas de negocio OTA (combineChannel: prioridades Airbnb, stacking Booking,
-     grupos Expedia) — sin cambios.
-   - Modelo de Last-Minute de PriceLabs: sigue siendo el mismo "techo por ventana"
-     de siempre (peor nativo entre canales vs. el techo configurado). NO asume
-     ningun modo nuevo (flat/gradual/precio fijo/tramos) — eso es Fase 4,
-     pendiente de que definas la configuracion real por unidad.
-   - Descuento no reembolsable de Airbnb — Fase 4, pendiente de confirmacion.
+   - Reglas de negocio OTA base (combineChannel: prioridades Airbnb, stacking
+     Booking, grupos Expedia) — sin cambios.
 
    scenario = {chId, days, nights, price}
-   config   = {channels, discounts, windows, ceilings, fixedCost, varCost} */
+   config   = {channels, discounts, windows, ceilings, fixedCost, varCost,
+               costBreakdown?, lmConfig?, verification?} */
 import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
+import {priceLabsLm} from './pricelabs-lm.js';
+import {isVerified} from './verification.js';
 
 export function quoteScenario(scenario, config){
   const {channels, discounts, windows, ceilings} = config;
@@ -58,15 +65,25 @@ export function quoteScenario(scenario, config){
   const maxNAtScenario = (1-minFactorAtScenario)*100;
   const worstChannelAtScenario = perChannelNative.find(p=>p.factor===minFactorAtScenario)?.c;
   const breach = maxNAtScenario > ceil;
-  const lm = breach ? 0 : Math.max(0, 100*(1-(1-ceil/100)/(1-maxNAtScenario/100)));
   if(breach) assumptions.push(`Techo excedido en ${w.label}: ${worstChannelAtScenario?.name||'un canal'} ya suma ${maxNAtScenario.toFixed(1)}% de nativo (> techo ${ceil}%) a estos dias/noches — PriceLabs no puede aplicar LM adicional aqui.`);
 
-  const priceAfterLm = price*(1-lm/100);
+  /* Fase 4: modo de LM despachado por pricelabs-lm.js. Sin config.lmConfig, usa
+     'ceiling_auto' (el comportamiento de siempre) — cero cambio de resultado
+     para quien no configuro nada nuevo. */
+  const lmResult = priceLabsLm(config.lmConfig, {day: days, ceilingPct: ceil, nativePct: maxNAtScenario, floor: config.floor});
+  const lm = lmResult.lmPct;
+  if(lmResult.note) assumptions.push(lmResult.note);
+  if(lmResult.mode!=='ceiling_auto' && !lmResult.verified)
+    assumptions.push(`LM en modo "${lmResult.mode}" configurado pero NO VERIFICADO — Dani debe confirmar que este es el modo real que usa PriceLabs para esta unidad antes de confiar en este numero para una recomendacion categorica.`);
+  const priceAfterLm = lmResult.priceOverride!=null ? lmResult.priceOverride : price*(1-lm/100);
 
   /* 2. Offset del canal (PriceLabs Pricing Offset), sobre el precio ya con LM. */
   const off = pct2(ch.offsetPct);
   const priceAfterOffset = priceAfterLm*(1+off/100);
-  assumptions.push('Offset se asume especifico por canal (Pricing Offset de PriceLabs) — pendiente de confirmar en Hospy si realmente se aisla por canal, ver CLAUDE.md seccion 2.');
+  const offsetVerified = config.verification ? isVerified(config.verification, 'hospyOffsetIsolated') : false;
+  assumptions.push(offsetVerified
+    ? 'Offset por canal confirmado en Hospy como aislado (verification.hospyOffsetIsolated).'
+    : 'Offset se asume especifico por canal (Pricing Offset de PriceLabs) — NO CONFIRMADO en Hospy si realmente se aisla por canal o se distribuye a todos los conectados (ver src/domain/verification.js, clave hospyOffsetIsolated). No trates el Offset como garantia hasta confirmarlo.');
 
   /* 3. Descuentos nativos del canal, a los dias/noches REALES del escenario. */
   const r = combineChannel(discounts, chId, days, nights);

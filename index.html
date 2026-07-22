@@ -233,6 +233,26 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
+<section class="card">
+  <h2>Last-Minute de PriceLabs <span class="hint">cómo baja el precio cerca del check-in — configúralo si sabes el modo real de tu cuenta</span></h2>
+  <p class="hint">Por defecto usa el modo "Automático" (el techo por ventana de siempre) — cámbialo solo si confirmaste en PriceLabs que tu cuenta usa otro modo. Ninguno de estos modos trae un % de ejemplo activado: los llenas tú.</p>
+  <div class="field"><span>Modo</span>
+    <select data-lm="mode">
+      <option value="ceiling_auto">Automático (PriceLabs decide, no verificable matemáticamente)</option>
+      <option value="flat">Descuento plano (% fijo entre dos días)</option>
+      <option value="gradual">Descuento gradual (decae día a día hasta 0)</option>
+      <option value="fixed_price">Precio Last-Minute fijo</option>
+      <option value="tiers">Tramos personalizados</option>
+    </select>
+  </div>
+  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
+  <div id="lmModeFields"></div>
+</section>
+<section class="card">
+  <h2>Estado de verificación <span class="hint">datos que esta unidad todavía no confirmó contigo</span></h2>
+  <p class="hint">Estos supuestos aparecen marcados como "no verificado" en alertas y en el Simulador hasta que los confirmes aquí. Marcar "Verificado" no cambia ningún número — solo deja de mostrar la advertencia.</p>
+  <div id="verificationList"></div>
+</section>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -289,7 +309,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
    definirlo inline. Requiere servir el sitio por http(s) (GitHub Pages funciona;
    abrir el archivo directo con file:// bloquea imports ES por CORS en Chrome — usar
    un server local, ej. `npx serve` o `python3 -m http.server`, para probar en local). */
-import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown} from './src/catalog/discounts.js';
+import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from './src/catalog/discounts.js';
 import {pct} from './src/domain/percent.js';
 import {f$ as f$base, fP} from './src/domain/format.js';
 import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
@@ -298,6 +318,8 @@ import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
 import {criticalDaysInWindow} from './src/domain/thresholds.js';
+import {defaultVerification, mergeVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
+import {gradualCurve} from './src/domain/pricelabs-lm.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -338,7 +360,9 @@ let state = {
   costBreakdown: defaultCostBreakdown(),
   channels: CHANNELS.map(c=>({...c})),
   discounts: defaultDiscounts(),
-  ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil]))
+  ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
+  lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
+  verification: defaultVerification() // Fase 4 — registro Verificado/No verificado por unidad
 };
 
 /* ================== ENGINE ================== */
@@ -379,7 +403,8 @@ function quoteConfig(){
   return {
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
     fixedCost: state.fixedCost, varCost: state.varCost,
-    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined
+    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined,
+    lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
   };
 }
 
@@ -388,7 +413,8 @@ function buildAlerts(model){
   return buildAlertsBase({
     discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
     marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
-    chTab: CH_TAB, currency: state.currency, margin: state.margin
+    chTab: CH_TAB, currency: state.currency, margin: state.margin,
+    lmConfig: state.lmConfig, verification: state.verification, floor: model.floor
   }, model);
 }
 
@@ -597,6 +623,7 @@ function buildTabbar(){
 function renderAll(){
   const model=compute();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderLmConfig(); renderVerification();
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -612,6 +639,75 @@ function renderCostCalc(){
   if(cbFixedResult) cbFixedResult.textContent='= '+f$(t.fixedPerNight)+'/noche';
   if(cbTurnoResult) cbTurnoResult.textContent='= '+f$(t.turnoPerNight)+'/noche';
   if(cbVarResult) cbVarResult.textContent='= '+f$(t.varPerNight)+'/noche (turno + consumos)';
+}
+/* Fase 4 — UI de configuracion de PriceLabs Last-Minute (5 modos). Solo arma el
+   HTML segun el modo activo; el calculo real vive en src/domain/pricelabs-lm.js,
+   consumido por quoteScenario() — esta funcion nunca decide ningun numero, solo
+   lee/escribe state.lmConfig. */
+function renderLmConfig(){
+  const modeSel = document.querySelector('[data-lm="mode"]');
+  const verChk = document.querySelector('[data-lm="verified"]');
+  if(!modeSel) return;
+  modeSel.value = state.lmConfig.mode;
+  verChk.checked = !!state.lmConfig.verified;
+  const box = document.getElementById('lmModeFields');
+  const cfg = state.lmConfig;
+  if(cfg.mode==='flat'){
+    const f=cfg.flat;
+    box.innerHTML = `
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="flat.on" ${f.on?'checked':''}><span>Activo</span></label></div>
+      <div class="field"><span>% de descuento</span><input type="number" data-lmf="flat.pct" value="${f.pct}" step="1"></div>
+      <div class="field"><span>Desde día</span><input type="number" data-lmf="flat.fromDay" value="${f.fromDay}" step="1" min="0"></div>
+      <div class="field"><span>Hasta día</span><input type="number" data-lmf="flat.toDay" value="${f.toDay}" step="1" min="0"></div>`;
+  } else if(cfg.mode==='gradual'){
+    const g=cfg.gradual;
+    const curve = gradualCurve(g);
+    box.innerHTML = `
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="gradual.on" ${g.on?'checked':''}><span>Activo</span></label></div>
+      <div class="field"><span>% máximo (día 0)</span><input type="number" data-lmf="gradual.maxPct" value="${g.maxPct}" step="1"></div>
+      <div class="field"><span>Días hasta llegar a 0%</span><input type="number" data-lmf="gradual.days" value="${g.days}" step="1" min="1"></div>
+      ${curve.length ? `<p class="hint" style="margin-top:8px;">Curva día a día: ${curve.map(p=>`día ${p.day}: ${fP(p.pct)}`).join(' · ')}</p>` : ''}`;
+  } else if(cfg.mode==='fixed_price'){
+    const fp=cfg.fixedPrice;
+    box.innerHTML = `
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="fixedPrice.on" ${fp.on?'checked':''}><span>Activo</span></label></div>
+      <div class="field"><span>Precio fijo</span><input type="number" data-lmf="fixedPrice.price" value="${fp.price}" step="1"></div>
+      <div class="field"><span>Desde día</span><input type="number" data-lmf="fixedPrice.fromDay" value="${fp.fromDay}" step="1" min="0"></div>
+      <div class="field"><span>Hasta día</span><input type="number" data-lmf="fixedPrice.toDay" value="${fp.toDay}" step="1" min="0"></div>`;
+  } else if(cfg.mode==='tiers'){
+    box.innerHTML = `
+      <p class="hint" style="margin-bottom:6px;">Se resuelven POR ORDEN: si un día cae en varios tramos, gana el PRIMERO de la lista (no se suman). Usa ↑/↓ para reordenar.</p>
+      ${cfg.tiers.map((t,i)=>`
+        <div class="d-item ${t.on?'on':''}" style="flex-wrap:wrap;">
+          <input type="checkbox" data-tier="on" data-tier-idx="${i}" ${t.on?'checked':''}>
+          <input type="text" data-tier="label" data-tier-idx="${i}" value="${t.label||''}" placeholder="nombre" style="width:110px;">
+          <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${t.fromDay}" style="width:50px;">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${t.toDay}" style="width:50px;"></span>
+          <input type="number" data-tier="pct" data-tier-idx="${i}" value="${t.pct}" style="width:60px;"><span class="hint">%</span>
+          <button type="button" class="ghost" data-tier-up="${i}" ${i===0?'disabled':''}>↑</button>
+          <button type="button" class="ghost" data-tier-down="${i}" ${i===cfg.tiers.length-1?'disabled':''}>↓</button>
+          <button type="button" class="ghost" data-tier-del="${i}">✕</button>
+        </div>`).join('') || '<p class="hint">Sin tramos todavía.</p>'}
+      <button type="button" class="ghost" id="addTierBtn" style="margin-top:8px;">+ Agregar tramo</button>`;
+  } else {
+    box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Comparación, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
+  }
+}
+function renderVerification(){
+  const box = document.getElementById('verificationList');
+  if(!box) return;
+  box.innerHTML = Object.entries(VERIFICATION_KEYS).map(([key,label])=>{
+    const entry = state.verification[key] || {status:'no_verificado', note:''};
+    return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
+      <span>${label}</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select data-verif-status="${key}">
+          <option value="no_verificado" ${entry.status==='no_verificado'?'selected':''}>No verificado</option>
+          <option value="verificado" ${entry.status==='verificado'?'selected':''}>Verificado</option>
+        </select>
+        <input type="text" data-verif-note="${key}" value="${(entry.note||'').replace(/"/g,'&quot;')}" placeholder="nota — dónde/cómo lo confirmaste" style="flex:1;min-width:180px;">
+      </div>
+    </div>`;
+  }).join('');
 }
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
@@ -648,6 +744,39 @@ document.addEventListener('change',e=>{
     renderAll();
   }
   else if(['simPrice','simDays','simNights','simChannel'].includes(t.id)){renderSim(compute());}
+  else if(t.dataset.lm){
+    if(t.dataset.lm==='mode') state.lmConfig.mode=t.value;
+    else if(t.dataset.lm==='verified') state.lmConfig.verified=t.checked;
+    renderAll();
+  }
+  else if(t.dataset.lmf){
+    const [group, field] = t.dataset.lmf.split('.');
+    const target = state.lmConfig[group];
+    if(target){
+      if(t.type==='checkbox') target[field]=t.checked;
+      else target[field]=parseFloat(t.value)||0;
+    }
+    renderAll();
+  }
+  else if(t.dataset.tierIdx!==undefined){
+    const idx=parseInt(t.dataset.tierIdx,10);
+    const tier=state.lmConfig.tiers[idx];
+    if(tier){
+      const f=t.dataset.tier;
+      if(f==='on') tier.on=t.checked;
+      else if(f==='label') tier.label=t.value;
+      else tier[f]=parseFloat(t.value)||0;
+    }
+    renderAll();
+  }
+  else if(t.dataset.verifStatus){
+    state.verification[t.dataset.verifStatus] = {...(state.verification[t.dataset.verifStatus]||{note:''}), status:t.value};
+    renderAll();
+  }
+  else if(t.dataset.verifNote!==undefined){
+    const key=t.dataset.verifNote;
+    state.verification[key] = {...(state.verification[key]||{status:'no_verificado'}), note:t.value};
+  }
 });
 document.addEventListener('click',e=>{
   const goto=e.target.closest('[data-goto]');
@@ -658,6 +787,16 @@ document.addEventListener('click',e=>{
     goToTab('simulador');
     renderSim(model);
   }
+  if(e.target.id==='addTierBtn'){
+    state.lmConfig.tiers.push({id:'t'+Date.now(), label:'Tramo nuevo', fromDay:0, toDay:1, pct:0, on:false});
+    renderAll();
+  }
+  const up=e.target.closest('[data-tier-up]');
+  if(up){ const i=parseInt(up.dataset.tierUp,10); const arr=state.lmConfig.tiers; if(i>0){[arr[i-1],arr[i]]=[arr[i],arr[i-1]]; renderAll();} }
+  const down=e.target.closest('[data-tier-down]');
+  if(down){ const i=parseInt(down.dataset.tierDown,10); const arr=state.lmConfig.tiers; if(i<arr.length-1){[arr[i+1],arr[i]]=[arr[i],arr[i+1]]; renderAll();} }
+  const del=e.target.closest('[data-tier-del]');
+  if(del){ const i=parseInt(del.dataset.tierDel,10); state.lmConfig.tiers.splice(i,1); renderAll(); }
 });
 const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
@@ -700,6 +839,11 @@ unitList.addEventListener('change',async e=>{
       WINDOWS.forEach(w=>{ if(state.ceilings[w.id]===undefined) state.ceilings[w.id]=w.ceil; });
       /* merge campo por campo contra defaults — unidades guardadas antes de la calculadora no la traen */
       state.costBreakdown = {...defaultCostBreakdown(), ...(d.costBreakdown||{})};
+      /* Fase 4: unidades guardadas antes de lmConfig/verification no las traen —
+         se completan con el default (ceiling_auto / todo no_verificado), nunca se
+         asume un modo o una verificacion que Dani no confirmo. */
+      state.lmConfig = {...defaultLmConfig(), ...(d.lmConfig||{})};
+      state.verification = mergeVerification(d.verification);
       unitName.value=d.name||''; hydrate(); renderAll(); status('Cargado ✓');}
   }catch(e){console.error(e);status('No encontrado');}
 });

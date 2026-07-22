@@ -66,6 +66,12 @@ export function combineChannel(discounts, chId, daysOut, nights){
         ? `Airbnb aplica solo una promo por noche; ganó ${win.name} por prioridad`
         : `mismo tipo que ${win.name}; ese umbral es más profundo y gana`}));
     }
+    /* Fase 4 — descuento NO REEMBOLSABLE: capa apilable POST-promo, configurable
+       por listing (ab_nonref, catalog). No compite dentro del grupo 'promo' (no es
+       "otra promo más"): Airbnb lo aplica como un descuento aparte encima de
+       cualquier promo que haya ganado arriba. Apagado y en 0% por defecto — Dani
+       debe confirmar por listing si aplica y el % exacto (ver verification.js). */
+    ds.filter(d=>d.group==='stackable-post').forEach(d=>add(d,'descuento no reembolsable del listing: se aplica DESPUÉS de la promo ganadora, no compite con ella'));
   }
   else if(chId==='booking'){
     const limited = ds.find(d=>d.group==='reactive-limited');

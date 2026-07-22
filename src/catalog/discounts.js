@@ -30,6 +30,7 @@ export function defaultDiscounts(){ return [
   {id:'ab_lm2',  ch:'airbnb', name:'Last-minute 2', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:3,  on:false, note:'ventana y % completamente variables — configúralos tú'},
   {id:'ab_lm3',  ch:'airbnb', name:'Last-minute 3', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:7,  on:false, note:'ventana y % completamente variables — configúralos tú'},
   {id:'ab_rs',  ch:'airbnb', name:'Ajuste de rule set / temporada', kind:'constant', group:'stackable', prio:0, pct:0, on:false, note:'apila sobre la promo ganadora'},
+  {id:'ab_nonref', ch:'airbnb', name:'Descuento no reembolsable (por listing)', kind:'constant', group:'stackable-post', pct:0, on:false, verified:false, note:'No verificado — confirma por listing si aplica y el % exacto (Fase 4). No asumir 10%. Capa aparte: se aplica DESPUES de la promo ganadora, no compite dentro del grupo promo.'},
   /* BOOKING — proactive stack; reactive exclusive; mobile conflicts w/ country & limited */
   {id:'bk_gen', ch:'booking', name:'Genius (constante)', kind:'constant', group:'proactive', pct:10, on:true, note:'lo funde el host; L1=10%'},
   {id:'bk_mob', ch:'booking', name:'Mobile Rate', kind:'constant', group:'proactive-mobile', pct:10, on:true, note:'apila con Genius; no con Country/Limited'},
@@ -66,3 +67,21 @@ export const WINDOWS = [
 /* Calculadora opcional de costos por noche a partir de líneas reales — no reemplaza
    fixedCost/varCost, los calcula y escribe ahí (compute() sigue leyendo solo esos dos). */
 export function defaultCostBreakdown(){ return {rent:0, admin:0, utilities:0, insurance:0, tech:0, occNights:22, cleaning:0, laundry:0, consumables:0, supplies:0}; }
+
+/* Fase 4 — configuracion de PriceLabs Last-Minute, UNA por unidad (no por canal:
+   PriceLabs define el precio base + curva LM a nivel de listing; los canales
+   despues aplican su Offset encima, eso no cambia). Por defecto 'ceiling_auto'
+   (el comportamiento de siempre: LM = lo que hace falta para llegar al techo de
+   la ventana, sin inventar ningun modo nuevo) y `verified:false` — Dani debe
+   confirmar que modo usa PriceLabs realmente en esta unidad antes de que se
+   muestre como dato confiable (ver src/domain/pricelabs-lm.js). */
+export function defaultLmConfig(){
+  return {
+    mode: 'ceiling_auto', // 'ceiling_auto' | 'flat' | 'gradual' | 'fixed_price' | 'tiers'
+    verified: false,
+    flat: {pct:0, fromDay:0, toDay:3, on:false},
+    gradual: {maxPct:0, days:3, on:false}, // maxPct en dia 0, decae lineal hasta `days` (day>=days => 0)
+    fixedPrice: {price:0, fromDay:0, toDay:3, on:false},
+    tiers: [] // [{id, label, fromDay, toDay, pct, on:true}] — resueltos por orden de arreglo, el primero que aplique gana (ver pricelabs-lm.js)
+  };
+}

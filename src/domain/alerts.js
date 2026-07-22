@@ -22,6 +22,7 @@ import {fP, f$} from './format.js';
 import {combineChannel, worstNative, payoutFactor, cleanFeePerNight} from './engine.js';
 import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
+import {lmCriticalDays} from './pricelabs-lm.js';
 
 export function buildAlerts(config, model){
   const {discounts, channels, ceilings, windows, chTab} = config;
@@ -34,8 +35,12 @@ export function buildAlerts(config, model){
      ventana. PISO es por canal (cada canal puede tener su propio peor dia/noche
      real dentro de la misma ventana), asi que se rastrea el peor payout POR canal. */
   const nightsGrid = criticalNights(discounts);
+  /* Fase 4: si hay un LM configurable (flat/gradual/precio fijo/tramos), sus
+     bordes de dia tambien son puntos donde el peor caso puede vivir — no solo
+     los bordes de descuentos nativos OTA. */
+  const lmDays = lmCriticalDays(config.lmConfig);
   windows.forEach(w=>{
-    const daysGrid = criticalDaysInWindow(discounts, w);
+    const daysGrid = [...new Set([...criticalDaysInWindow(discounts, w), ...lmDays.filter(d=>d>=w.lo&&d<=w.hi)])].sort((a,b)=>a-b);
     let worstTecho = null;
     const worstPisoByCh = new Map(channels.map(c=>[c.id, null]));
     daysGrid.forEach(d=>{
