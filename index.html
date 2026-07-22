@@ -37,6 +37,7 @@ button.ghost{background:transparent;color:var(--dim);border:1px solid var(--bord
 button.ghost:hover{color:var(--text);border-color:var(--faint);}
 .unit-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:12px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);}
 #unitName{flex:1;min-width:170px;}
+.unit-bar-sep{width:1px;align-self:stretch;background:var(--border);}
 #saveStatus{font-size:12px;color:var(--safe);font-family:'JetBrains Mono',monospace;}
 .row{display:flex;flex-wrap:wrap;gap:14px;}
 .row>.card{flex:1;min-width:280px;margin-bottom:0;}
@@ -150,6 +151,10 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button id="saveUnit">Guardar</button>
   <select id="unitList"><option value="">Cargar unidad…</option></select>
   <button class="ghost" id="deleteUnit">Eliminar</button>
+  <span class="unit-bar-sep"></span>
+  <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
+  <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
+  <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
   <span id="saveStatus"></span>
 </div>
 
@@ -173,7 +178,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
-        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables: se suman por turno (una limpieza, un juego de sábanas) y se dividen entre tu Estadía promedio de arriba. Al escribir aquí, actualiza los campos de Fijos/Variables automáticamente.</p>
+        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Al escribir aquí, actualiza los campos de Fijos/Variables automáticamente.</p>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Fijos mensuales</span>
           <div class="field"><span>Arriendo/cuota</span><input type="number" data-cb="rent" step="1"></div>
@@ -185,11 +190,15 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
           <div class="cost-calc-result" id="cbFixedResult"></div>
         </div>
         <div class="cost-calc-group">
-          <span class="cost-calc-label">Variables por turno</span>
+          <span class="cost-calc-label">Variables por turno <span class="hint">÷ estadía promedio</span></span>
           <div class="field"><span>Limpieza</span><input type="number" data-cb="cleaning" step="1"></div>
           <div class="field"><span>Lavandería</span><input type="number" data-cb="laundry" step="1"></div>
-          <div class="field"><span>Consumos (agua/luz/gas del huésped)</span><input type="number" data-cb="consumables" step="1"></div>
           <div class="field"><span>Insumos (amenities, papelería…)</span><input type="number" data-cb="supplies" step="1"></div>
+          <div class="cost-calc-result" id="cbTurnoResult"></div>
+        </div>
+        <div class="cost-calc-group">
+          <span class="cost-calc-label">Consumos <span class="hint">$/noche directo, no se divide — escala con las noches, no con el turno</span></span>
+          <div class="field"><span>Agua/luz/gas por noche ocupada</span><input type="number" data-cb="consumables" step="1"></div>
           <div class="cost-calc-result" id="cbVarResult"></div>
         </div>
       </div>
@@ -762,18 +771,26 @@ function renderAll(){
   const model=compute();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
 }
-/* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche */
+/* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
+   Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
+   noche o 30) — se dividen entre la estadía promedio. Consumos SÍ escala con las noches
+   (un huésped de 30 noches gasta ~30x el agua de uno de 1), así que va como $/noche
+   directo, sin dividir — meterlo en el mismo balde que limpieza lo distorsiona en ambos
+   extremos (lo infla en estadías cortas, lo diluye de más en las largas). */
 function costCalcTotals(){
   const cb=state.costBreakdown;
   const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(state.avgNights)||1);
   const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
-  const varSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.consumables)||0)+(parseFloat(cb.supplies)||0);
-  return {fixedPerNight:fixedSum/occ, varPerNight:varSum/avgN};
+  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
+  const turnoPerNight=turnoSum/avgN;
+  const consumptionPerNight=parseFloat(cb.consumables)||0;
+  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
 }
 function renderCostCalc(){
   const t=costCalcTotals();
   if(cbFixedResult) cbFixedResult.textContent='= '+f$(t.fixedPerNight)+'/noche';
-  if(cbVarResult) cbVarResult.textContent='= '+f$(t.varPerNight)+'/noche';
+  if(cbTurnoResult) cbTurnoResult.textContent='= '+f$(t.turnoPerNight)+'/noche';
+  if(cbVarResult) cbVarResult.textContent='= '+f$(t.varPerNight)+'/noche (turno + consumos)';
 }
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
@@ -852,6 +869,41 @@ unitList.addEventListener('change',async e=>{
       state.costBreakdown = {...defaultCostBreakdown(), ...(d.costBreakdown||{})};
       unitName.value=d.name||''; hydrate(); renderAll(); status('Cargado ✓');}
   }catch(e){console.error(e);status('No encontrado');}
+});
+/* Respaldo real: localStorage vive solo en este navegador/computador — no hay nube,
+   no hay sync entre dispositivos, se pierde si se borra caché o se reinstala el
+   navegador. Exportar/Importar es la forma de sacar copia y restaurar si se pierde. */
+exportUnits.addEventListener('click', async()=>{
+  try{
+    const r = await window.storage.list('v2:', false);
+    const keys = (r && r.keys) || [];
+    if(!keys.length){ alert('No hay unidades guardadas todavía.'); return; }
+    const items = [];
+    for(const k of keys){
+      const v = await window.storage.get(k, false);
+      if(v && v.value) items.push({key:k, value:v.value});
+    }
+    const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), units:items}, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'revenue-ops-backup-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    status(items.length + ' unidad(es) exportadas ✓');
+  }catch(e){console.error(e); status('Error al exportar');}
+});
+importUnitsBtn.addEventListener('click', ()=>{ importUnitsFile.value=''; importUnitsFile.click(); });
+importUnitsFile.addEventListener('change', async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    const items = Array.isArray(data.units) ? data.units : [];
+    if(!items.length){ alert('El archivo no tiene unidades reconocibles.'); return; }
+    if(!confirm('Vas a restaurar '+items.length+' unidad(es). Las que ya existan con el mismo nombre se van a SOBRESCRIBIR. ¿Continuar?')) return;
+    for(const it of items){ if(it.key && it.value) await window.storage.set(it.key, it.value, false); }
+    refreshList();
+    status(items.length + ' unidad(es) importadas ✓');
+  }catch(e){console.error(e); status('Archivo inválido');}
 });
 async function refreshList(){
   try{const r=await window.storage.list('v2:',false);
