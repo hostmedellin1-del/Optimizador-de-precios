@@ -231,6 +231,22 @@ sección 2, "Offset por canal").
   arriba ("Descuentos activos hoy"); el resto vive detrás de un `<details>` nativo
   colapsado ("Ver catálogo completo (N más)"). Antes se mostraban los ~11 descuentos de
   cada canal de una vez, la mayoría apagados/sugeridos — abrumaba más que ayudaba.
+- **Comparación — veredicto en vez de columnas crudas (jul 2026)**: Dani dijo que no se
+  entendía qué decisión tomar en esta pestaña (4 columnas con hasta 4 canales cada una,
+  ~16 números por fila, sin jerarquía visual). Se agregó `matrixIntro` arriba de la tabla
+  (recap de Min Price / Base Price / costo, para no tener que saltar a Resumen) y se
+  colapsó Nativo/LM/Total/Neto detrás de un `<details>` "Ver por canal" por fila. En su
+  lugar, cada fila lleva una columna **Veredicto**: un chip + una frase en español plano,
+  con prioridad de gravedad fija — Techo excedido (el nativo ya rompe el techo, LM=0% y
+  aun así se pasa) > Bajo costo (el canal peor parado neta menos que `model.cost`) > Cubre
+  costo pero bajo objetivo (neta menos que `model.net`) > Rentable en todos. Siempre nombra
+  el canal peor parado (`worst`, el de menor neto) y qué tocar (Offset del canal, su
+  descuento nativo, o el techo). No quitar el detalle por canal — sigue siendo la fuente de
+  verdad si Dani necesita ver el desglose exacto, solo ya no es lo primero que se lee.
+  Con la Oferta VIP de Expedia real (20%, siempre activa) varias ventanas con techo bajo
+  por defecto (8%, 0%, 15% en 8-14/15-29/30+ días) ahora muestran TECHO EXCEDIDO de
+  entrada — Dani debe revisar si esos techos por ventana siguen siendo los correctos
+  ahora que Expedia tiene un piso de descuento real no editable.
 - `window.storage` con polyfill a `localStorage`. El storage nativo de Claude.ai
   (`window.storage`) no existe fuera de Claude.ai. Se agregó un polyfill al inicio del
   `<script>` que detecta si `window.storage` ya existe; si no, lo simula con
@@ -341,6 +357,13 @@ sección 2, "Offset por canal").
    Dani lo pida — es una función nueva, no un arreglo.
 6. Verificar en Hospy si el Offset por canal de PriceLabs realmente se aísla por canal o
    se distribuye a todos los conectados (ver advertencia sección 2).
+8. Revisar los Techos por ventana en Comparación ahora que la Oferta VIP de Expedia es
+   real (20%, siempre activa, no editable) — varias ventanas (8-14/15-29/30+ días) tienen
+   techo por defecto (8%/0%/15%) más bajo que ese 20%, así que Expedia sale "TECHO
+   EXCEDIDO" ahí de entrada. Dani necesita decidir: ¿sube esos techos para reflejar que
+   Expedia siempre trae 20% mínimo, o acepta que en esas ventanas Expedia va a estar
+   siempre marcado como excedido (y competir menos ahí)? No es un bug, es una decisión de
+   negocio que depende de qué tanto peso le da Dani a Expedia en esas ventanas.
 
 ---
 
