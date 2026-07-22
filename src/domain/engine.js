@@ -26,6 +26,7 @@
 import {pct, pct2} from './percent.js';
 import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
+import {reservationCostBreakdown} from './costs.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -155,10 +156,18 @@ export function cleanFeePerNight(c, nights){
   return feeTotal/n;
 }
 
-/* config = {fixedCost, varCost, margin, marketBase, channels, discounts, windows} */
+/* config = {fixedCost, varCost, margin, marketBase, channels, discounts, windows,
+   costBreakdown?} — costBreakdown es OPCIONAL (Fase 3): si esta presente, el costo
+   ya no es el flat fixedCost+varCost, es el costo REAL de la reserva mas exigente
+   posible: una de 1 noche, que es cuando el costo "por turno" (limpieza/lavanderia/
+   insumos, fijo por reserva) pega mas fuerte por noche — el Piso debe protegerse
+   contra ESE caso, no contra el promedio de avgNights (ver src/domain/costs.js).
+   Sin costBreakdown, cae al modelo simple de siempre (compatibilidad). */
 export function compute(config){
   const {channels, discounts, windows} = config;
-  const cost = (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
+  const cost = config.costBreakdown
+    ? reservationCostBreakdown(config.costBreakdown, 1).perNight
+    : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
   const m = Math.min(parseFloat(config.margin)||0,90);
   const net = cost/(1-m/100);
   /* floor: pushed price such that worst channel still nets >= cost.

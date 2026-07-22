@@ -350,10 +350,24 @@ let state = {
    suggestedOffset() siguen siendo wrappers delgados que cierran sobre `state`/WINDOWS
    — la logica real vive en src/domain/engine.js. */
 const f$ = x => f$base(x, state.currency);
+/* Fase 3: la calculadora de costos detallada sigue siendo OPT-IN (ver CLAUDE.md
+   seccion 3) — si Dani nunca la toca, todos sus campos quedan en 0 y el motor debe
+   seguir usando fixedCost/varCost planos (si no, el costo caeria a 0 en vez de
+   respetar esos dos campos). Solo cuando HAY algo cargado ahi se pasa
+   costBreakdown a compute()/quoteScenario(), que entonces calculan el costo REAL
+   por reserva (limpieza/lavanderia/insumos una sola vez, no diluidos por
+   avgNights) en vez del flat de siempre — asi se elimina de raiz el bug de
+   desincronizacion P13 (ya no hay un valor cacheado que se desactualice, se
+   recalcula fresco desde el desglose en cada render). */
+function costBreakdownIsFilled(cb){
+  return ['rent','admin','utilities','insurance','tech','cleaning','laundry','consumables','supplies']
+    .some(k=>(parseFloat(cb[k])||0)>0);
+}
 function compute(){
   return computeBase({
     fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
-    channels: state.channels, discounts: state.discounts, windows: WINDOWS
+    channels: state.channels, discounts: state.discounts, windows: WINDOWS,
+    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined
   });
 }
 function suggestedOffset(chId, effBase, netObjetivo){
@@ -362,7 +376,11 @@ function suggestedOffset(chId, effBase, netObjetivo){
 /* config compartido para quoteScenario() — Fase 2.1: unico punto de armado, lo usan
    renderMatrix()/renderChannelPages()/renderSim() para no duplicar sus campos. */
 function quoteConfig(){
-  return {channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings, fixedCost: state.fixedCost, varCost: state.varCost};
+  return {
+    channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
+    fixedCost: state.fixedCost, varCost: state.varCost,
+    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined
+  };
 }
 
 /* ================== ALERTS ================== */
@@ -521,7 +539,7 @@ function renderSim(model){
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
   const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
-  const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, totalDisc} = s;
+  const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, marginPct, markupPct, totalDisc} = s;
   let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
   html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
@@ -547,6 +565,7 @@ function renderSim(model){
     html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
   html+=`<div class="wf-line ${afterBank>=cost?'net':'netbad'}"><span>Neto para ti (vs costo ${f$(cost)})</span><span class="amt">${f$(afterBank)} · margen ${f$(margin)}</span></div>`;
+  html+=`<div class="wf-line"><span class="hint"><span class="term" title="Margen: que fraccion de lo que COBRAS (el neto) es ganancia. Formula: margen/neto.">Margen sobre venta</span>: ${fP(marginPct)} · <span class="term" title="Markup: cuanto subes el precio POR ENCIMA de tu costo. Formula: margen/costo. No es lo mismo que el margen — un markup de 100% es solo 50% de margen.">Markup sobre costo</span>: ${fP(markupPct)}</span></div>`;
   html+=`<div class="wf-line"><span class="hint">Descuento total visto por el huésped: ${fP(totalDisc)} · techo de la ventana: ${fP(ceil)} ${totalDisc>ceil+0.5?'⚠ EXCEDIDO':''}</span></div>`;
   const summary = afterBank>=cost
     ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`

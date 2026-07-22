@@ -27,7 +27,7 @@ export function simulateReservation(config, scenario){
     guest: q.guest, feeTotal: q.feeTotal, feePerNight: q.feePerNight, guestForFees: q.guestWithFees,
     commAmt: q.commAmt, afterComm: q.guestWithFees - q.commAmt,
     bankAmt: q.bankAmt, afterBank: q.payout,
-    cost: q.cost, margin: q.margin,
+    cost: q.cost, margin: q.margin, marginPct: q.marginPct, markupPct: q.markupPct,
     totalDisc: 100*(1-q.guest/q.price), // identico a la formula original (puede dar NaN/Infinity si price=0; sin cambios, no es parte del alcance de Fase 2)
     assumptions: q.assumptions
   };

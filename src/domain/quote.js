@@ -11,12 +11,16 @@
    siendo el redondeado (para mensajes/UI); quien necesite matematica financiera exacta
    debe usar `nativoFactor` (1-factor = fraccion real que aplica el canal).
 
-   Deliberadamente NO to ca en esta Fase 2 (fuera de alcance, ver reglas del
+   Fase 3 (jul 2026): el costo ya NO es siempre el flat fixedCost+varCost — si
+   config.costBreakdown esta presente, usa el costo REAL de esta reserva concreta
+   (reservationCostBreakdown, nights reales, turno cargado una sola vez). Tambien
+   devuelve `markupPct` (ganancia sobre COSTO) ademas de `marginPct` (ganancia
+   sobre VENTA/payout) — son numeros distintos, no intercambiables.
+
+   Deliberadamente NO to ca en esta Fase 2/3 (fuera de alcance, ver reglas del
    encargo):
    - Reglas de negocio OTA (combineChannel: prioridades Airbnb, stacking Booking,
      grupos Expedia) — sin cambios.
-   - Modelo de costos: sigue siendo fixedCost+varCost por NOCHE (el costo a nivel
-     de reserva es Fase 3 — ver src/domain/costs.js).
    - Modelo de Last-Minute de PriceLabs: sigue siendo el mismo "techo por ventana"
      de siempre (peor nativo entre canales vs. el techo configurado). NO asume
      ningun modo nuevo (flat/gradual/precio fijo/tramos) — eso es Fase 4,
@@ -27,6 +31,7 @@
    config   = {channels, discounts, windows, ceilings, fixedCost, varCost} */
 import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
+import {reservationCostBreakdown} from './costs.js';
 
 export function quoteScenario(scenario, config){
   const {channels, discounts, windows, ceilings} = config;
@@ -87,13 +92,23 @@ export function quoteScenario(scenario, config){
   const bankAmt = guestWithFees*pct(ch.bankFeePct)/100;
   const payout = guestWithFees*payoutFactor(ch);
 
-  /* 6. Costo y margen de ESTA reserva. El modelo de costo sigue siendo
-     fixedCost+varCost por NOCHE (Fase 3 lo reemplaza por costo a nivel de
-     reserva) — se documenta como supuesto explicito, no se esconde. */
-  const cost = (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
-  assumptions.push('Costo modelado como fixedCost+varCost por NOCHE (no a nivel de reserva) — pendiente Fase 3.');
+  /* 6. Costo, margen (sobre venta) y markup (sobre costo) de ESTA reserva.
+     Fase 3: si config.costBreakdown esta presente, el costo YA NO es un flat
+     fixedCost+varCost — es el costo REAL de ESTA reserva concreta (nights reales),
+     con los costos "por turno" (limpieza/lavanderia/insumos) cargados UNA VEZ, no
+     diluidos por avgNights (ver src/domain/costs.js, bug P5/P13). Sin
+     costBreakdown, cae al modelo simple de siempre (compatibilidad con quien no
+     llena la calculadora detallada). */
+  let cost;
+  if(config.costBreakdown){
+    cost = reservationCostBreakdown(config.costBreakdown, nights).perNight;
+  } else {
+    cost = (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
+    assumptions.push('Costo modelado como fixedCost+varCost fijo por noche (sin calculadora detallada) — no varia con la duracion real de esta reserva. Completa "Costos por noche -> calculadora detallada" para que limpieza/lavanderia/insumos se carguen una sola vez por reserva, no diluidos por la estadia promedio.');
+  }
   const margin = payout - cost;
-  const marginPct = payout>0 ? (margin/payout)*100 : 0; // margen SOBRE VENTA; ver Fase 3.5 para distincion markup/margen
+  const marginPct = payout>0 ? (margin/payout)*100 : 0; // margen: fraccion de LA VENTA (payout) que es ganancia
+  const markupPct = cost>0 ? (margin/cost)*100 : 0;      // markup: cuanto se sube SOBRE EL COSTO — no confundir con margen
 
   return {
     chId, ch, days, nights, w, ceil, maxNAtScenario, worstChannelAtScenario, breach, lm,
@@ -103,7 +118,7 @@ export function quoteScenario(scenario, config){
     applied: r.applied, ignored: r.ignored, appliedSteps,
     guest, feePerNight, feeTotal, guestWithFees,
     commAmt, bankAmt, payout,
-    cost, margin, marginPct,
+    cost, margin, marginPct, markupPct,
     assumptions
   };
 }
