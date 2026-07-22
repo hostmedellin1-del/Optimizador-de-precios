@@ -281,7 +281,24 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 </div>
 
 </div>
-<script>
+<script type="module">
+/* Fase 1 de la auditoria tecnica (jul 2026): el motor financiero se extrajo a
+   modulos ES en src/ (ver src/domain, src/catalog) — cero cambio de logica todavia,
+   solo relocacion + firmas explicitas para poder testear con Node. index.html sigue
+   siendo el unico punto de UI/estado/eventos, ahora importando el dominio en vez de
+   definirlo inline. Requiere servir el sitio por http(s) (GitHub Pages funciona;
+   abrir el archivo directo con file:// bloquea imports ES por CORS en Chrome — usar
+   un server local, ej. `npx serve` o `python3 -m http.server`, para probar en local). */
+import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown} from './src/catalog/discounts.js';
+import {pct, pct2} from './src/domain/percent.js';
+import {f$ as f$base, fP} from './src/domain/format.js';
+import {
+  windowApplies, losApplies, combineChannel as combineChannelBase, worstNative as worstNativeBase,
+  payoutFactor, compute as computeBase, cleanFeePerNight, suggestedOffset as suggestedOffsetBase
+} from './src/domain/engine.js';
+import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
+import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
+import {simulateReservation} from './src/domain/simulate-legacy.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -314,66 +331,8 @@ if (typeof window.storage === 'undefined') {
   };
 }
 /* ================== MODEL ================== */
-const CHANNELS = [
-  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0},
-  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6},
-  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0},
-  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6}
-];
-/* Discount catalog. kind: constant | window (booking-window days) | los (min nights)
-   group drives combination rules per channel. */
-function defaultDiscounts(){ return [
-  /* AIRBNB — grupo 'promo': solo UNA aplica, por orden de prioridad fijo (prio menor = gana) */
-  {id:'ab_new', ch:'airbnb', name:'Promo anuncio nuevo (20%)', kind:'constant', group:'promo', prio:1, pct:20, on:false, note:'primeras 3 reservas; máxima prioridad'},
-  {id:'ab_cus', ch:'airbnb', name:'Promoción personalizada', kind:'window', group:'promo', prio:2, pct:0, from:0, to:9999, on:false, note:'fechas específicas'},
-  {id:'ab_los1', ch:'airbnb', name:'Estadía media (≥3 noches)',  kind:'los', group:'promo', prio:3, pct:5,  minN:3,  on:false, note:'sugerido — noches completamente editables, ajusta o apaga'},
-  {id:'ab_los2', ch:'airbnb', name:'Semanal (≥7 noches)',        kind:'los', group:'promo', prio:3, pct:10, minN:7,  on:false, lockN:true, note:'7 noches fijo — el nombre "Semanal" depende de ese número; % sí ajustable'},
-  {id:'ab_los3', ch:'airbnb', name:'Quincenal (≥14 noches)',     kind:'los', group:'promo', prio:3, pct:15, minN:14, on:false, lockN:true, note:'14 noches fijo — el nombre "Quincenal" depende de ese número; % sí ajustable'},
-  {id:'ab_los4', ch:'airbnb', name:'Larga estadía (≥28 noches)', kind:'los', group:'promo', prio:3, pct:25, minN:28, on:true,  lockN:true, note:'activo hoy: ≥28 noches → 25% (umbral real de "estadía larga" en Airbnb, fijo)'},
-  {id:'ab_los5', ch:'airbnb', name:'Duración personalizada A', kind:'los', group:'promo', prio:3, pct:0, minN:5,  on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ab_los6', ch:'airbnb', name:'Duración personalizada B', kind:'los', group:'promo', prio:3, pct:0, minN:10, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ab_los7', ch:'airbnb', name:'Duración personalizada C', kind:'los', group:'promo', prio:3, pct:0, minN:21, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ab_eb1',  ch:'airbnb', name:'Early-bird (1 mes / ≥30 días)', kind:'window', group:'promo', prio:4, pct:10, from:30, to:9999, on:false, lockN:true, note:'30 días fijo (1 mes) — % sí ajustable'},
-  {id:'ab_eb2',  ch:'airbnb', name:'Early-bird (2 meses / ≥60 días)', kind:'window', group:'promo', prio:4, pct:15, from:60, to:9999, on:false, lockN:true, note:'60 días fijo (2 meses) — % sí ajustable'},
-  {id:'ab_eb3',  ch:'airbnb', name:'Early-bird (3 meses / ≥90 días)', kind:'window', group:'promo', prio:4, pct:20, from:90, to:9999, on:false, lockN:true, note:'90 días fijo (3 meses) — % sí ajustable'},
-  {id:'ab_lm1',  ch:'airbnb', name:'Last-minute 1', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:1,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_lm2',  ch:'airbnb', name:'Last-minute 2', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:3,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_lm3',  ch:'airbnb', name:'Last-minute 3', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:7,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_rs',  ch:'airbnb', name:'Ajuste de rule set / temporada', kind:'constant', group:'stackable', prio:0, pct:0, on:false, note:'apila sobre la promo ganadora'},
-  /* BOOKING — proactive stack; reactive exclusive; mobile conflicts w/ country & limited */
-  {id:'bk_gen', ch:'booking', name:'Genius (constante)', kind:'constant', group:'proactive', pct:10, on:true, note:'lo funde el host; L1=10%'},
-  {id:'bk_mob', ch:'booking', name:'Mobile Rate', kind:'constant', group:'proactive-mobile', pct:10, on:true, note:'apila con Genius; no con Country/Limited'},
-  {id:'bk_cty', ch:'booking', name:'Country Rate', kind:'constant', group:'proactive-country', pct:0, on:false},
-  {id:'bk_lmd', ch:'booking', name:'Last-Minute Deal', kind:'window', group:'reactive', pct:0, from:0, to:3, on:false},
-  {id:'bk_ebd', ch:'booking', name:'Early Booker Deal', kind:'window', group:'reactive', pct:0, from:30, to:9999, on:false},
-  {id:'bk_bas', ch:'booking', name:'Basic Deal', kind:'constant', group:'reactive', pct:0, on:false},
-  {id:'bk_ltd', ch:'booking', name:'Limited-time Deal', kind:'constant', group:'reactive-limited', pct:0, on:false, note:'no combina con Mobile'},
-  {id:'bk_los1', ch:'booking', name:'Duración de estadía A (≥7 noches)', kind:'los', group:'los', pct:0, minN:7, on:false, note:'es tu tarifa (Rates & Availability → Discounts → duración de estadía), no un "deal" — se apila con Genius/Mobile/deals; noches y % editables'},
-  {id:'bk_los2', ch:'booking', name:'Duración de estadía B (≥14 noches)', kind:'los', group:'los', pct:0, minN:14, on:false, note:'noches y % editables, ajusta o apaga'},
-  {id:'bk_los3', ch:'booking', name:'Duración de estadía C (≥28 noches)', kind:'los', group:'los', pct:0, minN:28, on:false, note:'noches y % editables, ajusta o apaga'},
-  /* EXPEDIA — base promos exclusive (max); MOD stacks on top */
-  {id:'ex_mod', ch:'expedia', name:'Oferta VIP miembros (negociada, no editable en Expedia)', kind:'constant', group:'mod', pct:20, on:true, note:'apila sobre la promo base; Expedia da Blue 10% / Silver 15% / Gold+Platino 20% según el nivel del viajero — se usa el peor caso (20%) para proteger el piso, igual que el resto del motor'},
-  {id:'ex_mob', ch:'expedia', name:'Mobile-only', kind:'constant', group:'base', pct:0, on:false},
-  {id:'ex_sd',  ch:'expedia', name:'Same-day / last-minute', kind:'window', group:'base', pct:0, from:0, to:1, on:false},
-  {id:'ex_eb',  ch:'expedia', name:'Early booking', kind:'window', group:'base', pct:0, from:30, to:9999, on:false},
-  {id:'ex_bas', ch:'expedia', name:'Basic promo', kind:'constant', group:'base', pct:0, on:false},
-  {id:'ex_los1', ch:'expedia', name:'Duración de estadía A (≥7 noches)', kind:'los', group:'base', pct:0, minN:7, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ex_los2', ch:'expedia', name:'Duración de estadía B (≥14 noches)', kind:'los', group:'base', pct:0, minN:14, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ex_los3', ch:'expedia', name:'Duración de estadía C (≥28 noches)', kind:'los', group:'base', pct:0, minN:28, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  /* DIRECT */
-  {id:'di_lm',  ch:'direct', name:'Last-minute directo', kind:'window', group:'any', pct:0, from:0, to:3, on:false}
-];}
-const WINDOWS = [
-  {id:'w0', label:'0–1 día', lo:0, hi:1, ceil:35},
-  {id:'w1', label:'2–3 días', lo:2, hi:3, ceil:28},
-  {id:'w2', label:'4–7 días', lo:4, hi:7, ceil:18},
-  {id:'w3', label:'8–14 días', lo:8, hi:14, ceil:8},
-  {id:'w4', label:'15–29 días', lo:15, hi:29, ceil:0},
-  {id:'w5', label:'30+ días', lo:30, hi:9999, ceil:15}
-];
-/* Calculadora opcional de costos por noche a partir de líneas reales — no reemplaza
-   fixedCost/varCost, los calcula y escribe ahí (compute() sigue leyendo solo esos dos). */
-function defaultCostBreakdown(){ return {rent:0, admin:0, utilities:0, insurance:0, tech:0, occNights:22, cleaning:0, laundry:0, consumables:0, supplies:0}; }
+/* CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown ahora vienen de
+   src/catalog/discounts.js (import arriba) — ver ese archivo para el catálogo completo. */
 let state = {
   name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
   avgNights:3, matrixNights:1,
@@ -384,247 +343,31 @@ let state = {
 };
 
 /* ================== ENGINE ================== */
-const pct = v=>Math.min(Math.max(parseFloat(v)||0,0),95);
-const pct2 = v=>parseFloat(v)||0; /* offset puede ser negativo, no lo recortamos a 0-95 */
-const f$ = x=>!isFinite(x)?'—':(state.currency||'USD')+' '+new Intl.NumberFormat('es-CO',{maximumFractionDigits:0}).format(Math.round(x));
-const fP = x=>x.toFixed(x<10&&x>0?1:0)+'%';
-
-function windowApplies(d, daysOut){
-  if(d.kind==='constant') return true;
-  if(d.kind==='window') return daysOut>= (d.from??0) && daysOut<=(d.to??9999);
-  return false; /* los handled separately */
-}
-function losApplies(d, nights){ return d.kind==='los' && nights>=(d.minN||0); }
-
-/* Returns {factor, applied:[{name,pct,why}], ignored:[{name,reason}]} for one channel */
-function combineChannel(chId, daysOut, nights){
-  const ds = state.discounts.filter(d=>d.ch===chId && d.on && pct(d.pct)>0);
-  const applied=[], ignored=[];
-  let factor=1;
-  const add=(d,why)=>{factor*=(1-pct(d.pct)/100); applied.push({name:d.name,pct:pct(d.pct),why});};
-
-  if(chId==='airbnb'){
-    /* Capa apilable (rule sets / ajuste estacional) se aplica primero y NO compite */
-    ds.filter(d=>d.group==='stackable').forEach(d=>add(d,'rule set: apila sobre la promo ganadora'));
-    /* Grupo promo: solo UNA aplica. 1º por prioridad de tipo (nuevo>personalizada>duración>early-bird>last-minute).
-       2º, dentro del mismo tipo con varios escalones, gana el umbral MÁS PROFUNDO que se cumple
-       (más noches para duración, más días de anticipación para early-bird) — no el % más alto. */
-    const cands = ds.filter(d=> d.group==='promo' &&
-      (d.kind==='constant' || windowApplies(d,daysOut) || losApplies(d,nights)));
-    if(cands.length){
-      const minPrio = Math.min(...cands.map(c=>c.prio??9));
-      const top = cands.filter(c=>(c.prio??9)===minPrio);
-      top.sort((a,b)=>{
-        const av = a.kind==='los' ? (a.minN||0) : (a.from||0);
-        const bv = b.kind==='los' ? (b.minN||0) : (b.from||0);
-        return bv-av;
-      });
-      const win = top[0];
-      const tieBreak = top.length>1 ? `, umbral más profundo dentro del mismo tipo (${win.kind==='los'?'≥'+win.minN+' noches':'≥'+win.from+' días'})` : '';
-      add(win, `gana por prioridad Airbnb (nivel ${win.prio??'—'}: nuevo > personalizada > duración > early-bird > last-minute)${tieBreak}`);
-      cands.filter(c=>c!==win).forEach(d=>ignored.push({name:d.name,reason: (d.prio??9)!==minPrio
-        ? `Airbnb aplica solo una promo por noche; ganó ${win.name} por prioridad`
-        : `mismo tipo que ${win.name}; ese umbral es más profundo y gana`}));
-    }
-  }
-  else if(chId==='booking'){
-    const limited = ds.find(d=>d.group==='reactive-limited');
-    const country = ds.find(d=>d.group==='proactive-country');
-    const mobile = ds.find(d=>d.group==='proactive-mobile');
-    const genius = ds.find(d=>d.group==='proactive');
-    if(genius) add(genius,'Genius combina con todo (categoría propia)');
-    if(country) add(country,'Country Rate activa');
-    if(mobile){
-      if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
-      else add(mobile,'apila sobre Genius (categorías distintas)');
-    }
-    /* Descuento por duración de estadía: es tu tarifa (Rates & Availability → Discounts),
-       no un "deal" que compite por categoría — se apila con Genius/Mobile/reactivos.
-       Si varios umbrales califican a la vez, gana el más profundo (igual que Airbnb LOS). */
-    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights));
-    if(losCands.length){
-      losCands.sort((a,b)=>(b.minN||0)-(a.minN||0));
-      const winLos=losCands[0];
-      add(winLos,'tarifa por duración de estadía que configuraste — se apila con Genius/Mobile/deals');
-      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:'ya aplica un umbral de duración más profundo ('+winLos.name+')'}));
-    }
-    const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
-      .sort((a,b)=>pct(b.pct)-pct(a.pct));
-    if(reactives.length){
-      add(reactives[0],'único deal reactivo aplicado (misma categoría no combina)');
-      reactives.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo un deal reactivo aplica; ganó '+reactives[0].name}));
-    }
-  }
-  else if(chId==='expedia'){
-    const bases = ds.filter(d=>d.group==='base' && (windowApplies(d,daysOut)||losApplies(d,nights))).sort((a,b)=>pct(b.pct)-pct(a.pct));
-    if(bases.length){
-      add(bases[0],'promo base mayor (Expedia no combina promos base)');
-      bases.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo la promo base mayor aplica'}));
-    }
-    const mod = ds.find(d=>d.group==='mod');
-    if(mod) add(mod,'Member Only apila sobre la promo base');
-  }
-  else { /* direct: stack all */
-    ds.filter(d=>windowApplies(d,daysOut)||losApplies(d,nights)).forEach(d=>add(d,'canal directo: apila'));
-  }
-  /* redondeo a 1 decimal: (1-factor)*100 arrastra ruido de float (18.999… en vez de 19) */
-  return {factor, totalPct: Math.round((1-factor)*1000)/10, applied, ignored};
-}
-
-/* Worst-case native per channel: escanea ventanas de reserva Y duraciones de estadía.
-   Antes solo usaba nights=1, así que los descuentos por duración (LOS) quedaban invisibles
-   para el piso — una reserva larga podía vender bajo costo sin que el modelo lo detectara. */
-function worstNative(chId){
-  let worst=0;
-  const losNights = state.discounts.filter(d=>d.ch===chId && d.kind==='los' && d.on)
-    .map(d=>(d.minN||1));
-  const nightsToTest = [1, ...losNights];
-  WINDOWS.forEach(w=>{
-    const mid = Math.min(w.lo+1, w.hi);
-    nightsToTest.forEach(n=>{
-      const t = combineChannel(chId, mid, n).totalPct;
-      if(t>worst) worst=t;
-    });
-  });
-  return worst;
-}
-/* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas
-   sobre el precio que paga el huésped (no se acumulan una sobre la otra, se restan las dos
-   del mismo número — así es como se factura en la práctica, confirmado por Dani). */
-function payoutFactor(c){
-  return Math.max(0, 1 - pct(c.comm)/100 - pct(c.bankFeePct)/100);
-}
+/* windowApplies/losApplies/payoutFactor/cleanFeePerNight no dependen de `state`,
+   se usan tal cual vienen del import. El resto son wrappers delgados que cierran
+   sobre `state`/WINDOWS para no tener que tocar cada punto de llamada de la UI —
+   la logica real vive en src/domain/engine.js (import arriba), esto es solo el
+   pegamento entre el `state` mutable de la UI y las funciones puras del dominio. */
+const f$ = x => f$base(x, state.currency);
+function combineChannel(chId, daysOut, nights){ return combineChannelBase(state.discounts, chId, daysOut, nights); }
+function worstNative(chId){ return worstNativeBase(state.discounts, chId, WINDOWS); }
 function compute(){
-  const cost = (parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
-  const m = Math.min(parseFloat(state.margin)||0,90);
-  const net = cost/(1-m/100);
-  /* floor: pushed price such that worst channel still nets >= cost.
-     Incluye el offset del canal: en producción PriceLabs publica precio×(1+offset), así que
-     el piso DEBE reflejarlo — si no, un offset negativo (bajar precio para competir) rompe
-     la garantía de no vender bajo costo. Con offset positivo el piso baja para ese canal
-     (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
-     baja de verdad si TODOS tienen offset positivo. */
-  let floor=0, floorCh='';
-  state.channels.forEach(c=>{
-    const wn = worstNative(c.id)/100, pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
-    const denom = (1+off)*(1-wn)*pf;
-    const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
-    if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+  return computeBase({
+    fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
+    channels: state.channels, discounts: state.discounts, windows: WINDOWS
   });
-  /* base: pushed price that nets target on every channel using its CONSTANT natives (window natives are tactical) */
-  let base=0, baseCh='';
-  state.channels.forEach(c=>{
-    const cn = combineChannel(c.id, 45, 1).totalPct/100; /* 45 días: fuera de ventanas tácticas cortas */
-    const pf = payoutFactor(c);
-    const p = net/((1-cn)*pf);
-    if(p>base){base=p;baseCh=c.name;}
-  });
-  const mb=parseFloat(state.marketBase)||0;
-  const effBase = mb>0 ? mb : base;   /* evaluar contra el precio que realmente vas a poner */
-  return {cost, net, floor, floorCh, base, baseCh, effBase};
 }
-
-/* Tarifa de aseo fija por reserva (solo Airbnb), diluida por noche según la estadía dada.
-   Devuelve 0 para canales sin aseo. Reusa la regla 1-2 noches / 3+ del catálogo. */
-function cleanFeePerNight(c, nights){
-  if(c.id!=='airbnb') return 0;
-  const n = Math.max(1, nights||1);
-  const feeTotal = n<=2 ? (parseFloat(c.cleanFeeShort)||0) : (parseFloat(c.cleanFeeLong)||0);
-  return feeTotal/n;
-}
-/* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),
-   evaluado sobre la ESTADÍA PROMEDIO: así el nativo incluye descuentos por duración que la
-   reserva típica sí califica, y el aseo (fijo por reserva) se diluye correctamente por noche. */
 function suggestedOffset(chId, effBase, netObjetivo){
-  const c = state.channels.find(x=>x.id===chId);
-  if(!c || effBase<=0) return 0;
-  const avgN = Math.max(1, parseFloat(state.avgNights)||1);
-  const nat = combineChannel(chId, 45, avgN).totalPct/100; /* nativo a estadía promedio, sin ventanas tácticas cortas */
-  const pf = payoutFactor(c);
-  const feePN = cleanFeePerNight(c, avgN);
-  const denom = effBase*(1-nat);
-  if(denom<=0 || pf<=0) return 0;
-  /* net = [effBase*(1+off)*(1-nat) + feePN]*pf = netObjetivo
-     => off = (netObjetivo/pf - feePN)/(effBase*(1-nat)) - 1 */
-  return ((netObjetivo/pf - feePN)/denom - 1)*100;
+  return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo});
 }
 
 /* ================== ALERTS ================== */
 function buildAlerts(model){
-  const A=[];
-  const on = id=>{const d=state.discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
-  /* ceiling breaches & floor breaches per window */
-  WINDOWS.forEach(w=>{
-    const ceil=pct(state.ceilings[w.id]);
-    const mid=Math.min(w.lo+1,w.hi);
-    let maxN=0,maxCh='';
-    state.channels.forEach(c=>{const t=combineChannel(c.id,mid,1).totalPct;if(t>maxN){maxN=t;maxCh=c.name;}});
-    if(maxN>ceil+0.5) A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label}: solo los nativos de ${maxCh} ya suman ${fP(maxN)} y tu techo es ${fP(ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
-    const lm = maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-    state.channels.forEach(c=>{
-      const nat=combineChannel(c.id,mid,1).totalPct/100, cm=pct(c.comm)/100;
-      const netAtBase = model.effBase*(1-lm/100)*(1-nat)*(1-cm);
-      if(model.base>0 && netAtBase < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} · ${c.name}: al precio de referencia (${f$(model.effBase)}) con LM ${fP(lm)} + nativos ${fP(nat*100)} + comisión, netearías ${f$(netAtBase)} < costo ${f$(model.cost)}.`});
-    });
-  });
-  /* config contradictions */
-  const ebActive = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='window'&&d.on&&pct(d.pct)>0&&(d.from??0)>=14);
-  ebActive.forEach(eb=>{
-    if((eb.from??30)>(parseFloat(state.marketWindow)||16))
-      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`${eb.name} arranca a ${eb.from} días pero tu mercado reserva a ~${state.marketWindow} días (mediana). Casi nunca se activa, y cuando lo hace regala margen en las pocas reservas anticipadas. Evalúa apagarlo o subir el umbral.`});
-  });
-  if(on('bk_mob')&&(on('bk_cty')||on('bk_ltd')))
-    A.push({lvl:'warn',tag:'CONFLICTO',tab:'ch-booking',msg:'Booking: Mobile Rate no combina con Country Rate / Limited-time. El motor ya ignora Mobile en ese caso, pero tenlos claros en la extranet.'});
-  const lmActive = state.discounts.filter(d=>d.ch==='airbnb' && d.id.startsWith('ab_lm') && d.on && pct(d.pct)>0);
-  const abEbOverlap = ebActive.find(eb=>lmActive.some(lm=>(lm.to??3)>=(eb.from??30)));
-  if(abEbOverlap)
-    A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: alguna ventana de Last-minute activa se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
-  const losOn = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='los'&&d.on&&pct(d.pct)>0);
-  if(losOn.length>1){
-    const sorted=[...losOn].sort((a,b)=>a.minN-b.minN);
-    for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
-      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más descuento que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a exigir menos noches. Al huésped que califica para ambas gana el umbral más profundo (${sorted[i+1].name}), así que el de menos noches nunca se aplica realmente — revisa la escala.`});
-  }
-  const ebOn = ebActive;
-  if(ebOn.length>1){
-    const sorted=[...ebOn].sort((a,b)=>a.from-b.from);
-    for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
-      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a activarse antes. Gana el umbral más profundo (${sorted[i+1].name}) cuando ambos aplican — revisa la escala para que suba con la anticipación.`});
-  }
-  const bkStack=combineChannel('booking',1,1).totalPct;
-  if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',tab:'ch-booking',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
-  /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí. */
-  state.channels.forEach(c=>{
-    state.discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
-      const r = combineChannel(c.id, 45, d.minN||1);
-      const netLos = (model.effBase*(1+pct2(c.offsetPct)/100)*(1-r.totalPct/100) + cleanFeePerNight(c, d.minN||1))*payoutFactor(c);
-      if(netLos < model.cost-0.5)
-        A.push({lvl:'bad',tag:'DURACIÓN',tab:CH_TAB[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)} por noche, bajo tu costo de ${f$(model.cost)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
-      else if(netLos < model.net)
-        A.push({lvl:'warn',tag:'DURACIÓN',tab:CH_TAB[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net)}. Válido si priorizas ocupación larga; revísalo si no.`});
-    });
-  });
-  if(model.floor>model.base&&model.base>0)
-    A.push({lvl:'bad',tag:'MODELO',tab:'resumen',msg:`Tu piso (${f$(model.floor)}) quedó por ENCIMA del Base (${f$(model.base)}): con estos descuentos y margen, el modelo no cierra. Baja descuentos, baja margen objetivo o revisa costos.`});
-  /* Chequeo de realidad contra el mercado */
-  const mb=parseFloat(state.marketBase)||0;
-  if(mb>0){
-    if(model.floor>mb)
-      A.push({lvl:'bad',tag:'INVIABLE',tab:'resumen',msg:`Tu piso (${f$(model.floor)}) está POR ENCIMA de la base de mercado (${f$(mb)}). A precio de mercado y con estos descuentos, esta unidad no cubre costo. No es un problema de pricing: es costos, descuentos o producto.`});
-    else if(model.base>mb*1.05){
-      /* margen alcanzable al precio de mercado, en el canal que peor te deja */
-      let peorNeto=Infinity, peorCh='';
-      state.channels.forEach(c=>{
-        const n = mb*(1+pct2(c.offsetPct)/100)*(1-worstNative(c.id)/100)*payoutFactor(c);
-        if(n<peorNeto){peorNeto=n;peorCh=c.name;}
-      });
-      const achievable = peorNeto>0 ? 100*(1-model.cost/peorNeto) : 0;
-      A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(state.margin))} es ${f$(model.base)}, pero el mercado paga ~${f$(mb)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso (${peorCh}): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
-    }
-  }
-  if(!A.length) A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
-  return A;
+  return buildAlertsBase({
+    discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
+    marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
+    chTab: CH_TAB, currency: state.currency, margin: state.margin
+  }, model);
 }
 
 /* ================== RENDER ================== */
@@ -746,71 +489,54 @@ function renderAlerts(model){
   const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
   alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${tabLabel(a.tab)} →</button>`:''}</span></div>`).join('');
 }
+/* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
+   src/domain/simulate-legacy.js (import arriba) — aqui solo se arma el HTML del
+   waterfall a partir de lo que esa funcion devuelve. Fase 1: mismo resultado que
+   antes de la extraccion; el bug conocido (LM/maxN calculados con el punto medio
+   de la ventana y nights=1, no con los days/nights reales del escenario) sigue ahi
+   a proposito, documentado en simulate-legacy.js, para poder probarlo con un test
+   antes de arreglarlo en Fase 2. */
 function renderSim(model){
   const price=parseFloat(simPrice.value)||model.effBase||0;
   const chId=simChannel.value||'airbnb';
-  const ch=state.channels.find(c=>c.id===chId);
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
-  const w=WINDOWS.find(w=>days>=w.lo&&days<=w.hi)||WINDOWS[5];
-  const ceil=pct(state.ceilings[w.id]);
-  const maxN=Math.max(0,...state.channels.map(c=>combineChannel(c.id,Math.min(w.lo+1,w.hi),1).totalPct));
-  const lm=maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-  const r=combineChannel(chId,days,nights);
-  const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
-  let running=price;
+  const s = simulateReservation(
+    {channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings, fixedCost: state.fixedCost, varCost: state.varCost},
+    {price, chId, days, nights}
+  );
+  const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, totalDisc} = s;
   let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
-  const afterLm=running*(1-lm/100);
-  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(afterLm)}</span></div>`;
-  running=afterLm;
-  const off=pct2(ch.offsetPct);
+  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
   if(off!==0){
-    const afterOff=running*(1+off/100);
     html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${ch.name} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Hospy que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
-    running=afterOff;
   }
   html+=`<div class="sim-group">2 · Lo que descuenta ${ch.name}</div>`;
-  r.applied.forEach(a=>{
-    const nx=running*(1-a.pct/100);
-    html+=`<div class="wf-line"><span>− ${a.name} ${fP(a.pct)}</span><span class="why">${a.why}</span><span class="amt">${f$(nx)}</span></div>`;
-    running=nx;
+  s.appliedSteps.forEach(a=>{
+    html+=`<div class="wf-line"><span>− ${a.name} ${fP(a.pct)}</span><span class="why">${a.why}</span><span class="amt">${f$(a.after)}</span></div>`;
   });
-  if(!r.applied.length) html+=`<div class="wf-line"><span class="why" style="padding-left:0;">ningún descuento nativo activo aplica en esta ventana/duración</span></div>`;
-  const guest=running;
+  if(!s.applied.length) html+=`<div class="wf-line"><span class="why" style="padding-left:0;">ningún descuento nativo activo aplica en esta ventana/duración</span></div>`;
   html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
   /* Tarifa de aseo: fija por reserva en Airbnb (no la tocan los descuentos de noche),
      se prorratea por noche aquí para poder compararla contra tu costo/noche. La
      comisión y la comisión bancaria SÍ se cobran sobre ella (modelo Host-Only Fee). */
-  let guestForFees=guest, feeTotal=0;
-  if(chId==='airbnb'){
-    feeTotal = nights<=2 ? (parseFloat(ch.cleanFeeShort)||0) : (parseFloat(ch.cleanFeeLong)||0);
-    if(feeTotal>0){
-      const feePerNight=feeTotal/nights;
-      guestForFees=guest+feePerNight;
-      html+=`<div class="wf-line"><span>+ Tarifa de aseo (${f$(feeTotal)} fijo ÷ ${nights} noche${nights===1?'':'s'})</span><span class="why">no se descuenta; se prorratea por noche para comparar contra tu costo</span><span class="amt">${f$(guestForFees)}</span></div>`;
-    }
+  if(chId==='airbnb' && feeTotal>0){
+    html+=`<div class="wf-line"><span>+ Tarifa de aseo (${f$(feeTotal)} fijo ÷ ${nights} noche${nights===1?'':'s'})</span><span class="why">no se descuenta; se prorratea por noche para comparar contra tu costo</span><span class="amt">${f$(guestForFees)}</span></div>`;
   }
   const feeNote = feeTotal>0 ? ' + aseo prorrateado' : '';
   html+=`<div class="sim-group">3 · Lo que te queda a ti</div>`;
-  const commAmt = guestForFees*pct(ch.comm)/100;
-  const afterComm = guestForFees - commAmt;
   html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
-  let afterBank=afterComm;
   if(pct(ch.bankFeePct)>0){
-    const bankAmt = guestForFees*pct(ch.bankFeePct)/100; /* también sobre el precio del huésped, no sobre afterComm */
-    afterBank = afterComm - bankAmt;
     html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
-  const margin=afterBank-cost;
   html+=`<div class="wf-line ${afterBank>=cost?'net':'netbad'}"><span>Neto para ti (vs costo ${f$(cost)})</span><span class="amt">${f$(afterBank)} · margen ${f$(margin)}</span></div>`;
-  const totalDisc=100*(1-guest/price);
   html+=`<div class="wf-line"><span class="hint">Descuento total visto por el huésped: ${fP(totalDisc)} · techo de la ventana: ${fP(ceil)} ${totalDisc>ceil+0.5?'⚠ EXCEDIDO':''}</span></div>`;
   const summary = afterBank>=cost
     ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
     : `⚠ De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
   simResult.innerHTML=`<div class="sim-summary">${summary}</div>${html}`;
-  simIgnored.innerHTML=r.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+r.ignored.map(i=>`${i.name} — ${i.reason}`).join(' · ')):'';
+  simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${i.name} — ${i.reason}`).join(' · ')):'';
 }
 const TABS = [
   {id:'resumen', label:'Resumen'},
@@ -844,13 +570,7 @@ function renderAll(){
    directo, sin dividir — meterlo en el mismo balde que limpieza lo distorsiona en ambos
    extremos (lo infla en estadías cortas, lo diluye de más en las largas). */
 function costCalcTotals(){
-  const cb=state.costBreakdown;
-  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(state.avgNights)||1);
-  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
-  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
-  const turnoPerNight=turnoSum/avgN;
-  const consumptionPerNight=parseFloat(cb.consumables)||0;
-  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
+  return costCalcTotalsBase(state.costBreakdown, state.avgNights);
 }
 function renderCostCalc(){
   const t=costCalcTotals();
