@@ -182,6 +182,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <section class="card intro-card">
   <p class="intro-text">PriceLabs pone un precio por noche. Cada plataforma (Airbnb, Booking, Expedia) le resta sus propios descuentos y su comisión — cada una con sus reglas. Tu banco cobra aparte. <strong>Lo que sobra después de todo eso es tu ganancia real</strong>, no el precio que pusiste. Esta herramienta calcula ese precio mínimo y ese precio base para que no vendas por debajo del costo sin darte cuenta.</p>
 </section>
+<div id="validationBanner"></div>
+<div id="dataProvenanceBanner"></div>
 <div class="row stack">
   <div class="card">
     <h2>Costos por noche</h2>
@@ -420,9 +422,42 @@ function buildAlerts(model){
 
 /* ================== RENDER ================== */
 function renderKpis(model){
+  /* Fase 5: si el modelo no es valido (errores de nivel 'error'), no se muestra
+     ningun KPI numerico — mejor un bloqueo explicito que un numero que parece
+     confiable pero no lo es (NaN/Infinity/negativo). */
+  if(!model.valid){
+    kCost.textContent='—'; kNet.textContent='—'; kFloor.textContent='—'; kBase.textContent='—';
+    kFloorWhy.textContent='bloqueado — revisa los errores arriba'; kBaseWhy.textContent='bloqueado — revisa los errores arriba';
+    return;
+  }
   kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
   kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
   kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
+}
+function renderValidation(model){
+  const box = document.getElementById('validationBanner');
+  if(!box) return;
+  const errs = (model.errors||[]).filter(e=>e.level==='error');
+  const warns = (model.errors||[]).filter(e=>e.level==='warning');
+  if(!errs.length && !warns.length){ box.innerHTML=''; return; }
+  box.innerHTML = `
+    ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
+    ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
+  `;
+}
+/* Fase 5 — distinguir datos REALES de HIPOTETICOS: fixedCost/varCost arrancan en
+   32/22, el ejemplo ilustrativo del webinar de Kunas (ver CLAUDE.md seccion 5) —
+   NO son los costos reales de ninguna unidad de Dani. Mientras el valor siga
+   exactamente en ese default sin tocar, se avisa explicitamente para que no se
+   confunda con un dato real ya cargado. */
+const EXAMPLE_DEFAULTS = {fixedCost:32, varCost:22};
+function renderDataProvenance(){
+  const box = document.getElementById('dataProvenanceBanner');
+  if(!box) return;
+  const isExample = parseFloat(state.fixedCost)===EXAMPLE_DEFAULTS.fixedCost && parseFloat(state.varCost)===EXAMPLE_DEFAULTS.varCost;
+  box.innerHTML = isExample
+    ? `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (32) y variable (22) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada) antes de confiar en el Min Price/Base Price.</span></div>`
+    : '';
 }
 function discountRowHTML(d){
   /* d.lockN: el nombre está atado a un número específico (Semanal=7, Quincenal=14,
@@ -622,6 +657,7 @@ function buildTabbar(){
 }
 function renderAll(){
   const model=compute();
+  renderValidation(model); renderDataProvenance();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig(); renderVerification();
 }

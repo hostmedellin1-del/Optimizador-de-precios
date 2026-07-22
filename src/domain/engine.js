@@ -27,6 +27,7 @@ import {pct, pct2} from './percent.js';
 import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
 import {reservationCostBreakdown} from './costs.js';
+import {validateCostInputs, validateChannelInputs, validateResultFinite} from './validate.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -200,7 +201,18 @@ export function compute(config){
   });
   const mb=parseFloat(config.marketBase)||0;
   const effBase = mb>0 ? mb : base;   /* evaluar contra el precio que realmente vas a poner */
-  return {cost, net, floor, floorCh, base, baseCh, effBase};
+  /* Fase 5: validar ANTES (inputs) y DESPUES (resultado) — el motor sigue
+     calculando siempre (nunca lanza), pero deja explicito cuando un numero no
+     se puede confiar, en vez de mostrar NaN/Infinity/negativo como si fuera una
+     recomendacion valida. `valid` es false si hay al menos un error de nivel
+     'error' (los 'warning' no bloquean, solo informan). */
+  const errors = [
+    ...validateCostInputs({fixedCost: config.fixedCost, varCost: config.varCost, margin: config.margin}),
+    ...validateChannelInputs(channels),
+    ...validateResultFinite({floor, base, net, cost}, ['floor','base','net','cost'])
+  ];
+  const valid = !errors.some(e=>e.level==='error');
+  return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid};
 }
 
 /* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),
