@@ -168,6 +168,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
   <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
   <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
+  <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
   <span id="saveStatus"></span>
 </div>
 
@@ -322,6 +323,8 @@ import {quoteScenario} from './src/domain/quote.js';
 import {criticalDaysInWindow} from './src/domain/thresholds.js';
 import {defaultVerification, mergeVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
 import {gradualCurve} from './src/domain/pricelabs-lm.js';
+import {escapeHtml} from './src/domain/sanitize.js';
+import {newUnitId, buildV3Record, v3Key, validateImportFile, SCHEMA_VERSION} from './src/domain/persistence.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -471,7 +474,7 @@ function discountRowHTML(d){
       : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${d.minN}">n</span>` : '';
   return `<div class="d-item ${d.on?'on':''}">
     <input type="checkbox" data-did="${d.id}" data-f="on" ${d.on?'checked':''}>
-    <span class="d-name">${d.name}${d.note?`<span class="d-meta">${d.note}</span>`:''}</span>
+    <span class="d-name">${escapeHtml(d.name)}${d.note?`<span class="d-meta">${escapeHtml(d.note)}</span>`:''}</span>
     ${win}
     <input type="number" data-did="${d.id}" data-f="pct" value="${d.pct}"><span class="hint">%</span>
   </div>`;
@@ -495,7 +498,7 @@ function renderChannelPages(model){
     panel.innerHTML = `
       <section class="card">
         <div class="chpage-head">
-          <div class="fld"><span>Comisión ${c.name} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
+          <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${c.bankFeePct||0}"></div>
           <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
           ${c.id==='airbnb' ? `
@@ -503,7 +506,7 @@ function renderChannelPages(model){
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${c.cleanFeeLong||0}"></div>` : ''}
           <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>
         </div>
-        <h2>Descuentos activos hoy — ${c.name}</h2>
+        <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
         <div class="chpage-discounts">${activeD}</div>
         ${restD.length ? `<details class="discounts-more"${wasOpen?' open':''}><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${restD.map(discountRowHTML).join('')}</div></details>` : ''}
       </section>`;
@@ -556,19 +559,19 @@ function renderMatrix(model){
       vLvl='ok'; vTag='RENTABLE EN TODOS';
       vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worst.c.name}, con ${f$(worst.netV)}.`;
     }
-    const natCol=per.map(p=>`<span class="${p.q.nativoPct>ceil+0.5?'bad':''}">${p.c.name}: ${fP(p.q.nativoPct)}${p.q.applied.length?' <span style="color:var(--faint)">('+p.q.applied.map(a=>a.name.split(' ')[0]).join('+')+')</span>':''}</span>`).join('');
+    const natCol=per.map(p=>`<span class="${p.q.nativoPct>ceil+0.5?'bad':''}">${escapeHtml(p.c.name)}: ${fP(p.q.nativoPct)}${p.q.applied.length?' <span style="color:var(--faint)">('+p.q.applied.map(a=>escapeHtml(a.name.split(' ')[0])).join('+')+')</span>':''}</span>`).join('');
     const totCol=per.map(p=>{
       const t=100*(1-(1-lm/100)*p.q.nativoFactor); // exacto (factor), no totalPct redondeado
-      return `<span class="${t>ceil+0.5?'bad':'ok'}">${p.c.name}: ${fP(t)}</span>`;
+      return `<span class="${t>ceil+0.5?'bad':'ok'}">${escapeHtml(p.c.name)}: ${fP(t)}</span>`;
     }).join('');
     const netCol=netPer.map(p=>{
       const cls=p.netV<model.cost?'bad':(p.netV<model.net?'warn':'ok');
-      return `<span class="${cls}">${p.c.name}: ${f$(p.netV)}</span>`;
+      return `<span class="${cls}">${escapeHtml(p.c.name)}: ${f$(p.netV)}</span>`;
     }).join('');
     return `<tr>
       <td>${w.label}</td>
       <td><input type="number" data-ceil="${w.id}" value="${state.ceilings[w.id]}" style="width:58px"></td>
-      <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${vMsg}</span></div></td>
+      <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
           <div class="hint" style="margin:6px 0 2px;">Peor caso real dentro de esta ventana: <strong>día ${worstDay}</strong>, ${nights} noche${nights===1?'':'s'} · LM de PriceLabs: <strong>${breach?'0% ⚠':fP(lm)}</strong></div>
@@ -585,7 +588,7 @@ function renderMatrix(model){
 }
 function renderAlerts(model){
   const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
-  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${tabLabel(a.tab)} →</button>`:''}</span></div>`).join('');
+  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${escapeHtml(tabLabel(a.tab))} →</button>`:''}</span></div>`).join('');
 }
 /* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
    src/domain/simulate.js (import arriba), que a su vez consume quoteScenario()
@@ -605,11 +608,11 @@ function renderSim(model){
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
   html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
   if(off!==0){
-    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${ch.name} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Hospy que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
+    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${escapeHtml(ch.name)} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Hospy que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
   }
-  html+=`<div class="sim-group">2 · Lo que descuenta ${ch.name}</div>`;
+  html+=`<div class="sim-group">2 · Lo que descuenta ${escapeHtml(ch.name)}</div>`;
   s.appliedSteps.forEach(a=>{
-    html+=`<div class="wf-line"><span>− ${a.name} ${fP(a.pct)}</span><span class="why">${a.why}</span><span class="amt">${f$(a.after)}</span></div>`;
+    html+=`<div class="wf-line"><span>− ${escapeHtml(a.name)} ${fP(a.pct)}</span><span class="why">${escapeHtml(a.why)}</span><span class="amt">${f$(a.after)}</span></div>`;
   });
   if(!s.applied.length) html+=`<div class="wf-line"><span class="why" style="padding-left:0;">ningún descuento nativo activo aplica en esta ventana/duración</span></div>`;
   html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
@@ -621,7 +624,7 @@ function renderSim(model){
   }
   const feeNote = feeTotal>0 ? ' + aseo prorrateado' : '';
   html+=`<div class="sim-group">3 · Lo que te queda a ti</div>`;
-  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
+  html+=`<div class="wf-line"><span>− Comisión ${escapeHtml(ch.name)} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
   if(pct(ch.bankFeePct)>0){
     html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
@@ -632,7 +635,7 @@ function renderSim(model){
     ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
     : `⚠ De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
   simResult.innerHTML=`<div class="sim-summary">${summary}</div>${html}`;
-  simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${i.name} — ${i.reason}`).join(' · ')):'';
+  simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${escapeHtml(i.name)} — ${escapeHtml(i.reason)}`).join(' · ')):'';
 }
 const TABS = [
   {id:'resumen', label:'Resumen'},
@@ -716,7 +719,7 @@ function renderLmConfig(){
       ${cfg.tiers.map((t,i)=>`
         <div class="d-item ${t.on?'on':''}" style="flex-wrap:wrap;">
           <input type="checkbox" data-tier="on" data-tier-idx="${i}" ${t.on?'checked':''}>
-          <input type="text" data-tier="label" data-tier-idx="${i}" value="${t.label||''}" placeholder="nombre" style="width:110px;">
+          <input type="text" data-tier="label" data-tier-idx="${i}" value="${escapeHtml(t.label||'')}" placeholder="nombre" style="width:110px;">
           <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${t.fromDay}" style="width:50px;">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${t.toDay}" style="width:50px;"></span>
           <input type="number" data-tier="pct" data-tier-idx="${i}" value="${t.pct}" style="width:60px;"><span class="hint">%</span>
           <button type="button" class="ghost" data-tier-up="${i}" ${i===0?'disabled':''}>↑</button>
@@ -740,7 +743,7 @@ function renderVerification(){
           <option value="no_verificado" ${entry.status==='no_verificado'?'selected':''}>No verificado</option>
           <option value="verificado" ${entry.status==='verificado'?'selected':''}>Verificado</option>
         </select>
-        <input type="text" data-verif-note="${key}" value="${(entry.note||'').replace(/"/g,'&quot;')}" placeholder="nota — dónde/cómo lo confirmaste" style="flex:1;min-width:180px;">
+        <input type="text" data-verif-note="${key}" value="${escapeHtml(entry.note||'')}" placeholder="nota — dónde/cómo lo confirmaste" style="flex:1;min-width:180px;">
       </div>
     </div>`;
   }).join('');
@@ -748,7 +751,7 @@ function renderVerification(){
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
   document.querySelectorAll('[data-cb]').forEach(el=>el.value=state.costBreakdown[el.dataset.cb]);
-  simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 buildTabbar();
 
@@ -836,20 +839,75 @@ document.addEventListener('click',e=>{
 });
 const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
+/* Fase 6: guardar SIEMPRE escribe formato v3 (clave = UUID estable en state.id,
+   nunca el slug del nombre) — dos unidades con el mismo nombre ya no colisionan,
+   y renombrar una unidad no le cambia la identidad de guardado. Si es la
+   PRIMERA vez que se guarda esta unidad (state.id todavia no existe) y ya hay
+   una unidad guardada con el mismo nombre, se confirma antes de crear una
+   segunda con el mismo nombre — para que no sea un duplicado accidental. */
 saveUnit.addEventListener('click',async()=>{
   const n=unitName.value.trim(); if(!n){alert('Nombre de unidad primero.');return;}
-  try{const r=await window.storage.set('v2:'+slug(n),JSON.stringify({...state,name:n}),false);
-    if(r){status('Guardado ✓');refreshList();}else status('Error');}catch(e){console.error(e);status('Error al guardar');}
+  try{
+    if(!state.id){
+      const r3 = await window.storage.list('v3:', false);
+      const keys = (r3&&r3.keys)||[];
+      let nameCollision = false;
+      for(const k of keys){
+        const v = await window.storage.get(k, false);
+        if(v&&v.value){ try{ if(JSON.parse(v.value).name===n){ nameCollision=true; break; } }catch(e){} }
+      }
+      if(nameCollision && !confirm(`Ya existe una unidad guardada con el nombre "${n}". ¿Guardar esta de todas formas como una unidad NUEVA (no reemplaza la existente)?`)) return;
+    }
+    const record = buildV3Record({...state, name:n});
+    state.id = record.id;
+    const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    if(r){status('Guardado ✓');refreshList();}else status('Error');
+  }catch(e){console.error(e);status('Error al guardar');}
 });
 deleteUnit.addEventListener('click',async()=>{
   const k=unitList.value; if(!k){alert('Selecciona una unidad.');return;}
+  const label = unitList.options[unitList.selectedIndex]?.textContent || k;
+  if(!confirm(`¿Eliminar "${label}"? Esta acción no se puede deshacer.`)) return;
   try{await window.storage.delete(k,false);refreshList();status('Eliminado');}catch(e){status('Error');}
+});
+migrateV2Btn.addEventListener('click', async()=>{
+  try{
+    const r2 = await window.storage.list('v2:', false);
+    const v2Keys = (r2&&r2.keys)||[];
+    if(!v2Keys.length){ alert('No hay unidades en formato antiguo (v2) para migrar.'); return; }
+    const r3 = await window.storage.list('v3:', false);
+    const v3Keys = (r3&&r3.keys)||[];
+    const alreadyMigrated = new Set();
+    for(const k of v3Keys){
+      const v = await window.storage.get(k, false);
+      if(v&&v.value){ try{ const d=JSON.parse(v.value); if(d.migratedFromV2Key) alreadyMigrated.add(d.migratedFromV2Key); }catch(e){} }
+    }
+    const pending = v2Keys.filter(k=>!alreadyMigrated.has(k));
+    if(!pending.length){ alert('Todas las unidades v2 ya tienen su copia v3. No se creó nada nuevo.'); return; }
+    if(!confirm(`Se copiarán ${pending.length} unidad(es) del formato antiguo a identificadores nuevos (v3). Las originales (v2) NO se tocan ni se borran. ¿Continuar?`)) return;
+    let done=0;
+    for(const k of pending){
+      const v = await window.storage.get(k, false);
+      if(!v || !v.value) continue;
+      let d; try{ d=JSON.parse(v.value); }catch(e){ continue; }
+      const record = buildV3Record(d, {migratedFromV2Key:k});
+      await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+      done++;
+    }
+    refreshList();
+    status(`${done} unidad(es) migradas a v3 ✓`);
+  }catch(e){console.error(e); status('Error al migrar');}
 });
 unitList.addEventListener('change',async e=>{
   const k=e.target.value; if(!k)return;
   try{const r=await window.storage.get(k,false);
     if(r&&r.value){const d=JSON.parse(r.value);
       state={...state,...d};
+      /* Fase 6: `id` NUNCA debe sobrevivir de la unidad cargada anteriormente —
+         si esto es un registro v2 (sin id todavia), state.id debe quedar
+         undefined explicitamente, o el proximo Guardar reescribiria el v3 de
+         OTRA unidad por error (spread no toca una key ausente en `d`). */
+      state.id = d.id || undefined;
       /* merge new catalog entries added after save */
       const defaults=defaultDiscounts();
       const defById=Object.fromEntries(defaults.map(x=>[x.id,x]));
@@ -888,15 +946,15 @@ unitList.addEventListener('change',async e=>{
    navegador. Exportar/Importar es la forma de sacar copia y restaurar si se pierde. */
 exportUnits.addEventListener('click', async()=>{
   try{
-    const r = await window.storage.list('v2:', false);
-    const keys = (r && r.keys) || [];
+    const [r2, r3] = await Promise.all([window.storage.list('v2:', false), window.storage.list('v3:', false)]);
+    const keys = [...((r2&&r2.keys)||[]), ...((r3&&r3.keys)||[])];
     if(!keys.length){ alert('No hay unidades guardadas todavía.'); return; }
     const items = [];
     for(const k of keys){
       const v = await window.storage.get(k, false);
       if(v && v.value) items.push({key:k, value:v.value});
     }
-    const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), units:items}, null, 2)], {type:'application/json'});
+    const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), schemaVersion:SCHEMA_VERSION, units:items}, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'revenue-ops-backup-' + new Date().toISOString().slice(0,10) + '.json';
@@ -906,22 +964,41 @@ exportUnits.addEventListener('click', async()=>{
   }catch(e){console.error(e); status('Error al exportar');}
 });
 importUnitsBtn.addEventListener('click', ()=>{ importUnitsFile.value=''; importUnitsFile.click(); });
+/* Fase 6 — importacion SEGURA: valida la FORMA del archivo antes de escribir
+   nada a storage (validateImportFile, src/domain/persistence.js) — un archivo
+   malformado o con estructura inesperada se rechaza entero, no se escribe
+   parcialmente. El contenido de cada unidad se sigue tratando como NO
+   confiable al renderizarse (escapeHtml en todos los puntos de innerHTML). */
 importUnitsFile.addEventListener('change', async e=>{
   const file = e.target.files[0]; if(!file) return;
   try{
     const data = JSON.parse(await file.text());
-    const items = Array.isArray(data.units) ? data.units : [];
-    if(!items.length){ alert('El archivo no tiene unidades reconocibles.'); return; }
-    if(!confirm('Vas a restaurar '+items.length+' unidad(es). Las que ya existan con el mismo nombre se van a SOBRESCRIBIR. ¿Continuar?')) return;
-    for(const it of items){ if(it.key && it.value) await window.storage.set(it.key, it.value, false); }
+    const {valid, errors, items} = validateImportFile(data);
+    if(!valid){
+      alert('El archivo no se pudo importar:\n' + errors.slice(0,5).join('\n') + (errors.length>5?`\n...y ${errors.length-5} más`:''));
+      return;
+    }
+    if(errors.length) console.warn('Importación parcial — elementos descartados:', errors);
+    if(!confirm(`Vas a restaurar ${items.length} unidad(es)${errors.length?` (se descartaron ${errors.length} elemento(s) invalido(s), ver consola)`:''}. Las que ya existan con la MISMA clave se van a SOBRESCRIBIR. ¿Continuar?`)) return;
+    for(const it of items){ await window.storage.set(it.key, it.value, false); }
     refreshList();
     status(items.length + ' unidad(es) importadas ✓');
   }catch(e){console.error(e); status('Archivo inválido');}
 });
 async function refreshList(){
-  try{const r=await window.storage.list('v2:',false);
-    const keys=(r&&r.keys)||[];
-    unitList.innerHTML='<option value="">Cargar unidad…</option>'+keys.map(k=>`<option value="${k}">${k.replace('v2:','')}</option>`).join('');
+  try{
+    const [r2, r3] = await Promise.all([window.storage.list('v2:', false), window.storage.list('v3:', false)]);
+    const keys = [...((r2&&r2.keys)||[]), ...((r3&&r3.keys)||[])];
+    const opts = [];
+    for(const k of keys){
+      let label = k.replace(/^v[23]:/,'');
+      try{
+        const v = await window.storage.get(k, false);
+        if(v&&v.value){ const d=JSON.parse(v.value); if(d && typeof d.name==='string' && d.name) label=d.name; }
+      }catch(err){/* deja el fallback (nombre derivado de la clave) */}
+      opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(label)}${k.startsWith('v2:')?' (formato antiguo)':''}</option>`);
+    }
+    unitList.innerHTML='<option value="">Cargar unidad…</option>'+opts.join('');
   }catch(e){unitList.innerHTML='<option value="">Cargar unidad…</option>';}
 }
 hydrate(); renderAll(); refreshList();
