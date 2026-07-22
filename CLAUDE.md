@@ -67,6 +67,29 @@ ventana de días Y el % son completamente variables, los configura Dani caso por
 eso arrancan en 0%/apagadas con ventanas iniciales de referencia (0-1/0-3/0-7 días) que
 son solo un punto de partida editable, no un valor real de negocio.
 
+### Duración de estadía — 3 entradas 100% variables (`ab_los5/6/7`, jul 2026)
+Igual que Last-minute, Dani pidió más descuentos por duración que NO estén atados a un
+nombre de período fijo (a diferencia de Semanal/Quincenal/Larga estadía). Se agregaron
+`ab_los5`/`ab_los6`/`ab_los7` ("Duración personalizada A/B/C") sin `lockN`: noches Y % son
+editables desde la UI, arrancan apagadas con `pct:0` (Dani pone el valor real) y con
+umbrales de referencia 5/10/21 noches solo como punto de partida. Reusan el mismo `group:
+'promo'`, `prio:3` que las demás LOS — la lógica de `combineChannel()` (deepest-threshold-
+wins dentro de la misma prioridad) ya es genérica y no necesitó cambios; verificado con Node
+que con varias LOS activas a la vez sigue ganando la de umbral más profundo que aplique.
+
+### Bug corregido — drift de `minN`/`from` en descuentos `lockN` al cargar unidad guardada (jul 2026)
+Encontrado en vivo por Dani: "Larga estadía" mostraba ≥49 noches en vez de ≥28. Causa: el
+campo se bloqueó (`lockN:true`) en una sesión posterior a cuando algunas unidades ya habían
+sido guardadas con un `minN` editado a mano (cuando el campo aún era un `<input>` libre). Al
+bloquearse, `discountRowHTML()` empezó a mostrar `d.minN` como texto fijo tomado del dato
+guardado (49), no del catálogo (28) — y como el input ya no existe, no había forma de
+corregirlo desde la UI. Fix en el listener `unitList.addEventListener('change', ...)`
+(`index.html`, tras el merge de nuevas entradas del catálogo): para cada descuento cargado
+cuyo `id` sea `lockN:true` en `defaultDiscounts()`, se resincroniza `minN` (o `from`/`to` si
+es tipo `window`) al valor del catálogo actual, ignorando lo guardado. Cualquier `lockN`
+futuro debe confiar en que el umbral SIEMPRE viene del catálogo, nunca del dato persistido.
+Verificado con Node simulando una unidad vieja con `ab_los4.minN=49` → al cargar da 28.
+
 Fuente: Airbnb Help Center, ejemplo oficial (early-bird 20% + descuento mensual 30% en la
 misma reserva → solo se aplica el 30%, nunca los dos). Hay reportes de hosts en foros
 sobre apilamiento fuera de rule sets, sin confirmar al 100% — dejar la nota visible en la
@@ -331,6 +354,11 @@ sección 2, "Offset por canal").
   reinyectarlo en el HTML nuevo. Cualquier elemento con estado propio (`open`, scroll,
   foco) que viva dentro de un bloque re-renderizado por innerHTML necesita este mismo
   patrón de "leer antes de pisar" — no asumir que el estado del DOM sobrevive solo.
+- Descuentos con `lockN:true` mostraban el `minN`/`from` GUARDADO en la unidad, no el del
+  catálogo actual — si una unidad se guardó antes de que ese campo se bloqueara (cuando aún
+  era editable), el número quedaba congelado en el valor viejo para siempre, sin forma de
+  corregirlo desde la UI (el input ya no existe). Fix: al cargar una unidad, resincronizar
+  `minN`/`from`/`to` de cada descuento `lockN` al valor de `defaultDiscounts()`, ver sección 2.
 
 ---
 
