@@ -62,6 +62,19 @@ button.ghost:hover{color:var(--text);border-color:var(--faint);}
 .alert.warn .tag{background:var(--warn-chip);color:#14151A;}
 .alert.ok .tag{background:var(--safe-chip);color:#14151A;}
 .alert .goto{background:none;border:none;color:inherit;text-decoration:underline;font-weight:600;font-size:inherit;font-family:inherit;cursor:pointer;padding:0;white-space:nowrap;}
+.matrix-intro{display:flex;gap:24px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px;}
+.matrix-intro .mi-item{font-size:12.5px;line-height:1.5;}
+.matrix-intro .mi-label{display:block;color:var(--dim);}
+.matrix-intro .mi-val{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--text);}
+.verdict{display:flex;flex-direction:column;gap:4px;max-width:320px;}
+.v-tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;align-self:flex-start;}
+.verdict.bad .v-tag{background:var(--accent);color:#fff;}
+.verdict.warn .v-tag{background:var(--warn-chip);color:#14151A;}
+.verdict.ok .v-tag{background:var(--safe-chip);color:#14151A;}
+.verdict .v-msg{font-size:12px;line-height:1.45;color:var(--dim);}
+.matrix-detail{margin-top:2px;}
+.matrix-detail summary{font-size:11px;color:var(--faint);cursor:pointer;}
+.matrix-detail .cell-ch{margin-top:6px;}
 .alert .goto:hover{opacity:.75;}
 /* discount catalog */
 .d-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;}
@@ -229,14 +242,14 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 
 <div class="tab-panel" data-tab="comparacion">
 <section class="card">
-  <h2>Panel de decisión por ventana de reserva</h2>
-  <p class="hint">Por cada ventana: el techo de descuento total que aceptas, lo que ya descuentan los nativos combinados de cada canal, el last-minute que le queda a PriceLabs sin romper el techo en ningún canal, y el margen resultante por canal — ya incluyendo el Offset de cada uno. Rojo = ese canal rompe el techo o vende bajo el piso.</p>
+  <h2>Panel de decisión por ventana de reserva <span class="hint">qué poner en PriceLabs, canal por canal</span></h2>
+  <p class="hint">Cada fila es una ventana de anticipación (días antes del check-in). Lee primero el <strong>Veredicto</strong>: te dice en una frase si algo necesita tu atención en esa ventana. El Techo % lo pones tú (cuánto descuento total le aceptas al huésped); el detalle por canal está colapsado — ábrelo solo si el veredicto te manda a revisar algo puntual.</p>
+  <div class="matrix-intro" id="matrixIntro"></div>
   <div class="field" style="max-width:320px;"><span>Noches de estadía a evaluar <span class="hint">activa descuentos por duración si califican</span></span><input type="number" data-k="matrixNights" step="1" min="1"></div>
   <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>Ventana</th><th><span class="term" title="El % máximo de descuento total que aceptas ver en el precio del huésped en esta ventana, sumando nativos + LM.">Techo</span> total %</th><th><span class="term" title="Lo que ya descuentan los promos propios de cada plataforma (Genius, early-bird, etc.), combinados según sus reglas — sin contar el LM de PriceLabs.">Nativo</span> combinado por canal</th>
-        <th><span class="term" title="El last-minute que PriceLabs puede aplicar en esta ventana sin que, sumado a los nativos, se pase del techo.">LM</span> PriceLabs</th><th>Total huésped por canal</th><th>Neto por canal (Base × Offset)</th>
+        <th>Ventana</th><th><span class="term" title="El % máximo de descuento total que aceptas ver en el precio del huésped en esta ventana, sumando nativos + LM.">Techo</span> total %</th><th>Veredicto</th><th>Detalle por canal</th>
       </tr></thead>
       <tbody id="matrixBody"></tbody>
     </table>
@@ -667,31 +680,65 @@ function renderChannelPages(model){
   });
 }
 function renderMatrix(model){
+  matrixIntro.innerHTML = `
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos de hoy</span></span><span class="mi-val">${f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   const nights=Math.max(1,parseFloat(state.matrixNights)||1);
   matrixBody.innerHTML = WINDOWS.map(w=>{
     const ceil=pct(state.ceilings[w.id]);
     const mid=Math.min(w.lo+1,w.hi);
     const per=state.channels.map(c=>({c,r:combineChannel(c.id,mid,nights)}));
     const maxN=Math.max(0,...per.map(p=>p.r.totalPct));
+    const maxCh=(per.find(p=>p.r.totalPct===maxN)||{}).c;
     const breach=maxN>ceil;
     const lm=breach?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
+    const netPer=per.map(p=>({
+      c:p.c,
+      netV:model.effBase*(1+pct2(p.c.offsetPct)/100)*(1-lm/100)*(1-p.r.totalPct/100)*payoutFactor(p.c)
+    }));
+    const worst = netPer.reduce((a,b)=>b.netV<a.netV?b:a, netPer[0]);
+    /* Veredicto en una frase: primero el techo (bloquea el LM de PriceLabs), luego el
+       piso (vender bajo costo), luego el objetivo de margen — en ese orden de gravedad,
+       para que Dani sepa qué revisar primero sin tener que leer las 4 columnas viejas. */
+    let vLvl, vTag, vMsg;
+    if(breach){
+      vLvl='bad'; vTag='TECHO EXCEDIDO';
+      vMsg=`${maxCh?maxCh.name:'un canal'} ya suma ${fP(maxN)} de descuento propio — más que tu techo de ${fP(ceil)}. PriceLabs se queda en 0% de LM aquí y aun así se pasa: baja el descuento nativo de ${maxCh?maxCh.name:'ese canal'} o sube el techo.`;
+    } else if(worst.netV<model.cost){
+      vLvl='bad'; vTag='BAJO COSTO';
+      vMsg=`Con ${fP(lm)} de LM, ${worst.c.name} te dejaría ${f$(worst.netV)} — menos que tu costo de ${f$(model.cost)}. Súbele el Offset a ${worst.c.name} en su pestaña, o baja su descuento nativo.`;
+    } else if(worst.netV<model.net){
+      vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
+      vMsg=`Todos los canales quedan sobre tu costo, pero ${worst.c.name} solo te deja ${f$(worst.netV)} — por debajo de tu margen objetivo (${f$(model.net)}). Revisa su Offset si quieres acercarlo.`;
+    } else {
+      vLvl='ok'; vTag='RENTABLE EN TODOS';
+      vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worst.c.name}, con ${f$(worst.netV)}.`;
+    }
     const natCol=per.map(p=>`<span class="${p.r.totalPct>ceil+0.5?'bad':''}">${p.c.name}: ${fP(p.r.totalPct)}${p.r.applied.length?' <span style="color:var(--faint)">('+p.r.applied.map(a=>a.name.split(' ')[0]).join('+')+')</span>':''}</span>`).join('');
     const totCol=per.map(p=>{
       const t=100*(1-(1-lm/100)*(1-p.r.totalPct/100));
       return `<span class="${t>ceil+0.5?'bad':'ok'}">${p.c.name}: ${fP(t)}</span>`;
     }).join('');
-    const netCol=per.map(p=>{
-      const netV=model.effBase*(1+pct2(p.c.offsetPct)/100)*(1-lm/100)*(1-p.r.totalPct/100)*payoutFactor(p.c);
-      const cls=netV<model.cost?'bad':(netV<model.net?'warn':'ok');
-      return `<span class="${cls}">${p.c.name}: ${f$(netV)}</span>`;
+    const netCol=netPer.map(p=>{
+      const cls=p.netV<model.cost?'bad':(p.netV<model.net?'warn':'ok');
+      return `<span class="${cls}">${p.c.name}: ${f$(p.netV)}</span>`;
     }).join('');
     return `<tr>
       <td>${w.label}</td>
       <td><input type="number" data-ceil="${w.id}" value="${state.ceilings[w.id]}" style="width:58px"></td>
-      <td><div class="cell-ch">${natCol}</div></td>
-      <td class="out"><span class="${breach?'lm-breach':'lm-val'}">${breach?'0% ⚠':fP(lm)}</span></td>
-      <td><div class="cell-ch">${totCol}</div></td>
-      <td><div class="cell-ch">${netCol}</div></td>
+      <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${vMsg}</span></div></td>
+      <td>
+        <details class="matrix-detail"><summary>Ver por canal</summary>
+          <div class="hint" style="margin:6px 0 2px;">LM de PriceLabs en esta ventana: <strong>${breach?'0% ⚠':fP(lm)}</strong></div>
+          <div class="hint" style="margin:6px 0 2px;">Nativo combinado (sin LM):</div>
+          <div class="cell-ch">${natCol}</div>
+          <div class="hint" style="margin:6px 0 2px;">Total visto por el huésped (nativo + LM):</div>
+          <div class="cell-ch">${totCol}</div>
+          <div class="hint" style="margin:6px 0 2px;">Neto para ti (Base × Offset, ya con comisiones):</div>
+          <div class="cell-ch">${netCol}</div>
+        </details>
+      </td>
     </tr>`;
   }).join('');
 }
