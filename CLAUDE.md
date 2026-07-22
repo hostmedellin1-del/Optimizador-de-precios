@@ -107,8 +107,26 @@ Categorías DISTINTAS se MULTIPLICAN entre sí; la MISMA categoría no combina:
 
 ### Expedia
 Una sola promo "base" por reserva (`group:'base'`: Mobile-only, Same-day/last-minute,
-Early booking, Basic) — el motor usa la de mayor % aplicable, las demás se ignoran.
-Member Only Deal (`group:'mod'`) es la excepción: apila ENCIMA de esa promo base.
+Early booking, Basic, Duración de estadía) — el motor usa la de mayor % aplicable, las
+demás se ignoran. Member Only Deal (`group:'mod'`) es la excepción: apila ENCIMA de esa
+promo base.
+
+**`ex_mod` = oferta real de la cuenta de Dani** (jul 2026, screenshot de Expedia Partner
+Central): "Oferta exclusiva para miembros VIP", tipo Negotiated, activa, sin fecha de fin,
+**no editable desde Expedia**. Desglose real por nivel del viajero: Blue 10% / Silver 15% /
+Gold+Platino 20%. El motor no sabe de antemano qué nivel tiene cada huésped, así que usa
+**20% (peor caso)** como `pct` — misma filosofía de `worstNative()`: el Piso tiene que
+protegerse contra el descuento más profundo posible, no contra el promedio. Si Dani
+confirma que la mezcla real de niveles es mucho más Blue que Gold, se podría discutir bajar
+esto, pero por defecto se protege con el peor caso.
+
+**`ex_los1` = "Duración de estadía (≥7 noches)"**, agregada jul 2026 a pedido de Dani:
+100% variable (noches y % editables desde la UI, sin `lockN`), apagada y en 0% por defecto.
+Bug de motor corregido al agregarla: el filtro de `group:'base'` en `combineChannel()` solo
+llamaba `windowApplies()`, que SIEMPRE devuelve `false` para `kind:'los'` — un descuento de
+Expedia por duración de estadía nunca podía activarse aunque se configurara bien. Fix:
+el filtro ahora es `windowApplies(d,daysOut)||losApplies(d,nights)`, igual que ya usaba el
+grupo `promo` de Airbnb. Ver sección 6 (bugs corregidos).
 
 ### Comisión bancaria / pasarela de pago
 Corregido jul 2026, confirmado por Dani con sus facturas reales — este es un error que
@@ -359,6 +377,10 @@ sección 2, "Offset por canal").
   era editable), el número quedaba congelado en el valor viejo para siempre, sin forma de
   corregirlo desde la UI (el input ya no existe). Fix: al cargar una unidad, resincronizar
   `minN`/`from`/`to` de cada descuento `lockN` al valor de `defaultDiscounts()`, ver sección 2.
+- `combineChannel()` para Expedia filtraba el grupo `base` solo con `windowApplies()`, que
+  siempre da `false` para `kind:'los'` — cualquier descuento de Expedia por duración de
+  estadía quedaba matemáticamente inactivo aunque se configurara y activara bien. Fix:
+  `windowApplies(d,daysOut)||losApplies(d,nights)`, ver sección 2 (`ex_los1`).
 
 ---
 
