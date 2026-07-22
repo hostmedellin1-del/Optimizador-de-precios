@@ -261,8 +261,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div class="footer-note" id="rulesNote">
   <strong>Reglas de combinación aplicadas (verificadas jul 2026):</strong><br>
   · <strong>Airbnb</strong>: orden precio → duración → early-bird/last-minute. Si duración y EB/LM califican a la vez, solo aplica duración (regla oficial de rule sets); EB y LM nunca aplican juntos. Hay reportes de hosts de apilamiento fuera de rule sets — verifica una reserva de prueba en tu anuncio.<br>
-  · <strong>Booking</strong>: categorías distintas se multiplican (Genius × Mobile × un deal reactivo). Misma categoría no combina: solo un deal reactivo (Basic/Early/Last-Minute/Getaway) a la vez — el motor usa el mayor aplicable. Mobile no combina con Country Rate ni Limited-time Deal.<br>
-  · <strong>Expedia</strong>: una sola promo base por reserva (el motor usa la mayor aplicable); Member Only Deal apila encima de esa promo.<br>
+  · <strong>Booking</strong>: categorías distintas se multiplican (Genius × Mobile × un deal reactivo × duración de estadía). Misma categoría no combina: solo un deal reactivo (Basic/Early/Last-Minute/Getaway) a la vez, y solo el umbral de duración más profundo que califique — el motor usa el mayor aplicable en cada caso. Mobile no combina con Country Rate ni Limited-time Deal. La duración de estadía es tu tarifa configurada en Rates & Availability → Discounts, no un "deal": se apila con todo.<br>
+  · <strong>Expedia</strong>: una sola promo base por reserva, incluida la duración de estadía (el motor usa la mayor aplicable); Oferta VIP miembros apila encima de esa promo.<br>
   · <strong>PriceLabs</strong>: su precio (con LM incluido) es la base; el <strong>Offset por canal</strong> (Pricing Offset de PriceLabs, Dynamic Pricing → Customizations) se aplica DESPUÉS, específico por canal — confirmado con soporte de PriceLabs. Ojo: si tu PMS (Hospy) distribuye el offset a todos los canales conectados en vez de aplicarlo solo al elegido, verifica en Hospy antes de confiar en la separación. Los nativos de cada OTA se aplican después de eso, y la comisión al final sobre lo que paga el huésped.<br>
   · <strong>Comisión bancaria/pasarela</strong>: Booking y Directo tienen 6% adicional configurado (tarjeta virtual, transferencia, pasarela de pago) — se calcula SOBRE EL PRECIO QUE PAGA EL HUÉSPED, igual que la comisión de la OTA; ambas se restan del mismo número, no se acumulan una sobre la otra (confirmado por Dani con sus facturas reales). Ajusta el % real por canal en su pestaña; Airbnb y Expedia están en 0% por defecto (paga por depósito directo) — cámbialo si tu banco te cobra algo distinto.
 </div>
@@ -335,13 +335,18 @@ function defaultDiscounts(){ return [
   {id:'bk_ebd', ch:'booking', name:'Early Booker Deal', kind:'window', group:'reactive', pct:0, from:30, to:9999, on:false},
   {id:'bk_bas', ch:'booking', name:'Basic Deal', kind:'constant', group:'reactive', pct:0, on:false},
   {id:'bk_ltd', ch:'booking', name:'Limited-time Deal', kind:'constant', group:'reactive-limited', pct:0, on:false, note:'no combina con Mobile'},
+  {id:'bk_los1', ch:'booking', name:'Duración de estadía A (≥7 noches)', kind:'los', group:'los', pct:0, minN:7, on:false, note:'es tu tarifa (Rates & Availability → Discounts → duración de estadía), no un "deal" — se apila con Genius/Mobile/deals; noches y % editables'},
+  {id:'bk_los2', ch:'booking', name:'Duración de estadía B (≥14 noches)', kind:'los', group:'los', pct:0, minN:14, on:false, note:'noches y % editables, ajusta o apaga'},
+  {id:'bk_los3', ch:'booking', name:'Duración de estadía C (≥28 noches)', kind:'los', group:'los', pct:0, minN:28, on:false, note:'noches y % editables, ajusta o apaga'},
   /* EXPEDIA — base promos exclusive (max); MOD stacks on top */
   {id:'ex_mod', ch:'expedia', name:'Oferta VIP miembros (negociada, no editable en Expedia)', kind:'constant', group:'mod', pct:20, on:true, note:'apila sobre la promo base; Expedia da Blue 10% / Silver 15% / Gold+Platino 20% según el nivel del viajero — se usa el peor caso (20%) para proteger el piso, igual que el resto del motor'},
   {id:'ex_mob', ch:'expedia', name:'Mobile-only', kind:'constant', group:'base', pct:0, on:false},
   {id:'ex_sd',  ch:'expedia', name:'Same-day / last-minute', kind:'window', group:'base', pct:0, from:0, to:1, on:false},
   {id:'ex_eb',  ch:'expedia', name:'Early booking', kind:'window', group:'base', pct:0, from:30, to:9999, on:false},
   {id:'ex_bas', ch:'expedia', name:'Basic promo', kind:'constant', group:'base', pct:0, on:false},
-  {id:'ex_los1', ch:'expedia', name:'Duración de estadía (≥7 noches)', kind:'los', group:'base', pct:0, minN:7, on:false, note:'noches y % completamente editables, ajusta o apaga'},
+  {id:'ex_los1', ch:'expedia', name:'Duración de estadía A (≥7 noches)', kind:'los', group:'base', pct:0, minN:7, on:false, note:'noches y % completamente editables, ajusta o apaga'},
+  {id:'ex_los2', ch:'expedia', name:'Duración de estadía B (≥14 noches)', kind:'los', group:'base', pct:0, minN:14, on:false, note:'noches y % completamente editables, ajusta o apaga'},
+  {id:'ex_los3', ch:'expedia', name:'Duración de estadía C (≥28 noches)', kind:'los', group:'base', pct:0, minN:28, on:false, note:'noches y % completamente editables, ajusta o apaga'},
   /* DIRECT */
   {id:'di_lm',  ch:'direct', name:'Last-minute directo', kind:'window', group:'any', pct:0, from:0, to:3, on:false}
 ];}
@@ -419,6 +424,16 @@ function combineChannel(chId, daysOut, nights){
     if(mobile){
       if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
       else add(mobile,'apila sobre Genius (categorías distintas)');
+    }
+    /* Descuento por duración de estadía: es tu tarifa (Rates & Availability → Discounts),
+       no un "deal" que compite por categoría — se apila con Genius/Mobile/reactivos.
+       Si varios umbrales califican a la vez, gana el más profundo (igual que Airbnb LOS). */
+    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights));
+    if(losCands.length){
+      losCands.sort((a,b)=>(b.minN||0)-(a.minN||0));
+      const winLos=losCands[0];
+      add(winLos,'tarifa por duración de estadía que configuraste — se apila con Genius/Mobile/deals');
+      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:'ya aplica un umbral de duración más profundo ('+winLos.name+')'}));
     }
     const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
       .sort((a,b)=>pct(b.pct)-pct(a.pct));
