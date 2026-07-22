@@ -281,6 +281,13 @@ sección 2, "Offset por canal").
 - `suggestedOffset()` no contaba la tarifa de aseo de Airbnb ni usaba una duración de
   estadía real (evaluaba siempre a 1 noche) — el offset sugerido salía más alto de lo
   necesario. Corregido con `state.avgNights` + `cleanFeePerNight()`, ver sección 2.
+- El `<details class="discounts-more">` del catálogo colapsado se cerraba solo con
+  cualquier cambio en la página — `renderChannelPages()` reconstruye `panel.innerHTML`
+  completo en cada `renderAll()` y nunca reaplicaba el atributo `open`. Fix: leer
+  `panel.querySelector('.discounts-more')?.open` ANTES de sobrescribir el innerHTML y
+  reinyectarlo en el HTML nuevo. Cualquier elemento con estado propio (`open`, scroll,
+  foco) que viva dentro de un bloque re-renderizado por innerHTML necesita este mismo
+  patrón de "leer antes de pisar" — no asumir que el estado del DOM sobrevive solo.
 
 ---
 
