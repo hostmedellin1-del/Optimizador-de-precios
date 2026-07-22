@@ -290,15 +290,14 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
    abrir el archivo directo con file:// bloquea imports ES por CORS en Chrome — usar
    un server local, ej. `npx serve` o `python3 -m http.server`, para probar en local). */
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown} from './src/catalog/discounts.js';
-import {pct, pct2} from './src/domain/percent.js';
+import {pct} from './src/domain/percent.js';
 import {f$ as f$base, fP} from './src/domain/format.js';
-import {
-  windowApplies, losApplies, combineChannel as combineChannelBase, worstNative as worstNativeBase,
-  payoutFactor, compute as computeBase, cleanFeePerNight, suggestedOffset as suggestedOffsetBase
-} from './src/domain/engine.js';
+import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
 import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
 import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
 import {simulateReservation} from './src/domain/simulate.js';
+import {quoteScenario} from './src/domain/quote.js';
+import {criticalDaysInWindow} from './src/domain/thresholds.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -343,14 +342,14 @@ let state = {
 };
 
 /* ================== ENGINE ================== */
-/* windowApplies/losApplies/payoutFactor/cleanFeePerNight no dependen de `state`,
-   se usan tal cual vienen del import. El resto son wrappers delgados que cierran
-   sobre `state`/WINDOWS para no tener que tocar cada punto de llamada de la UI —
-   la logica real vive en src/domain/engine.js (import arriba), esto es solo el
-   pegamento entre el `state` mutable de la UI y las funciones puras del dominio. */
+/* Fase 2.1: combineChannel()/worstNative() ya NO tienen wrapper propio aqui — nada en
+   index.html los llama directo; toda vista que necesita cotizar pasa por
+   quoteScenario() (quoteConfig(), mas abajo), que a su vez los usa internamente desde
+   src/domain/engine.js. Mantener un wrapper sin uso invitaba a que una vista nueva
+   reimplementara formula aparte en vez de usar la fuente unica. compute()/
+   suggestedOffset() siguen siendo wrappers delgados que cierran sobre `state`/WINDOWS
+   — la logica real vive en src/domain/engine.js. */
 const f$ = x => f$base(x, state.currency);
-function combineChannel(chId, daysOut, nights){ return combineChannelBase(state.discounts, chId, daysOut, nights); }
-function worstNative(chId){ return worstNativeBase(state.discounts, chId, WINDOWS); }
 function compute(){
   return computeBase({
     fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
@@ -359,6 +358,11 @@ function compute(){
 }
 function suggestedOffset(chId, effBase, netObjetivo){
   return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo});
+}
+/* config compartido para quoteScenario() — Fase 2.1: unico punto de armado, lo usan
+   renderMatrix()/renderChannelPages()/renderSim() para no duplicar sus campos. */
+function quoteConfig(){
+  return {channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings, fixedCost: state.fixedCost, varCost: state.varCost};
 }
 
 /* ================== ALERTS ================== */
@@ -404,7 +408,11 @@ function renderChannelPages(model){
     const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
     const avgN = Math.max(1, parseFloat(state.avgNights)||1);
-    const netHoy = (model.effBase*(1+pct2(c.offsetPct)/100)*(1-combineChannel(c.id,45,avgN).totalPct/100) + cleanFeePerNight(c,avgN))*payoutFactor(c);
+    /* Fase 2.1: netHoy ya no reimplementa la formula aparte (usaba totalPct redondeado
+       y omitia el techo/LM de PriceLabs) — sale de quoteScenario(), la fuente unica.
+       Dia 45 sigue siendo el mismo escenario de referencia que suggestedOffset()
+       ("fuera de ventanas tacticas cortas"), ver engine.js. */
+    const netHoy = quoteScenario({chId:c.id, days:45, nights:avgN, price:model.effBase}, quoteConfig()).payout;
     panel.innerHTML = `
       <section class="card">
         <div class="chpage-head">
@@ -427,19 +435,30 @@ function renderMatrix(model){
     <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${f$(model.floor)}</span></div>
     <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos de hoy</span></span><span class="mi-val">${f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
+  /* Fase 2.1: `nights` sigue siendo el valor UNICO que Dani configura para esta
+     vista (dato de negocio, no se toca) — lo que se corrigio es el DIA: antes se
+     usaba un punto medio (`mid`) fijo por ventana, que podia esconder el peor caso
+     real (ej. un early-bird que solo aplica desde el dia 90 dentro de "30+ dias").
+     Ahora se enumeran los dias criticos de la ventana y se usa el que de verdad da
+     el peor nativo — el resto de la fila (nativo/total/neto) se cotiza con
+     quoteScenario() en ESE MISMO dia, para que las columnas cuenten la misma
+     historia. Cero formula propia: quoteScenario es la unica fuente. */
   const nights=Math.max(1,parseFloat(state.matrixNights)||1);
+  const qConfig = quoteConfig();
   matrixBody.innerHTML = WINDOWS.map(w=>{
     const ceil=pct(state.ceilings[w.id]);
-    const mid=Math.min(w.lo+1,w.hi);
-    const per=state.channels.map(c=>({c,r:combineChannel(c.id,mid,nights)}));
-    const maxN=Math.max(0,...per.map(p=>p.r.totalPct));
-    const maxCh=(per.find(p=>p.r.totalPct===maxN)||{}).c;
-    const breach=maxN>ceil;
-    const lm=breach?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-    const netPer=per.map(p=>({
-      c:p.c,
-      netV:model.effBase*(1+pct2(p.c.offsetPct)/100)*(1-lm/100)*(1-p.r.totalPct/100)*payoutFactor(p.c)
-    }));
+    const daysGrid = criticalDaysInWindow(state.discounts, w);
+    let worstDay=daysGrid[0], worstMaxN=-1;
+    daysGrid.forEach(d=>{
+      const probe = quoteScenario({chId:state.channels[0].id, days:d, nights, price:model.effBase}, qConfig);
+      if(probe.maxNAtScenario>worstMaxN){worstMaxN=probe.maxNAtScenario; worstDay=d;}
+    });
+    const per=state.channels.map(c=>({c,q:quoteScenario({chId:c.id, days:worstDay, nights, price:model.effBase}, qConfig)}));
+    const maxN=per[0].q.maxNAtScenario;
+    const maxCh=per[0].q.worstChannelAtScenario;
+    const breach=per[0].q.breach;
+    const lm=per[0].q.lm;
+    const netPer=per.map(p=>({c:p.c, netV:p.q.payout}));
     const worst = netPer.reduce((a,b)=>b.netV<a.netV?b:a, netPer[0]);
     /* Veredicto en una frase: primero el techo (bloquea el LM de PriceLabs), luego el
        piso (vender bajo costo), luego el objetivo de margen — en ese orden de gravedad,
@@ -458,9 +477,9 @@ function renderMatrix(model){
       vLvl='ok'; vTag='RENTABLE EN TODOS';
       vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worst.c.name}, con ${f$(worst.netV)}.`;
     }
-    const natCol=per.map(p=>`<span class="${p.r.totalPct>ceil+0.5?'bad':''}">${p.c.name}: ${fP(p.r.totalPct)}${p.r.applied.length?' <span style="color:var(--faint)">('+p.r.applied.map(a=>a.name.split(' ')[0]).join('+')+')</span>':''}</span>`).join('');
+    const natCol=per.map(p=>`<span class="${p.q.nativoPct>ceil+0.5?'bad':''}">${p.c.name}: ${fP(p.q.nativoPct)}${p.q.applied.length?' <span style="color:var(--faint)">('+p.q.applied.map(a=>a.name.split(' ')[0]).join('+')+')</span>':''}</span>`).join('');
     const totCol=per.map(p=>{
-      const t=100*(1-(1-lm/100)*(1-p.r.totalPct/100));
+      const t=100*(1-(1-lm/100)*p.q.nativoFactor); // exacto (factor), no totalPct redondeado
       return `<span class="${t>ceil+0.5?'bad':'ok'}">${p.c.name}: ${fP(t)}</span>`;
     }).join('');
     const netCol=netPer.map(p=>{
@@ -473,7 +492,7 @@ function renderMatrix(model){
       <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${vMsg}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
-          <div class="hint" style="margin:6px 0 2px;">LM de PriceLabs en esta ventana: <strong>${breach?'0% ⚠':fP(lm)}</strong></div>
+          <div class="hint" style="margin:6px 0 2px;">Peor caso real dentro de esta ventana: <strong>día ${worstDay}</strong>, ${nights} noche${nights===1?'':'s'} · LM de PriceLabs: <strong>${breach?'0% ⚠':fP(lm)}</strong></div>
           <div class="hint" style="margin:6px 0 2px;">Nativo combinado (sin LM):</div>
           <div class="cell-ch">${natCol}</div>
           <div class="hint" style="margin:6px 0 2px;">Total visto por el huésped (nativo + LM):</div>
@@ -501,10 +520,7 @@ function renderSim(model){
   const chId=simChannel.value||'airbnb';
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
-  const s = simulateReservation(
-    {channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings, fixedCost: state.fixedCost, varCost: state.varCost},
-    {price, chId, days, nights}
-  );
+  const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
   const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, totalDisc} = s;
   let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;

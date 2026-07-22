@@ -5,6 +5,12 @@
    reimplementar estos pasos; si falta un campo, se agrega aqui, no se recalcula
    aparte.
 
+   Fase 2.1 (jul 2026): el techo/breach/LM y el peor-canal-en-el-escenario se deciden
+   sobre `factor` EXACTO (combineChannel().factor), nunca sobre `totalPct` (redondeado
+   a 1 decimal, solo para texto). El campo `nativoPct` que devuelve esta funcion sigue
+   siendo el redondeado (para mensajes/UI); quien necesite matematica financiera exacta
+   debe usar `nativoFactor` (1-factor = fraccion real que aplica el canal).
+
    Deliberadamente NO to ca en esta Fase 2 (fuera de alcance, ver reglas del
    encargo):
    - Reglas de negocio OTA (combineChannel: prioridades Airbnb, stacking Booking,
@@ -39,12 +45,16 @@ export function quoteScenario(scenario, config){
      de un solo canal. */
   const w = windows.find(win=>days>=win.lo && days<=win.hi) || windows[windows.length-1];
   const ceil = pct(ceilings[w.id]);
-  const perChannelNative = channels.map(c=>({c, totalPct: combineChannel(discounts, c.id, days, nights).totalPct}));
-  const maxNAtScenario = Math.max(0, ...perChannelNative.map(p=>p.totalPct));
-  const worstChannelAtScenario = perChannelNative.find(p=>p.totalPct===maxNAtScenario)?.c;
+  /* Fase 2.1: factor EXACTO, no totalPct (redondeado a 1 decimal para UI) — decidir
+     techo/breach/LM con el valor redondeado puede licuar o proteger de mas por
+     ruido de punto flotante, no por la realidad del descuento. */
+  const perChannelNative = channels.map(c=>({c, factor: combineChannel(discounts, c.id, days, nights).factor}));
+  const minFactorAtScenario = Math.min(1, ...perChannelNative.map(p=>p.factor));
+  const maxNAtScenario = (1-minFactorAtScenario)*100;
+  const worstChannelAtScenario = perChannelNative.find(p=>p.factor===minFactorAtScenario)?.c;
   const breach = maxNAtScenario > ceil;
   const lm = breach ? 0 : Math.max(0, 100*(1-(1-ceil/100)/(1-maxNAtScenario/100)));
-  if(breach) assumptions.push(`Techo excedido en ${w.label}: ${worstChannelAtScenario?.name||'un canal'} ya suma ${maxNAtScenario}% de nativo (> techo ${ceil}%) a estos dias/noches — PriceLabs no puede aplicar LM adicional aqui.`);
+  if(breach) assumptions.push(`Techo excedido en ${w.label}: ${worstChannelAtScenario?.name||'un canal'} ya suma ${maxNAtScenario.toFixed(1)}% de nativo (> techo ${ceil}%) a estos dias/noches — PriceLabs no puede aplicar LM adicional aqui.`);
 
   const priceAfterLm = price*(1-lm/100);
 
@@ -87,7 +97,8 @@ export function quoteScenario(scenario, config){
 
   return {
     chId, ch, days, nights, w, ceil, maxNAtScenario, worstChannelAtScenario, breach, lm,
-    nativoPct: r.totalPct,
+    nativoPct: r.totalPct, // SOLO presentacion (redondeado) — para matematica financiera usar nativoFactor
+    nativoFactor: r.factor, // exacto — 1-nativoFactor es la fraccion real que aplica el canal
     price, priceAfterLm, off, priceAfterOffset,
     applied: r.applied, ignored: r.ignored, appliedSteps,
     guest, feePerNight, feeTotal, guestWithFees,

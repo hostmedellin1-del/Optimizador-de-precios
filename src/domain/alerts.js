@@ -7,33 +7,56 @@
    dar falso negativo (neto real bajo costo, cero alerta) — caso confirmado:
    Booking 100/19%/18%/6%/costo 64 (neto real 61.56) no generaba alerta.
 
-   PENDIENTE (fuera de alcance de esta fase, documentado para no ocultarlo): el
-   bloque de alertas DURACIÓN (mas abajo) TODAVIA reimplementa una formula propia
-   (offset+nativo+aseo+payoutFactor) en vez de usar quoteScenario — no se toco en
-   esta pasada para mantener acotado el cambio a lo pedido (worstNative + formula
-   unica de PISO/Simulador); es la siguiente duplicacion a eliminar.
+   Fase 2.1 (jul 2026): eliminado el punto medio `Math.min(w.lo+1,w.hi)` — una
+   alerta que se presenta como "30+ dias" evaluaba SIEMPRE el dia 31, ignorando
+   reglas activas desde el dia 60/90/lo que sea (ej. early-bird de 90 dias quedaba
+   invisible dentro de su propia ventana). Ahora se enumeran TODOS los dias/noches
+   criticos DENTRO de cada ventana (criticalDaysInWindow + criticalNights) y se usa
+   el peor escenario real encontrado — el mensaje indica explicitamente el dia/noche
+   exacto que determino la alerta. El bloque DURACIÓN tambien migro a quoteScenario()
+   (antes reimplementaba offset+nativo+aseo+payoutFactor con totalPct redondeado).
 
    config = {discounts, channels, ceilings, marketWindow, marketBase, windows, chTab} */
 import {pct, pct2} from './percent.js';
 import {fP, f$} from './format.js';
 import {combineChannel, worstNative, payoutFactor, cleanFeePerNight} from './engine.js';
 import {quoteScenario} from './quote.js';
+import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 
 export function buildAlerts(config, model){
   const {discounts, channels, ceilings, windows, chTab} = config;
   const A=[];
   const on = id=>{const d=discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
-  /* ceiling breaches & floor breaches per window — misma granularidad de siempre
-     (un dia representativo `mid` por ventana, ya que el techo ES una politica por
-     ventana), pero cotizado con quoteScenario() en vez de una formula aparte. */
+  /* TECHO/PISO por ventana: se enumeran TODOS los dias criticos de la ventana x
+     TODAS las noches criticas x TODOS los canales — sin punto medio, sin promedio.
+     TECHO es una politica compartida (un solo techo por ventana), asi que basta
+     encontrar el (dia,noche,canal) que da el nativo mas profundo en toda la
+     ventana. PISO es por canal (cada canal puede tener su propio peor dia/noche
+     real dentro de la misma ventana), asi que se rastrea el peor payout POR canal. */
+  const nightsGrid = criticalNights(discounts);
   windows.forEach(w=>{
-    const mid=Math.min(w.lo+1,w.hi);
-    const quotes = channels.map(c=>quoteScenario({chId:c.id, days:mid, nights:1, price:model.effBase}, config));
-    const worst = quotes.reduce((a,b)=>b.maxNAtScenario>a.maxNAtScenario?b:a, quotes[0]);
-    if(worst && worst.breach) A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label}: solo los nativos de ${worst.ch.name} ya suman ${fP(worst.maxNAtScenario)} y tu techo es ${fP(worst.ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
-    quotes.forEach(q=>{
+    const daysGrid = criticalDaysInWindow(discounts, w);
+    let worstTecho = null;
+    const worstPisoByCh = new Map(channels.map(c=>[c.id, null]));
+    daysGrid.forEach(d=>{
+      nightsGrid.forEach(n=>{
+        channels.forEach(c=>{
+          const q = quoteScenario({chId:c.id, days:d, nights:n, price:model.effBase}, config);
+          if(!worstTecho || q.maxNAtScenario>worstTecho.q.maxNAtScenario) worstTecho={q,d,n};
+          const cur = worstPisoByCh.get(c.id);
+          if(!cur || q.payout<cur.q.payout) worstPisoByCh.set(c.id, {q,d,n});
+        });
+      });
+    });
+    if(worstTecho && worstTecho.q.breach){
+      const {q,d,n} = worstTecho;
+      A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label} (día ${d}, ${n} noche${n===1?'':'s'}): solo los nativos de ${q.ch.name} ya suman ${fP(q.maxNAtScenario)} y tu techo es ${fP(q.ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
+    }
+    worstPisoByCh.forEach(entry=>{
+      if(!entry) return;
+      const {q,d,n} = entry;
       if(model.base>0 && q.payout < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$(q.payout, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
+        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} (día ${d}, ${n} noche${n===1?'':'s'}) · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$(q.payout, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
     });
   });
   /* config contradictions */
@@ -60,13 +83,15 @@ export function buildAlerts(config, model){
     for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
       A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a activarse antes. Gana el umbral más profundo (${sorted[i+1].name}) cuando ambos aplican — revisa la escala para que suba con la anticipación.`});
   }
-  const bkStack=combineChannel(discounts,'booking',1,1).totalPct;
+  const bkStack=(1-combineChannel(discounts,'booking',1,1).factor)*100; // exacto, no totalPct redondeado
   if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',tab:'ch-booking',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
-  /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí. */
+  /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí,
+     vía quoteScenario() — ya no reimplementa offset+nativo+aseo+payoutFactor aparte
+     (esa formula paralela usaba totalPct redondeado y no incluia el techo/LM). */
   channels.forEach(c=>{
     discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
-      const r = combineChannel(discounts, c.id, 45, d.minN||1);
-      const netLos = (model.effBase*(1+pct2(c.offsetPct)/100)*(1-r.totalPct/100) + cleanFeePerNight(c, d.minN||1))*payoutFactor(c);
+      const q = quoteScenario({chId:c.id, days:45, nights:d.minN||1, price:model.effBase}, config);
+      const netLos = q.payout;
       if(netLos < model.cost-0.5)
         A.push({lvl:'bad',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos, config.currency)} por noche, bajo tu costo de ${f$(model.cost, config.currency)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
       else if(netLos < model.net)

@@ -29,12 +29,18 @@ test('evidencia — cotizar al Piso, en el peor escenario real de CADA canal, nu
   for (const c of channels) {
     // Encuentra el (dia,noche) real que produce el peor nativo de ESTE canal —
     // el mismo par que worstNative() ya usa internamente para fijar el Piso.
-    let worstPct = -1, worstDay = 0, worstNight = 1;
+    // Fase 2.1: comparar por `factor` EXACTO, no por `totalPct` (redondeado a 1
+    // decimal solo para UI) — comparar contra el redondeado da falsos negativos
+    // aqui (ej. Booking real da factor=0.81 exacto, totalPct redondea a 19, pero
+    // worstNative() ahora devuelve el 19% exacto sin redondeo de por medio, que
+    // no es bit-identico a Math.round(...)).
+    let worstFactor = 1, worstDay = 0, worstNight = 1;
     for (const d of days) for (const n of nights) {
-      const t = combineChannel(discounts, c.id, d, n).totalPct;
-      if (t > worstPct) { worstPct = t; worstDay = d; worstNight = n; }
+      const f = combineChannel(discounts, c.id, d, n).factor;
+      if (f < worstFactor) { worstFactor = f; worstDay = d; worstNight = n; }
     }
-    assert.equal(worstPct, worstNative(discounts, c.id, windows), `worstNative(${c.id}) debe coincidir con el maximo encontrado por la misma enumeracion`);
+    const worstPct = (1-worstFactor)*100;
+    assert.ok(Math.abs(worstPct - worstNative(discounts, c.id, windows)) < 1e-9, `worstNative(${c.id}) debe coincidir (exacto) con el maximo encontrado por la misma enumeracion`);
     // Cotiza AL PISO, en ese escenario, con techo=0 en todas las ventanas: fuerza
     // lm=0 siempre (breach garantizado salvo que el nativo tambien sea 0, caso en
     // que la formula igual da 0) — aisla el Piso de la dinamica del LM. OJO: un

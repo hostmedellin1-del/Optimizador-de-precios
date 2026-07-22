@@ -53,3 +53,15 @@ export function criticalNights(discounts){
   });
   return [...nights].filter(n=>n>=1).sort((a,b)=>a-b);
 }
+
+/* Fase 2.1: los dias criticos DENTRO de una ventana UI concreta (ej. "30+ dias"),
+   para reemplazar el punto medio `Math.min(w.lo+1,w.hi)` que usaban alerts.js y
+   renderMatrix(). Reusa criticalDays() pasandole [w] (asi w.lo/w.hi/w.lo-1/w.hi+1
+   entran al conjunto) y recorta al rango cerrado [w.lo,w.hi] — el resultado es
+   exactamente "los puntos donde el peor caso DENTRO de esta ventana puede vivir":
+   los bordes de la ventana misma, mas cualquier frontera de descuento que caiga
+   adentro (ej. el early-bird de 90 dias dentro de "30+ dias" — antes invisible
+   para el punto medio 31). */
+export function criticalDaysInWindow(discounts, w){
+  return criticalDays(discounts, [w]).filter(d=>d>=w.lo && d<=w.hi);
+}

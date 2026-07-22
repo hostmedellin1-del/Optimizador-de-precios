@@ -10,8 +10,15 @@
    de esta Fase; combineChannel() en si (las reglas de negocio por canal) no se
    toca — eso sigue fuera de alcance hasta que confirmes cuentas reales (Fase 4).
 
-   Bug conocido que esta version TODAVIA tiene (fuera de alcance de Fase 2, no es
-   un bug sino una eleccion de referencia — A21, hallazgo adicional, no critico):
+   Fase 2.1 (jul 2026): purga de `totalPct` (redondeado a 1 decimal, solo para UI)
+   de TODO calculo financiero. worstNative(), compute().base y suggestedOffset()
+   ahora comparan/dividen sobre `factor` EXACTO. Caso real que esto corrige: Genius
+   0.1% + Mobile 50% en Booking da 50.05% exacto, pero el redondeo de totalPct daba
+   50.0% por ruido de punto flotante — un Piso dimensionado con ese 50.0% netea por
+   debajo del costo real (ver tests/precision.test.js).
+
+   Bug conocido que esta version TODAVIA tiene (fuera de alcance, no es un bug sino
+   una eleccion de referencia — A21, hallazgo adicional, no critico):
    - compute().base evalua siempre a 45 dias / 1 noche como escenario de referencia
      "fuera de ventanas tacticas cortas" — es una decision de negocio documentada,
      no un error de muestreo; no se toca sin que Dani lo pida explicitamente.
@@ -112,16 +119,24 @@ export function combineChannel(discounts, chId, daysOut, nights){
    se pierda un maximo real, solo evalua puntos de mas que son irrelevantes para
    ese canal. */
 export function worstNative(discounts, chId, windows){
-  let worst=0;
+  /* Fase 2.1: la comparacion usa `factor` EXACTO (no `totalPct`, que viene redondeado
+     a 1 decimal para presentacion). Ejemplo real que esto corrige: Genius 0.1% +
+     Mobile 50% en Booking da factor=0.4995 (50.05% exacto), pero
+     Math.round((1-0.4995)*1000)/10 da 50.0 por ruido de punto flotante (500.499999...
+     redondea hacia abajo) — usar ese 50.0 para dimensionar el Piso lo deja corto
+     (netea por debajo del costo). El valor devuelto tambien es el % EXACTO derivado
+     del factor minimo, no un totalPct redondeado — worstNative() alimenta compute().floor
+     y la alerta REALIDAD, ambos calculos financieros. */
+  let worstFactor = 1;
   const days = criticalDays(discounts, windows);
   const nights = criticalNights(discounts);
   days.forEach(d=>{
     nights.forEach(n=>{
-      const t = combineChannel(discounts, chId, d, n).totalPct;
-      if(t>worst) worst=t;
+      const f = combineChannel(discounts, chId, d, n).factor;
+      if(f<worstFactor) worstFactor=f;
     });
   });
-  return worst;
+  return (1-worstFactor)*100;
 }
 
 /* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas
@@ -162,7 +177,8 @@ export function compute(config){
   /* base: pushed price that nets target on every channel using its CONSTANT natives (window natives are tactical) */
   let base=0, baseCh='';
   channels.forEach(c=>{
-    const cn = combineChannel(discounts, c.id, 45, 1).totalPct/100; /* 45 días: fuera de ventanas tácticas cortas */
+    /* Fase 2.1: factor EXACTO, no totalPct/100 (redondeado, ver worstNative arriba). */
+    const cn = 1-combineChannel(discounts, c.id, 45, 1).factor; /* 45 días: fuera de ventanas tácticas cortas */
     const pf = payoutFactor(c);
     const p = net/((1-cn)*pf);
     if(p>base){base=p;baseCh=c.name;}
@@ -181,7 +197,8 @@ export function suggestedOffset(config){
   const c = channels.find(x=>x.id===chId);
   if(!c || effBase<=0) return 0;
   const avgN = Math.max(1, parseFloat(config.avgNights)||1);
-  const nat = combineChannel(discounts, chId, 45, avgN).totalPct/100; /* nativo a estadía promedio, sin ventanas tácticas cortas */
+  /* Fase 2.1: factor EXACTO, no totalPct/100 (redondeado). */
+  const nat = 1-combineChannel(discounts, chId, 45, avgN).factor; /* nativo a estadía promedio, sin ventanas tácticas cortas */
   const pf = payoutFactor(c);
   const feePN = cleanFeePerNight(c, avgN);
   const denom = effBase*(1-nat);
