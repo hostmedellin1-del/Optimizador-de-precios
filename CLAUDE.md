@@ -99,7 +99,26 @@ documentado en la UI (pestaña de cada canal) — no quitar esa advertencia.
 `suggestedOffset(chId, effBase, netObjetivo)` calcula matemáticamente el % a subir/bajar
 en PriceLabs para ese canal específico, dado un Base uniforme, para netear el objetivo.
 Verificado con pruebas: aplicar el offset sugerido siempre da exactamente el neto
-objetivo (no es una aproximación).
+objetivo (no es una aproximación). Se evalúa a `state.avgNights` (estadía promedio, no a
+1 noche fija) — así el nativo incluye descuentos por duración que la reserva típica sí
+califica, y la tarifa de aseo de Airbnb (fija por reserva) se diluye correctamente por
+noche vía `cleanFeePerNight(c, nights)`. Sin `avgNights`, el offset sugerido para Airbnb
+salía más alto de lo necesario (ignoraba que el aseo ya aporta ingreso).
+
+### El Piso SÍ debe incluir el Offset por canal — el Base NO (jul 2026, corregido)
+`compute()` calcula el `floor` (Min Price) con el offset de cada canal en el denominador:
+`cost / ((1+offset)*(1-nativoPeor)*payoutFactor)`. Antes NO lo incluía — con offset
+positivo eso solo sobre-protegía (inofensivo), pero con offset **negativo** (bajar precio
+en un canal para competir) el piso dejaba de proteger de verdad: un canal podía vender
+bajo costo estando "sobre el piso" en apariencia. Verificado: Booking con offset −15%
+neteaba 46 contra costo 54 antes del fix; después, el piso sube a 103 y netea exacto 54.
+Offset ≤ −100% da `Infinity` (se muestra "—", no rompe).
+
+El `base` (Base Price) NO debe llevar el offset — es intencional, no un descuido: el Base
+es "el precio uniforme SIN offsets"; `suggestedOffset` es justamente lo que dice cuánto
+offset poner ENCIMA de ese Base. Meter el offset en el Base duplicaría el concepto y
+rompería la separación Base/Offset que es la razón de ser de esta herramienta (ver
+sección 2, "Offset por canal").
 
 ---
 
@@ -159,31 +178,35 @@ objetivo (no es una aproximación).
 ## 4. Arquitectura técnica del archivo actual
 
 - `state` — objeto único: `fixedCost`, `varCost`, `margin`, `marketWindow`, `marketBase`,
-  `currency`, `matrixNights`, `channels[]` (cada uno con `comm`, `bankFeePct`,
-  `offsetPct`), `discounts[]` (catálogo completo, cada uno con `ch`/`kind`/`group`/`prio`/
-  ventana o duración), `ceilings` (techo % por ventana).
+  `avgNights` (estadía promedio, jul 2026), `currency`, `matrixNights`, `channels[]` (cada
+  uno con `comm`, `bankFeePct`, `offsetPct`), `discounts[]` (catálogo completo, cada uno
+  con `ch`/`kind`/`group`/`prio`/ventana o duración), `ceilings` (techo % por ventana).
 - `combineChannel(chId, daysOut, nights)` — el motor central. Aplica las reglas de la
   sección 2 según el canal. Devuelve `{factor, totalPct, applied[], ignored[]}` —
   `applied`/`ignored` traen el porqué de cada decisión (para el simulador y las alertas).
+  `totalPct` se redondea a 1 decimal (`Math.round((1-factor)*1000)/10`) para no arrastrar
+  ruido de punto flotante (daba 18.999999… en vez de 19).
 - `payoutFactor(c)` — `1 - comisión% - bancaria%` (ver corrección de la sección 2).
 - `worstNative(chId)` — escanea TODAS las ventanas Y todas las duraciones con descuento
   por LOS activo, para encontrar el peor caso real. (Bug corregido: antes solo probaba 1
   noche y los descuentos por duración quedaban invisibles para el piso.)
-- `compute()` — costo total, neto objetivo, piso (Min Price PriceLabs, protege contra el
-  peor canal + peor descuento), base (Base Price PriceLabs, para netear objetivo en todos
-  con sus nativos constantes).
-- `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2.
+- `compute()` — costo total, neto objetivo, piso (Min Price PriceLabs — incluye el offset
+  de cada canal, ver sección 2), base (Base Price PriceLabs, SIN offset — para netear
+  objetivo en todos con sus nativos constantes).
+- `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2. Usa `state.avgNights`.
+- `cleanFeePerNight(c, nights)` — tarifa de aseo de Airbnb (fija por reserva) diluida por
+  noche según la duración dada; devuelve 0 para canales sin aseo. La usan `suggestedOffset`,
+  el "neto estimado" de la pestaña de canal, la alerta DURACIÓN, y el Simulador.
 - Tarifa de aseo de Airbnb (`cleanFeeShort`/`cleanFeeLong` en `state.channels` — solo el
-  canal `airbnb` tiene estos campos, no se agregaron a Booking/Expedia/Directo porque no
-  se pidieron ahí). Fija por reserva, no por noche: 1–2 noches usa `cleanFeeShort`, 3+
-  usa `cleanFeeLong`. Airbnb no la descuenta con los promos de noche, pero SÍ cobra
-  comisión sobre ella (modelo Host-Only Fee). Implementada SOLO en el Simulador
-  (`renderSim`), que prorratea la tarifa entre las noches de esa reserva concreta para
-  poder compararla contra el costo/noche — Resumen/Comparación NO la incluyen todavía
-  porque son modelos agregados por noche sin una reserva puntual con noches fijas; no
-  construir eso sin que Dani lo pida.
-- Pestañas (`TABS` array + `.tab-panel[data-tab=...]`): Resumen, `ch-airbnb`,
-  `ch-booking`, `ch-expedia`, `ch-direct`, Comparación, Simulador.
+  canal `airbnb` tiene estos campos). Fija por reserva, no por noche: 1–2 noches usa
+  `cleanFeeShort`, 3+ usa `cleanFeeLong`. Airbnb no la descuenta con los promos de noche,
+  pero SÍ cobra comisión sobre ella (modelo Host-Only Fee). El Piso/Base de Resumen NO la
+  incluyen todavía (son modelos agregados por noche, sin reserva puntual) — sí la incluyen
+  `suggestedOffset`, el neto estimado por canal y el Simulador, todos evaluados a
+  `avgNights`.
+- Pestañas (`TABS` array + `.tab-panel[data-tab=...]`): Resumen, Simulador (label
+  "¿Cómo se calcula?", 2ª posición — ver sección 3), `ch-airbnb`, `ch-booking`,
+  `ch-expedia`, `ch-direct`, Comparación.
 - Storage: prefijo `v2:` + slug del nombre de unidad. `shared:false` siempre (datos
   personales, no compartidos).
 
@@ -236,6 +259,13 @@ objetivo (no es una aproximación).
   congelados sin avisar nada en la UI. `renderAll()` ya reconstruye el catálogo completo
   (vía `renderChannelPages()`), así que no hace falta ninguna función aparte — se quitó la
   llamada rota, no se creó `renderCatalog()`.
+- El Piso (`compute()`) no incluía el offset por canal en el denominador — con offset
+  negativo (bajar precio para competir en un canal) el piso dejaba de proteger de verdad
+  contra vender bajo costo. Ver sección 2 para la fórmula corregida y por qué el Base NO
+  debe llevar el mismo fix (es intencional que el Base no tenga offset).
+- `suggestedOffset()` no contaba la tarifa de aseo de Airbnb ni usaba una duración de
+  estadía real (evaluaba siempre a 1 noche) — el offset sugerido salía más alto de lo
+  necesario. Corregido con `state.avgNights` + `cleanFeePerNight()`, ver sección 2.
 
 ---
 
