@@ -317,6 +317,9 @@ function defaultDiscounts(){ return [
   {id:'ab_los2', ch:'airbnb', name:'Semanal (≥7 noches)',        kind:'los', group:'promo', prio:3, pct:10, minN:7,  on:false, lockN:true, note:'7 noches fijo — el nombre "Semanal" depende de ese número; % sí ajustable'},
   {id:'ab_los3', ch:'airbnb', name:'Quincenal (≥14 noches)',     kind:'los', group:'promo', prio:3, pct:15, minN:14, on:false, lockN:true, note:'14 noches fijo — el nombre "Quincenal" depende de ese número; % sí ajustable'},
   {id:'ab_los4', ch:'airbnb', name:'Larga estadía (≥28 noches)', kind:'los', group:'promo', prio:3, pct:25, minN:28, on:true,  lockN:true, note:'activo hoy: ≥28 noches → 25% (umbral real de "estadía larga" en Airbnb, fijo)'},
+  {id:'ab_los5', ch:'airbnb', name:'Duración personalizada A', kind:'los', group:'promo', prio:3, pct:0, minN:5,  on:false, note:'noches y % completamente editables, ajusta o apaga'},
+  {id:'ab_los6', ch:'airbnb', name:'Duración personalizada B', kind:'los', group:'promo', prio:3, pct:0, minN:10, on:false, note:'noches y % completamente editables, ajusta o apaga'},
+  {id:'ab_los7', ch:'airbnb', name:'Duración personalizada C', kind:'los', group:'promo', prio:3, pct:0, minN:21, on:false, note:'noches y % completamente editables, ajusta o apaga'},
   {id:'ab_eb1',  ch:'airbnb', name:'Early-bird (1 mes / ≥30 días)', kind:'window', group:'promo', prio:4, pct:10, from:30, to:9999, on:false, lockN:true, note:'30 días fijo (1 mes) — % sí ajustable'},
   {id:'ab_eb2',  ch:'airbnb', name:'Early-bird (2 meses / ≥60 días)', kind:'window', group:'promo', prio:4, pct:15, from:60, to:9999, on:false, lockN:true, note:'60 días fijo (2 meses) — % sí ajustable'},
   {id:'ab_eb3',  ch:'airbnb', name:'Early-bird (3 meses / ≥90 días)', kind:'window', group:'promo', prio:4, pct:20, from:90, to:9999, on:false, lockN:true, note:'90 días fijo (3 meses) — % sí ajustable'},
@@ -855,8 +858,20 @@ unitList.addEventListener('change',async e=>{
     if(r&&r.value){const d=JSON.parse(r.value);
       state={...state,...d};
       /* merge new catalog entries added after save */
+      const defaults=defaultDiscounts();
+      const defById=Object.fromEntries(defaults.map(x=>[x.id,x]));
       const have=new Set(state.discounts.map(x=>x.id));
-      defaultDiscounts().forEach(x=>{if(!have.has(x.id))state.discounts.push(x);});
+      defaults.forEach(x=>{if(!have.has(x.id))state.discounts.push(x);});
+      /* re-sincroniza el umbral de los descuentos bloqueados (lockN) al valor del catálogo:
+         si se guardaron antes de que existiera el candado, podían traer un minN/from viejo
+         que ya no es editable en la UI y se quedaría mostrando un número incorrecto para siempre */
+      state.discounts.forEach(x=>{
+        const def=defById[x.id];
+        if(def && def.lockN){
+          if(def.kind==='los') x.minN=def.minN;
+          else if(def.kind==='window'){ x.from=def.from; x.to=def.to; }
+        }
+      });
       /* merge new channel fields (offsetPct, bankFeePct) added after save */
       state.channels = CHANNELS.map(def=>{
         const saved = (d.channels||[]).find(x=>x.id===def.id);
