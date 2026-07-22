@@ -298,7 +298,7 @@ import {
 } from './src/domain/engine.js';
 import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
 import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
-import {simulateReservation} from './src/domain/simulate-legacy.js';
+import {simulateReservation} from './src/domain/simulate.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -490,12 +490,12 @@ function renderAlerts(model){
   alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${tabLabel(a.tab)} →</button>`:''}</span></div>`).join('');
 }
 /* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
-   src/domain/simulate-legacy.js (import arriba) — aqui solo se arma el HTML del
-   waterfall a partir de lo que esa funcion devuelve. Fase 1: mismo resultado que
-   antes de la extraccion; el bug conocido (LM/maxN calculados con el punto medio
-   de la ventana y nights=1, no con los days/nights reales del escenario) sigue ahi
-   a proposito, documentado en simulate-legacy.js, para poder probarlo con un test
-   antes de arreglarlo en Fase 2. */
+   src/domain/simulate.js (import arriba), que a su vez consume quoteScenario()
+   — aqui solo se arma el HTML del waterfall a partir de lo que esa funcion
+   devuelve. Fase 2: el LM ya usa los days/nights REALES del escenario, no un
+   punto medio sintetico de ventana ni nights=1 fijo (bug P4, corregido).
+   src/domain/simulate-legacy.js se deja intacto como registro historico del bug
+   — ya no lo usa index.html. */
 function renderSim(model){
   const price=parseFloat(simPrice.value)||model.effBase||0;
   const chId=simChannel.value||'airbnb';

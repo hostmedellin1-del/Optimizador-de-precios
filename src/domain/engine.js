@@ -2,19 +2,23 @@
    Fase 1 de la auditoria tecnica (jul 2026): extraido verbatim de index.html, con UN
    solo tipo de cambio de firma (nunca de resultado): las funciones ya no leen `state`
    de un global implicito — reciben `discounts`/`channels`/config como parametros
-   explicitos, para ser puras e importables desde tests. Para la misma combinacion de
-   argumentos equivalentes, el resultado numerico es IDENTICO al de index.html antes
-   de esta extraccion.
+   explicitos, para ser puras e importables desde tests.
 
-   Bugs conocidos que esta version TODAVIA tiene (documentados en la auditoria,
-   se corrigen en Fase 2 — aqui solo se relocaliza el codigo, no se arregla nada):
-   - worstNative() muestrea un unico punto medio por WINDOWS; no evalua from/to
-     exactos ni umbrales de 60/90 dias fuera del bucket muestreado (P1).
-   - compute().base evalua siempre a 45 dias / 1 noche, una fecha de referencia
-     arbitraria (A21).
+   Fase 2 (jul 2026): worstNative() ya NO muestrea un unico punto medio por ventana
+   — enumera exhaustivamente los puntos discretos donde combineChannel() puede
+   cambiar (ver src/domain/thresholds.js). Es la UNICA correccion de comportamiento
+   de esta Fase; combineChannel() en si (las reglas de negocio por canal) no se
+   toca — eso sigue fuera de alcance hasta que confirmes cuentas reales (Fase 4).
+
+   Bug conocido que esta version TODAVIA tiene (fuera de alcance de Fase 2, no es
+   un bug sino una eleccion de referencia — A21, hallazgo adicional, no critico):
+   - compute().base evalua siempre a 45 dias / 1 noche como escenario de referencia
+     "fuera de ventanas tacticas cortas" — es una decision de negocio documentada,
+     no un error de muestreo; no se toca sin que Dani lo pida explicitamente.
 */
 import {pct, pct2} from './percent.js';
 import {fP} from './format.js';
+import {criticalDays, criticalNights} from './thresholds.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -99,20 +103,21 @@ export function combineChannel(discounts, chId, daysOut, nights){
   return {factor, totalPct: Math.round((1-factor)*1000)/10, applied, ignored};
 }
 
-/* Worst-case native per channel: escanea ventanas de reserva Y duraciones de estadía.
-   BUG CONOCIDO (P1 de la auditoria, sin corregir todavia en esta Fase 1): solo prueba
-   un `mid` por WINDOWS (Math.min(w.lo+1,w.hi)) y los minN de descuentos LOS activos —
-   no evalua from/to exactos ni umbrales de 60/90 dias que caigan fuera de ese muestreo.
-   `windows` es el catalogo de ventanas (equivalente a WINDOWS). */
+/* Worst-case native per channel — FASE 2: enumeracion exhaustiva de dias y noches
+   criticos (ver thresholds.js), no un muestreo por punto medio. `windows` se sigue
+   aceptando por compatibilidad de firma y para incluir sus limites en la
+   enumeracion (ver thresholds.js), aunque combineChannel() no dependa de WINDOWS
+   directamente. `discounts` se pasa completo (no solo los del canal `chId`) por
+   simplicidad: es un superconjunto seguro de puntos criticos — no puede hacer que
+   se pierda un maximo real, solo evalua puntos de mas que son irrelevantes para
+   ese canal. */
 export function worstNative(discounts, chId, windows){
   let worst=0;
-  const losNights = discounts.filter(d=>d.ch===chId && d.kind==='los' && d.on)
-    .map(d=>(d.minN||1));
-  const nightsToTest = [1, ...losNights];
-  windows.forEach(w=>{
-    const mid = Math.min(w.lo+1, w.hi);
-    nightsToTest.forEach(n=>{
-      const t = combineChannel(discounts, chId, mid, n).totalPct;
+  const days = criticalDays(discounts, windows);
+  const nights = criticalNights(discounts);
+  days.forEach(d=>{
+    nights.forEach(n=>{
+      const t = combineChannel(discounts, chId, d, n).totalPct;
       if(t>worst) worst=t;
     });
   });

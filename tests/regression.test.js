@@ -1,9 +1,16 @@
 /* Fase 1 de la auditoria tecnica (jul 2026): tests de regresion que reproducen los
    bugs YA CONFIRMADOS en el motor actual. Se escriben como el comportamiento
    CORRECTO esperado — no como "lo que el codigo hace hoy" — asi que varios de
-   estos tests DEBEN fallar en rojo ahora mismo. Eso es intencional: prueban que el
-   bug existe. Fase 2 corrige el motor y estos mismos tests (sin tocar la
-   expectativa) deben pasar en verde.
+   estos tests DEBIAN fallar en rojo en Fase 1. Eso fue intencional: probaban que
+   el bug existia. NINGUNA expectativa/aserto se toco al pasar a Fase 2 — solo se
+   corrigio la implementacion (engine.js/alerts.js/simulate.js) hasta que estos
+   mismos tests, sin cambios, pasaron a verde.
+
+   ESTADO FASE 2: los 6 tests requeridos (early-bird 90d, promo dia 0, proteccion
+   del piso, propiedad exhaustiva, alerta PISO Booking con banco, simulador con
+   dias/noches reales) estan en VERDE. El test de reservationCost() (P5/P13) sigue
+   en ROJO A PROPOSITO — el modelo de costo a nivel de reserva es Fase 3, todavia
+   no implementado; no se le puso ningun promedio ni atajo para "taparlo".
 
    No usar --skip ni ocultar ningun caso: un test rojo aqui es la prueba de que la
    auditoria tenia razon, y la referencia contra la que se mide la correccion. */
@@ -11,7 +18,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {combineChannel, worstNative, compute} from '../src/domain/engine.js';
 import {buildAlerts} from '../src/domain/alerts.js';
-import {simulateReservation} from '../src/domain/simulate-legacy.js';
+import {simulateReservation} from '../src/domain/simulate.js'; // Fase 2: reemplaza simulate-legacy.js (que se deja intacto como registro historico del bug P4)
 import {costCalcTotals} from '../src/domain/costs-legacy.js';
 import {reservationCost} from '../src/domain/costs.js';
 import {freshChannels, freshDiscounts, freshWindows, defaultCeilings, findDiscount, baseConfig} from './helpers/state-factory.js';

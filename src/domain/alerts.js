@@ -1,35 +1,39 @@
-/* Alertas. Extraido verbatim de index.html (Fase 1), con la firma cambiada a
-   parametros explicitos en vez de `state`/`model` globales.
+/* Alertas.
 
-   BUG CONOCIDO (P3 de la auditoria, sin corregir todavia en esta Fase 1): la alerta
-   PISO calcula `netAtBase = effBase*(1-lm)*(1-nat)*(1-comision)` — NO resta
-   `bankFeePct`, NO aplica `offsetPct`, y no suma la tarifa de aseo. Puede dar falso
-   negativo (neto real bajo costo, cero alerta). Se corrige en Fase 2 haciendo que
-   esta funcion consuma `quoteScenario()` en vez de reimplementar la formula. Aqui
-   solo se relocaliza el codigo tal cual estaba, para poder escribirle un test rojo.
+   Fase 1: extraido verbatim de index.html, firma cambiada a parametros explicitos.
+   Fase 2: el bloque TECHO/PISO por ventana ya NO reimplementa su propia formula —
+   consume quoteScenario() (src/domain/quote.js), que SI incluye offset, comision
+   bancaria y tarifa de aseo. Antes `netAtBase` solo restaba la comision OTA; podia
+   dar falso negativo (neto real bajo costo, cero alerta) — caso confirmado:
+   Booking 100/19%/18%/6%/costo 64 (neto real 61.56) no generaba alerta.
+
+   PENDIENTE (fuera de alcance de esta fase, documentado para no ocultarlo): el
+   bloque de alertas DURACIÓN (mas abajo) TODAVIA reimplementa una formula propia
+   (offset+nativo+aseo+payoutFactor) en vez de usar quoteScenario — no se toco en
+   esta pasada para mantener acotado el cambio a lo pedido (worstNative + formula
+   unica de PISO/Simulador); es la siguiente duplicacion a eliminar.
 
    config = {discounts, channels, ceilings, marketWindow, marketBase, windows, chTab} */
 import {pct, pct2} from './percent.js';
 import {fP, f$} from './format.js';
 import {combineChannel, worstNative, payoutFactor, cleanFeePerNight} from './engine.js';
+import {quoteScenario} from './quote.js';
 
 export function buildAlerts(config, model){
   const {discounts, channels, ceilings, windows, chTab} = config;
   const A=[];
   const on = id=>{const d=discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
-  /* ceiling breaches & floor breaches per window */
+  /* ceiling breaches & floor breaches per window — misma granularidad de siempre
+     (un dia representativo `mid` por ventana, ya que el techo ES una politica por
+     ventana), pero cotizado con quoteScenario() en vez de una formula aparte. */
   windows.forEach(w=>{
-    const ceil=pct(ceilings[w.id]);
     const mid=Math.min(w.lo+1,w.hi);
-    let maxN=0,maxCh='';
-    channels.forEach(c=>{const t=combineChannel(discounts,c.id,mid,1).totalPct;if(t>maxN){maxN=t;maxCh=c.name;}});
-    if(maxN>ceil+0.5) A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label}: solo los nativos de ${maxCh} ya suman ${fP(maxN)} y tu techo es ${fP(ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
-    const lm = maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-    channels.forEach(c=>{
-      const nat=combineChannel(discounts,c.id,mid,1).totalPct/100, cm=pct(c.comm)/100;
-      const netAtBase = model.effBase*(1-lm/100)*(1-nat)*(1-cm);
-      if(model.base>0 && netAtBase < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} · ${c.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(lm)} + nativos ${fP(nat*100)} + comisión, netearías ${f$(netAtBase, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
+    const quotes = channels.map(c=>quoteScenario({chId:c.id, days:mid, nights:1, price:model.effBase}, config));
+    const worst = quotes.reduce((a,b)=>b.maxNAtScenario>a.maxNAtScenario?b:a, quotes[0]);
+    if(worst && worst.breach) A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label}: solo los nativos de ${worst.ch.name} ya suman ${fP(worst.maxNAtScenario)} y tu techo es ${fP(worst.ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
+    quotes.forEach(q=>{
+      if(model.base>0 && q.payout < model.cost-0.5)
+        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$(q.payout, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
     });
   });
   /* config contradictions */
