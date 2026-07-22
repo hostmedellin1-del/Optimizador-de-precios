@@ -48,6 +48,25 @@ alto. Esto ya está implementado en `combineChannel()` con `prio` + sort descend
 Los ajustes de rule set / temporada (`group:'stackable'`) SÍ se suman encima de la promo
 ganadora — no compiten con ella.
 
+### `lockN` — umbrales con nombre atado a un número específico (jul 2026)
+Semanal (7 noches), Quincenal (14 noches), Larga estadía (28 noches) y Early-bird
+1/2/3 meses (30/60/90 días) tienen `lockN:true` en `defaultDiscounts()`: el umbral de
+noches/días se muestra como texto fijo en `discountRowHTML()`, no como `<input>` editable
+— porque el NOMBRE del descuento depende de ese número exacto ("Semanal" solo tiene
+sentido si son 7 noches). El `%` de estos SIGUE siendo editable, solo el umbral está
+bloqueado. "Estadía media (≥3 noches)" NO tiene `lockN` a propósito — no es un período con
+nombre fijo, es genuinamente variable, y Dani lo confirmó explícitamente. Same para
+Last-minute (ver abajo): no tiene nombre de período fijo, así que nunca lleva `lockN`.
+
+### Last-minute — 3 entradas variables, no 1 sola (jul 2026)
+`ab_lm1`/`ab_lm2`/`ab_lm3` (antes existía un solo `ab_lm`, con id fijo que ya NO existe —
+si se busca por ese id en cualquier código nuevo, va a devolver `undefined`). Igual que
+Early-bird tiene 3 escalones, Last-minute también puede tener varios — pero a diferencia
+de Early-bird, Dani pidió explícitamente que NO se les ponga `lockN` ni % sugeridos: la
+ventana de días Y el % son completamente variables, los configura Dani caso por caso. Por
+eso arrancan en 0%/apagadas con ventanas iniciales de referencia (0-1/0-3/0-7 días) que
+son solo un punto de partida editable, no un valor real de negocio.
+
 Fuente: Airbnb Help Center, ejemplo oficial (early-bird 20% + descuento mensual 30% en la
 misma reserva → solo se aplica el 30%, nunca los dos). Hay reportes de hosts en foros
 sobre apilamiento fuera de rule sets, sin confirmar al 100% — dejar la nota visible en la
