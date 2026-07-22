@@ -336,11 +336,12 @@ function defaultDiscounts(){ return [
   {id:'bk_bas', ch:'booking', name:'Basic Deal', kind:'constant', group:'reactive', pct:0, on:false},
   {id:'bk_ltd', ch:'booking', name:'Limited-time Deal', kind:'constant', group:'reactive-limited', pct:0, on:false, note:'no combina con Mobile'},
   /* EXPEDIA — base promos exclusive (max); MOD stacks on top */
-  {id:'ex_mod', ch:'expedia', name:'Member Only Deal', kind:'constant', group:'mod', pct:10, on:true, note:'apila sobre la promo base; ≥10% para badge'},
+  {id:'ex_mod', ch:'expedia', name:'Oferta VIP miembros (negociada, no editable en Expedia)', kind:'constant', group:'mod', pct:20, on:true, note:'apila sobre la promo base; Expedia da Blue 10% / Silver 15% / Gold+Platino 20% según el nivel del viajero — se usa el peor caso (20%) para proteger el piso, igual que el resto del motor'},
   {id:'ex_mob', ch:'expedia', name:'Mobile-only', kind:'constant', group:'base', pct:0, on:false},
   {id:'ex_sd',  ch:'expedia', name:'Same-day / last-minute', kind:'window', group:'base', pct:0, from:0, to:1, on:false},
   {id:'ex_eb',  ch:'expedia', name:'Early booking', kind:'window', group:'base', pct:0, from:30, to:9999, on:false},
   {id:'ex_bas', ch:'expedia', name:'Basic promo', kind:'constant', group:'base', pct:0, on:false},
+  {id:'ex_los1', ch:'expedia', name:'Duración de estadía (≥7 noches)', kind:'los', group:'base', pct:0, minN:7, on:false, note:'noches y % completamente editables, ajusta o apaga'},
   /* DIRECT */
   {id:'di_lm',  ch:'direct', name:'Last-minute directo', kind:'window', group:'any', pct:0, from:0, to:3, on:false}
 ];}
@@ -427,7 +428,7 @@ function combineChannel(chId, daysOut, nights){
     }
   }
   else if(chId==='expedia'){
-    const bases = ds.filter(d=>d.group==='base' && windowApplies(d,daysOut)).sort((a,b)=>pct(b.pct)-pct(a.pct));
+    const bases = ds.filter(d=>d.group==='base' && (windowApplies(d,daysOut)||losApplies(d,nights))).sort((a,b)=>pct(b.pct)-pct(a.pct));
     if(bases.length){
       add(bases[0],'promo base mayor (Expedia no combina promos base)');
       bases.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo la promo base mayor aplica'}));
