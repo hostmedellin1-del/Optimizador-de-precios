@@ -104,6 +104,13 @@ Categorías DISTINTAS se MULTIPLICAN entre sí; la MISMA categoría no combina:
 - Reactivos (Basic Deal / Early Booker Deal / Last-Minute Deal / Getaway Deal,
   `group:'reactive'` o `'reactive-limited'`): solo UNO a la vez puede estar activo; el
   motor usa el de mayor % que aplique en esa ventana de días.
+- Duración de estadía (`bk_los1/2/3`, `group:'los'`, jul 2026, a pedido de Dani): NO es un
+  "deal" que compite por categoría — es la tarifa que el host configura directo en Rates &
+  Availability → Discounts de Booking, así que se apila con Genius/Mobile/reactivos igual
+  que Genius. Si varios umbrales califican a la vez (ej. 30 noches califica para ≥7 y ≥28),
+  gana el más profundo, igual que la regla de Airbnb LOS — implementado como bloque aparte
+  en `combineChannel()`, ANTES de los reactivos. 100% variable (noches y % editables, sin
+  `lockN`), apagadas y en 0% por defecto.
 
 ### Expedia
 Una sola promo "base" por reserva (`group:'base'`: Mobile-only, Same-day/last-minute,
@@ -120,13 +127,15 @@ protegerse contra el descuento más profundo posible, no contra el promedio. Si 
 confirma que la mezcla real de niveles es mucho más Blue que Gold, se podría discutir bajar
 esto, pero por defecto se protege con el peor caso.
 
-**`ex_los1` = "Duración de estadía (≥7 noches)"**, agregada jul 2026 a pedido de Dani:
-100% variable (noches y % editables desde la UI, sin `lockN`), apagada y en 0% por defecto.
-Bug de motor corregido al agregarla: el filtro de `group:'base'` en `combineChannel()` solo
-llamaba `windowApplies()`, que SIEMPRE devuelve `false` para `kind:'los'` — un descuento de
-Expedia por duración de estadía nunca podía activarse aunque se configurara bien. Fix:
-el filtro ahora es `windowApplies(d,daysOut)||losApplies(d,nights)`, igual que ya usaba el
-grupo `promo` de Airbnb. Ver sección 6 (bugs corregidos).
+**`ex_los1/2/3` = "Duración de estadía A/B/C" (≥7/14/28 noches)**, agregadas jul 2026 a
+pedido de Dani: 100% variables (noches y % editables desde la UI, sin `lockN`), apagadas y
+en 0% por defecto. Están en `group:'base'`, así que si varias califican a la vez gana la de
+mayor % (no la de umbral más profundo — esa es la regla real de Expedia para el grupo base,
+sin cambios). Bug de motor corregido al agregar la primera: el filtro de `group:'base'` en
+`combineChannel()` solo llamaba `windowApplies()`, que SIEMPRE devuelve `false` para
+`kind:'los'` — un descuento de Expedia por duración de estadía nunca podía activarse aunque
+se configurara bien. Fix: el filtro ahora es `windowApplies(d,daysOut)||losApplies(d,nights)`,
+igual que ya usaba el grupo `promo` de Airbnb. Ver sección 6 (bugs corregidos).
 
 ### Comisión bancaria / pasarela de pago
 Corregido jul 2026, confirmado por Dani con sus facturas reales — este es un error que
