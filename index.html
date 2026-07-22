@@ -304,14 +304,16 @@ function defaultDiscounts(){ return [
   /* AIRBNB — grupo 'promo': solo UNA aplica, por orden de prioridad fijo (prio menor = gana) */
   {id:'ab_new', ch:'airbnb', name:'Promo anuncio nuevo (20%)', kind:'constant', group:'promo', prio:1, pct:20, on:false, note:'primeras 3 reservas; máxima prioridad'},
   {id:'ab_cus', ch:'airbnb', name:'Promoción personalizada', kind:'window', group:'promo', prio:2, pct:0, from:0, to:9999, on:false, note:'fechas específicas'},
-  {id:'ab_los1', ch:'airbnb', name:'Estadía media (≥3 noches)',  kind:'los', group:'promo', prio:3, pct:5,  minN:3,  on:false, note:'sugerido — ajusta o apaga'},
-  {id:'ab_los2', ch:'airbnb', name:'Semanal (≥7 noches)',        kind:'los', group:'promo', prio:3, pct:10, minN:7,  on:false, note:'sugerido — ajusta o apaga'},
-  {id:'ab_los3', ch:'airbnb', name:'Quincenal (≥14 noches)',     kind:'los', group:'promo', prio:3, pct:15, minN:14, on:false, note:'sugerido — ajusta o apaga'},
-  {id:'ab_los4', ch:'airbnb', name:'Larga estadía (≥28 noches)', kind:'los', group:'promo', prio:3, pct:25, minN:28, on:true,  note:'activo hoy: ≥28 noches → 25% (umbral real de "estadía larga" en Airbnb)'},
-  {id:'ab_eb1',  ch:'airbnb', name:'Early-bird (1 mes / ≥30 días)', kind:'window', group:'promo', prio:4, pct:10, from:30, to:9999, on:false, note:'sugerido — ajusta o apaga'},
-  {id:'ab_eb2',  ch:'airbnb', name:'Early-bird (2 meses / ≥60 días)', kind:'window', group:'promo', prio:4, pct:15, from:60, to:9999, on:false, note:'sugerido — ajusta o apaga'},
-  {id:'ab_eb3',  ch:'airbnb', name:'Early-bird (3 meses / ≥90 días)', kind:'window', group:'promo', prio:4, pct:20, from:90, to:9999, on:false, note:'sugerido — ajusta o apaga'},
-  {id:'ab_lm',  ch:'airbnb', name:'Last-minute', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:28,  on:false, note:'ventana 0–28 días; % variable — actívalo tú cuando decidas usarlo, no queda fijo en escalones'},
+  {id:'ab_los1', ch:'airbnb', name:'Estadía media (≥3 noches)',  kind:'los', group:'promo', prio:3, pct:5,  minN:3,  on:false, note:'sugerido — noches completamente editables, ajusta o apaga'},
+  {id:'ab_los2', ch:'airbnb', name:'Semanal (≥7 noches)',        kind:'los', group:'promo', prio:3, pct:10, minN:7,  on:false, lockN:true, note:'7 noches fijo — el nombre "Semanal" depende de ese número; % sí ajustable'},
+  {id:'ab_los3', ch:'airbnb', name:'Quincenal (≥14 noches)',     kind:'los', group:'promo', prio:3, pct:15, minN:14, on:false, lockN:true, note:'14 noches fijo — el nombre "Quincenal" depende de ese número; % sí ajustable'},
+  {id:'ab_los4', ch:'airbnb', name:'Larga estadía (≥28 noches)', kind:'los', group:'promo', prio:3, pct:25, minN:28, on:true,  lockN:true, note:'activo hoy: ≥28 noches → 25% (umbral real de "estadía larga" en Airbnb, fijo)'},
+  {id:'ab_eb1',  ch:'airbnb', name:'Early-bird (1 mes / ≥30 días)', kind:'window', group:'promo', prio:4, pct:10, from:30, to:9999, on:false, lockN:true, note:'30 días fijo (1 mes) — % sí ajustable'},
+  {id:'ab_eb2',  ch:'airbnb', name:'Early-bird (2 meses / ≥60 días)', kind:'window', group:'promo', prio:4, pct:15, from:60, to:9999, on:false, lockN:true, note:'60 días fijo (2 meses) — % sí ajustable'},
+  {id:'ab_eb3',  ch:'airbnb', name:'Early-bird (3 meses / ≥90 días)', kind:'window', group:'promo', prio:4, pct:20, from:90, to:9999, on:false, lockN:true, note:'90 días fijo (3 meses) — % sí ajustable'},
+  {id:'ab_lm1',  ch:'airbnb', name:'Last-minute 1', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:1,  on:false, note:'ventana y % completamente variables — configúralos tú'},
+  {id:'ab_lm2',  ch:'airbnb', name:'Last-minute 2', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:3,  on:false, note:'ventana y % completamente variables — configúralos tú'},
+  {id:'ab_lm3',  ch:'airbnb', name:'Last-minute 3', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:7,  on:false, note:'ventana y % completamente variables — configúralos tú'},
   {id:'ab_rs',  ch:'airbnb', name:'Ajuste de rule set / temporada', kind:'constant', group:'stackable', prio:0, pct:0, on:false, note:'apila sobre la promo ganadora'},
   /* BOOKING — proactive stack; reactive exclusive; mobile conflicts w/ country & limited */
   {id:'bk_gen', ch:'booking', name:'Genius (constante)', kind:'constant', group:'proactive', pct:10, on:true, note:'lo funde el host; L1=10%'},
@@ -533,10 +535,10 @@ function buildAlerts(model){
   });
   if(on('bk_mob')&&(on('bk_cty')||on('bk_ltd')))
     A.push({lvl:'warn',tag:'CONFLICTO',tab:'ch-booking',msg:'Booking: Mobile Rate no combina con Country Rate / Limited-time. El motor ya ignora Mobile en ese caso, pero tenlos claros en la extranet.'});
-  const abLm=state.discounts.find(d=>d.id==='ab_lm');
-  const abEbOverlap = ebActive.find(eb=>pct(abLm?.pct||0)>0 && abLm?.on && (abLm.to??3)>=(eb.from??30));
+  const lmActive = state.discounts.filter(d=>d.ch==='airbnb' && d.id.startsWith('ab_lm') && d.on && pct(d.pct)>0);
+  const abEbOverlap = ebActive.find(eb=>lmActive.some(lm=>(lm.to??3)>=(eb.from??30)));
   if(abEbOverlap)
-    A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: la ventana de Last-minute se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
+    A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: alguna ventana de Last-minute activa se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
   const losOn = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='los'&&d.on&&pct(d.pct)>0);
   if(losOn.length>1){
     const sorted=[...losOn].sort((a,b)=>a.minN-b.minN);
@@ -591,9 +593,15 @@ function renderKpis(model){
   kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
 }
 function discountRowHTML(d){
-  const win = d.kind==='window'
-    ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${d.from}">–<input type="number" data-did="${d.id}" data-f="to" value="${d.to>=9999?'':d.to}" placeholder="∞">d</span>`
-    : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${d.minN}">n</span>` : '';
+  /* d.lockN: el nombre está atado a un número específico (Semanal=7, Quincenal=14,
+     Larga estadía=28, "X meses"=30/60/90) — si el número fuera editable, se podría
+     desincronizar del nombre (ej. "Semanal (≥7 noches)" pero con un 10 puesto). Se
+     muestra el umbral como texto fijo, no como input. */
+  const win = d.lockN
+    ? `<span class="d-win">${d.kind==='los' ? '≥'+d.minN+'n' : '≥'+d.from+'d'}</span>`
+    : d.kind==='window'
+      ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${d.from}">–<input type="number" data-did="${d.id}" data-f="to" value="${d.to>=9999?'':d.to}" placeholder="∞">d</span>`
+      : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${d.minN}">n</span>` : '';
   return `<div class="d-item ${d.on?'on':''}">
     <input type="checkbox" data-did="${d.id}" data-f="on" ${d.on?'checked':''}>
     <span class="d-name">${d.name}${d.note?`<span class="d-meta">${d.note}</span>`:''}</span>
