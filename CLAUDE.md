@@ -187,6 +187,19 @@ sección 2, "Offset por canal").
   `localStorage` con el mismo contrato (get/set/delete/list). Esto permite que el MISMO
   archivo funcione dentro de Claude.ai y como página independiente (GitHub Pages, local)
   sin mantener dos versiones distintas.
+- **Limitación real de `localStorage`, importante para Dani**: los datos quedan SOLO en
+  ese navegador/computador — no hay nube, no sincroniza entre dispositivos, y se pierde
+  si se borra caché/datos de navegación o se usa modo incógnito. Con ~36 unidades reales
+  de negocio, confiar solo en esto es riesgoso. Por eso se agregaron los botones
+  **Exportar todo / Importar** (jul 2026, junto a Guardar/Cargar/Eliminar en `.unit-bar`):
+  Exportar lee todas las claves `v2:*` vía `window.storage.list`, arma un único `.json`
+  (`{exportedAt, units:[{key,value}]}`) y lo descarga con `Blob`+`URL.createObjectURL`
+  (sin backend, funciona igual en GitHub Pages). Importar lee ese `.json` y hace
+  `window.storage.set` por cada unidad, con un `confirm()` antes de sobrescribir
+  unidades existentes con el mismo nombre. Probado end-to-end en navegador (exportar →
+  archivo real en disco con estructura correcta → borrar → importar → unidades vuelven
+  exactas). Recomendarle a Dani exportar periódicamente y guardar el `.json` en Drive o
+  donde respalde su negocio — la app no lo hace sola, es manual.
 - v1 fue descartada por completo, no parcheada. La v1 tenía "% nativo constante" y "%
   por ventana" como dos conceptos separados sin reglas de combinación reales —
   estructuralmente inválido. Se reescribió desde cero como v2 con un catálogo único de
@@ -195,17 +208,28 @@ sección 2, "Offset por canal").
   OPCIONAL sobre `fixedCost`/`varCost`, no un reemplazo — `compute()` sigue leyendo solo
   esos dos campos, cero cambios al motor. Vive colapsada (`<details class="cost-calc">`)
   dentro de "Costos por noche" en Resumen. Al editar cualquier línea (`data-cb`), se
-  recalculan `fixedPerNight = suma_fijos_mensuales / occNights` y
-  `varPerNight = suma_variables_por_turno / avgNights` (reusa el `avgNights` ya existente)
-  y se escriben directo en `state.fixedCost`/`state.varCost`, sincronizando también los
-  inputs visibles de esos campos (`document.querySelector('[data-k="fixedCost"]').value=...`)
-  — si no se hace esto además de actualizar el estado, el input queda mostrando un valor
-  viejo aunque el estado ya cambió. Es deliberadamente **opt-in**: si el usuario nunca toca
-  un campo `data-cb`, nunca se sobreescribe `fixedCost`/`varCost` (los defaults de
-  `costBreakdown` son todos 0, así que aplicarlos siempre en cada render pisaría el valor
-  manual sin que el usuario lo pidiera — por eso el cálculo+escritura solo ocurre dentro
-  del handler de `change` de `data-cb`, nunca en `renderAll()`; `renderAll()` solo actualiza
-  el texto de previsualización vía `renderCostCalc()`, que es de solo lectura).
+  recalcula todo vía `costCalcTotals()` y se escribe directo en `state.fixedCost`/
+  `state.varCost`, sincronizando también los inputs visibles de esos campos
+  (`document.querySelector('[data-k="fixedCost"]').value=...`) — si no se hace esto
+  además de actualizar el estado, el input queda mostrando un valor viejo aunque el
+  estado ya cambió. Es deliberadamente **opt-in**: si el usuario nunca toca un campo
+  `data-cb`, nunca se sobreescribe `fixedCost`/`varCost` (los defaults de `costBreakdown`
+  son todos 0, así que aplicarlos siempre en cada render pisaría el valor manual sin que
+  el usuario lo pidiera — por eso el cálculo+escritura solo ocurre dentro del handler de
+  `change` de `data-cb`, nunca en `renderAll()`; `renderAll()` solo actualiza el texto de
+  previsualización vía `renderCostCalc()`, que es de solo lectura).
+  - `fixedPerNight = (rent+admin+utilities+insurance+tech) / occNights`.
+  - Dentro de Variables hay DOS categorías con lógica distinta, no una sola bolsa
+    (corregido jul 2026 — Dani hizo la pregunta correcta: "¿cómo calculo el consumo de
+    agua si hay huéspedes de 1 noche y otros de 30?"): **por turno** (limpieza,
+    lavandería, insumos) cuesta casi lo mismo sin importar la duración de la estadía →
+    se divide entre `avgNights`. **Consumos** (agua/luz/gas) SÍ escala con las noches del
+    huésped → es un campo único en $/noche directo, nunca se divide. Mezclarlos (como
+    estaba antes) distorsiona el número en los dos extremos: infla estadías cortas y
+    diluye de más las largas. `varPerNight = (cleaning+laundry+supplies)/avgNights + consumables`.
+    Metodología sugerida a Dani para estimar Consumos $/noche: comparar la factura de un
+    mes con buena ocupación contra un mes de baja ocupación (o el consumo base con el
+    apto vacío), dividido entre las noches ocupadas de ese mes.
 
 ---
 
