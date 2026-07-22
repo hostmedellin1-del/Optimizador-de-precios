@@ -606,6 +606,7 @@ function renderChannelPages(model){
   state.channels.forEach(c=>{
     const panel = document.querySelector(`.tab-panel[data-tab="${CH_TAB[c.id]}"]`);
     if(!panel) return;
+    const wasOpen = panel.querySelector('.discounts-more')?.open; /* innerHTML se reconstruye cada render — sin esto, el <details> se cierra solo con cualquier cambio */
     const chDiscounts = state.discounts.filter(d=>d.ch===c.id);
     const activeD = chDiscounts.filter(d=>d.on).map(discountRowHTML).join('') || '<div class="hint">ningún descuento activo hoy en este canal</div>';
     const restD = chDiscounts.filter(d=>!d.on);
@@ -625,7 +626,7 @@ function renderChannelPages(model){
         </div>
         <h2>Descuentos activos hoy — ${c.name}</h2>
         <div class="chpage-discounts">${activeD}</div>
-        ${restD.length ? `<details class="discounts-more"><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${restD.map(discountRowHTML).join('')}</div></details>` : ''}
+        ${restD.length ? `<details class="discounts-more"${wasOpen?' open':''}><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${restD.map(discountRowHTML).join('')}</div></details>` : ''}
       </section>`;
   });
 }
