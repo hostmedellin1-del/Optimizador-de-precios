@@ -718,13 +718,13 @@ function renderLmConfig(){
       <p class="hint" style="margin-bottom:6px;">Se resuelven POR ORDEN: si un día cae en varios tramos, gana el PRIMERO de la lista (no se suman). Usa ↑/↓ para reordenar.</p>
       ${cfg.tiers.map((t,i)=>`
         <div class="d-item ${t.on?'on':''}" style="flex-wrap:wrap;">
-          <input type="checkbox" data-tier="on" data-tier-idx="${i}" ${t.on?'checked':''}>
-          <input type="text" data-tier="label" data-tier-idx="${i}" value="${escapeHtml(t.label||'')}" placeholder="nombre" style="width:110px;">
-          <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${t.fromDay}" style="width:50px;">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${t.toDay}" style="width:50px;"></span>
-          <input type="number" data-tier="pct" data-tier-idx="${i}" value="${t.pct}" style="width:60px;"><span class="hint">%</span>
-          <button type="button" class="ghost" data-tier-up="${i}" ${i===0?'disabled':''}>↑</button>
-          <button type="button" class="ghost" data-tier-down="${i}" ${i===cfg.tiers.length-1?'disabled':''}>↓</button>
-          <button type="button" class="ghost" data-tier-del="${i}">✕</button>
+          <input type="checkbox" data-tier="on" data-tier-idx="${i}" ${t.on?'checked':''} aria-label="Activar tramo ${i+1}">
+          <input type="text" data-tier="label" data-tier-idx="${i}" value="${escapeHtml(t.label||'')}" placeholder="nombre" style="width:110px;" aria-label="Nombre del tramo ${i+1}">
+          <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${t.fromDay}" style="width:50px;" aria-label="Tramo ${i+1}: desde día">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${t.toDay}" style="width:50px;" aria-label="Tramo ${i+1}: hasta día"></span>
+          <input type="number" data-tier="pct" data-tier-idx="${i}" value="${t.pct}" style="width:60px;" aria-label="Tramo ${i+1}: porcentaje de descuento"><span class="hint">%</span>
+          <button type="button" class="ghost" data-tier-up="${i}" ${i===0?'disabled':''} aria-label="Mover tramo ${i+1} hacia arriba">↑</button>
+          <button type="button" class="ghost" data-tier-down="${i}" ${i===cfg.tiers.length-1?'disabled':''} aria-label="Mover tramo ${i+1} hacia abajo">↓</button>
+          <button type="button" class="ghost" data-tier-del="${i}" aria-label="Eliminar tramo ${i+1}">✕</button>
         </div>`).join('') || '<p class="hint">Sin tramos todavía.</p>'}
       <button type="button" class="ghost" id="addTierBtn" style="margin-top:8px;">+ Agregar tramo</button>`;
   } else {

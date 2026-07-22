@@ -435,3 +435,127 @@ por bueno un cambio en el motor — así se hizo todo el desarrollo hasta ahora:
 `<script>`, correr casos de prueba concretos con `node -e "..."`, y solo después dar el
 archivo por validado. No asumas que un cambio en el motor de combinación es correcto sin
 probarlo numéricamente primero.
+
+---
+
+## 9. Auditoría técnica jul 2026 (Fases 1-7) — arquitectura modular, motor, seguridad
+
+Trabajo hecho en la rama `fix/motor-financiero-auditoria` (NO mergeado a `main`, sin
+push) contra el hallazgo de una auditoría técnica independiente. Ver `CHANGELOG.md`
+para el resumen fase por fase y `RUNBOOK.md` para QA manual/rollback/despliegue.
+
+### Arquitectura: de un solo `<script>` a módulos ES puros
+`index.html` ahora es un `<script type="module">` que importa de `src/catalog/` (datos)
+y `src/domain/*.js` (funciones puras, sin DOM, todas con parámetros explícitos — nada
+lee un `state` global implícito). `index.html` solo arma wrappers delgados que cierran
+sobre el `state` mutable de la UI y funciones de render. Corolario práctico: **abrir el
+archivo con doble-clic (`file://`) ya no funciona** — Chrome bloquea `import` por CORS
+bajo `file://`. Para probar local: `python3 -m http.server` o `npx serve`. GitHub Pages
+(https) no tiene este problema, el deploy sigue siendo automático sin build.
+
+`package.json` es nuevo pero **no es un build step**: solo habilita `"type":"module"` y
+los scripts `npm test` (`node --test`, cero dependencias) / `npm run lint`
+(`node --check`). `engines.node >= 20.0.0`. CI en `.github/workflows/ci.yml` corre ambos
+en cada push/PR — no toca el despliegue de Pages.
+
+### `quoteScenario()` — fuente única de verdad (`src/domain/quote.js`)
+Cualquier vista que necesite cotizar UN escenario concreto (canal + días + noches +
+precio) pasa por aquí — Piso (indirectamente, vía `worstNative()`/`payoutFactor()`
+compartidos), alertas (TECHO/PISO/DURACIÓN), Simulador, matriz y "neto estimado" por
+canal. Ninguna vista debe reimplementar el pipeline LM→Offset→nativos→aseo→comisiones.
+Devuelve, entre otros: `factor`/`nativoFactor` (exacto, para matemática financiera),
+`nativoPct`/`totalPct` (redondeado, SOLO para texto/UI — nunca para calcular),
+`marginPct` (ganancia sobre venta) vs `markupPct` (ganancia sobre costo, número
+distinto), y `assumptions[]` (lo que el resultado da por sentado y aún no está
+verificado).
+
+**Regla dura, no violar en cambios futuros**: si una fórmula financiera nueva necesita
+`totalPct`, es un error — usar `factor` (o `nativoFactor` desde `quoteScenario()`).
+`totalPct` existe solo porque se redondea a 1 decimal para que se vea bien en pantalla;
+usarlo en un cálculo reintroduce el bug de Fase 2.1 (Genius 0.1% + Mobile 50% = 50.05%
+exacto, pero `Math.round((1-0.4995)*1000)/10` da 50.0 por ruido de punto flotante — un
+Piso dimensionado con eso netea por debajo del costo real).
+
+### Enumeración exhaustiva de críticos, no muestreo (`src/domain/thresholds.js`)
+`combineChannel()` es piecewise-constante en días/noches enteros — el máximo real
+siempre vive en una frontera exacta (`from`, `to`, `from-1`, `to+1`, `minN`, día 0).
+`criticalDays()`/`criticalNights()` enumeran esas fronteras para `worstNative()`;
+`criticalDaysInWindow()` hace lo mismo pero recortado a una ventana UI concreta, para
+que las alertas y la matriz ya NO usen un punto medio (`Math.min(w.lo+1,w.hi)`) — ese
+punto medio podía dejar invisible, dentro de su propia ventana, un early-bird que solo
+arranca a los 90 días.
+
+### Costo por reserva, no por promedio (`src/domain/costs.js`)
+`reservationCost()`/`reservationCostBreakdown()` cargan limpieza/lavandería/insumos UNA
+VEZ por reserva (usando las noches REALES de ese escenario), nunca diluidos por una
+estadía promedio fija — ese era el bug P5/P13 (`costs-legacy.js`, que se deja intacto
+como registro histórico del bug, ya no lo usa nada). `compute()`/`quoteScenario()` usan
+esto automáticamente SI `config.costBreakdown` está presente Y tiene algo cargado
+(`costBreakdownIsFilled()` en index.html) — si Dani nunca toca la calculadora detallada,
+cae al modelo simple `fixedCost+varCost` de siempre, cero regresión.
+
+### PriceLabs Last-Minute configurable (`src/domain/pricelabs-lm.js`)
+5 modos por unidad (`state.lmConfig`): automático (el techo-por-ventana de siempre, se
+marca explícitamente "no verificable matemáticamente sin precio diario real"), plano,
+gradual (decae día a día, NO aplica el máximo a todos los días), precio fijo (avisa si
+cae bajo el Piso), tramos (política de solape EXPLÍCITA: gana el PRIMER tramo activo del
+arreglo en orden, nunca se suman — si Dani confirma que PriceLabs combina distinto, esta
+política se ajusta en un solo lugar). Se despacha DENTRO de `quoteScenario()`, antes del
+Offset y de los descuentos nativos OTA, como pedía el encargo original.
+
+### Descuento no reembolsable de Airbnb (`ab_nonref`, catálogo)
+Capa apilable POST-promo en `combineChannel()` — se aplica DESPUÉS de que gana la promo
+del grupo `'promo'`, no compite dentro de ese grupo. Apagado, en 0% y `verified:false`
+por defecto: nadie inventó un 10%, Dani debe confirmar por listing si aplica y el % real.
+
+### Verificado / No-verificado (`src/domain/verification.js`)
+Registro por unidad para hechos que la app NUNCA puede confirmar sola (Genius+Mobile
+ambos activos en Booking, aislamiento real del Offset en Hospy, comisión bancaria real
+por canal, mezcla de niveles VIP de Expedia, modo real de Last-Minute, no-reembolsable de
+Airbnb). Todo arranca en `'no_verificado'` — pasar a `'verificado'` es una acción
+explícita de Dani (con nota de dónde lo confirmó), nunca automática ni asumida al cargar
+una unidad vieja que no tenía esta clave.
+
+### Validación y bloqueo (`src/domain/validate.js`)
+El motor nunca lanza (`compute()`/`quoteScenario()` siempre devuelven algo), pero
+`compute()` ahora también devuelve `valid`/`errors`. Un resultado no confiable (margen
+≥100%, comisión+bancaria ≥100%, costos negativos, NaN/Infinity) se BLOQUEA en la UI
+(banner rojo + KPIs en "—" con el motivo) en vez de mostrarse como si fuera una
+recomendación real. Aviso aparte (`#dataProvenanceBanner`) mientras `fixedCost`/`varCost`
+sigan exactamente en 32/22 — el ejemplo ilustrativo del webinar de Kunas, NUNCA los
+costos reales de una unidad (ver sección 5, punto 1).
+
+### Persistencia: UUID, migración no destructiva, XSS (`src/domain/persistence.js`,
+`src/domain/sanitize.js`)
+- **Guardar ahora escribe siempre a `v3:<uuid>`** (`state.id`, generado en el primer
+  guardado) — ya no colisiona si dos unidades comparten nombre o si se renombra una.
+  `v2:<slug-del-nombre>` (formato viejo) se sigue pudiendo cargar/exportar, pero ya no
+  recibe escrituras nuevas.
+- **Migración v2→v3 es un botón explícito** ("Migrar unidades antiguas"), nunca
+  automática al cargar la página — copia cada `v2:*` a un `v3:<uuid>` nuevo con
+  `migratedFromV2Key` de rastro, y **jamás borra ni toca los `v2:*` originales**.
+- **Eliminar pide confirmación** (`confirm()`) — antes no pedía ninguna, un click
+  borraba sin aviso.
+- **Importar valida la FORMA del archivo** (`validateImportFile()`) antes de escribir
+  nada a storage — un archivo malformado se rechaza entero; elementos individuales
+  inválidos dentro de un archivo por lo demás válido se descartan y se listan, no se
+  escriben a ciegas.
+- **XSS corregido**: un nombre de descuento/canal/unidad con HTML/JS embebido (ej. vía un
+  archivo de "respaldo" importado, no necesariamente por Dani) se ejecutaba al
+  renderizarse en el catálogo de descuentos, la matriz, el Simulador, las alertas y la
+  lista de unidades — `escapeHtml()` se aplica en TODOS esos puntos ahora. Cualquier
+  interpolación NUEVA de un campo de texto proveniente de `state`/`discounts`/`channels`
+  dentro de un `innerHTML` DEBE pasar por `escapeHtml()` — no asumir que el dato es
+  confiable solo porque hoy lo escribe la propia UI (mañana puede venir de un import).
+
+### Pendiente explícito de esta ronda (no completado, no ocultado)
+- **E2E automatizado en CI**: hoy es un checklist manual (`RUNBOOK.md`). Agregar
+  Playwright a CI es una decisión de dependencias que no se tomó unilateralmente.
+- **Accesibilidad**: se corrigieron los controles nuevos sin texto visible (editor de
+  tramos). El resto del formulario (pre-existente, antes de esta auditoría) usa `<span>`
+  en vez de `<label for>` — auditoría completa queda pendiente si se prioriza.
+- Todo lo de la sección 5 (costos reales, comisión bancaria real, multi-moneda,
+  multi-unidad, verificación real en Hospy/Booking/PriceLabs) sigue exactamente igual de
+  pendiente — esta auditoría construyó la INFRAESTRUCTURA para que esos datos entren sin
+  inventar nada (calculadora de costos real, registro de verificación, LM configurable),
+  pero no inventó ni cargó ningún dato de negocio real.
