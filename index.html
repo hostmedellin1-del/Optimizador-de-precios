@@ -126,6 +126,14 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .discounts-more summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
 .discounts-more summary:hover{color:var(--text);}
 .discounts-more[open] summary{margin-bottom:4px;}
+/* cost breakdown calculator */
+.cost-calc{margin:4px 0 10px;padding-top:4px;border-top:1px dashed var(--border);}
+.cost-calc summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
+.cost-calc summary:hover{color:var(--text);}
+.cost-calc-body{padding-top:6px;}
+.cost-calc-group{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px;}
+.cost-calc-label{display:block;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-bottom:4px;}
+.cost-calc-result{text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent);padding-top:6px;margin-top:4px;border-top:1px solid var(--border);}
 </style>
 </head>
 <body>
@@ -162,6 +170,30 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <div class="field"><span>Moneda de esta unidad</span><select data-k="currency"><option value="USD">USD</option><option value="COP">COP</option></select></div>
     <div class="field"><span>Fijos (arriendo, admin, servicios, seguros, tech)</span><input type="number" data-k="fixedCost" step="1"></div>
     <div class="field"><span>Variables (limpieza, lavandería, consumos, insumos)</span><input type="number" data-k="varCost" step="1"></div>
+    <details class="cost-calc">
+      <summary>Calcular a partir de costos detallados</summary>
+      <div class="cost-calc-body">
+        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables: se suman por turno (una limpieza, un juego de sábanas) y se dividen entre tu Estadía promedio de arriba. Al escribir aquí, actualiza los campos de Fijos/Variables automáticamente.</p>
+        <div class="cost-calc-group">
+          <span class="cost-calc-label">Fijos mensuales</span>
+          <div class="field"><span>Arriendo/cuota</span><input type="number" data-cb="rent" step="1"></div>
+          <div class="field"><span>Administración</span><input type="number" data-cb="admin" step="1"></div>
+          <div class="field"><span>Servicios fijos (internet, TV, gas fijo…)</span><input type="number" data-cb="utilities" step="1"></div>
+          <div class="field"><span>Seguros</span><input type="number" data-cb="insurance" step="1"></div>
+          <div class="field"><span>Tech (PriceLabs, Hospy…)</span><input type="number" data-cb="tech" step="1"></div>
+          <div class="field"><span>Noches ocupadas al mes</span><input type="number" data-cb="occNights" step="1" min="1"></div>
+          <div class="cost-calc-result" id="cbFixedResult"></div>
+        </div>
+        <div class="cost-calc-group">
+          <span class="cost-calc-label">Variables por turno</span>
+          <div class="field"><span>Limpieza</span><input type="number" data-cb="cleaning" step="1"></div>
+          <div class="field"><span>Lavandería</span><input type="number" data-cb="laundry" step="1"></div>
+          <div class="field"><span>Consumos (agua/luz/gas del huésped)</span><input type="number" data-cb="consumables" step="1"></div>
+          <div class="field"><span>Insumos (amenities, papelería…)</span><input type="number" data-cb="supplies" step="1"></div>
+          <div class="cost-calc-result" id="cbVarResult"></div>
+        </div>
+      </div>
+    </details>
     <div class="field"><span>Margen objetivo total %</span><input type="number" data-k="margin" step="1"></div>
     <div class="field"><span>Ventana de reserva del mercado (días, mediana)</span><input type="number" data-k="marketWindow" step="1"></div>
     <div class="field"><span>Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></span><input type="number" data-k="avgNights" step="1" min="1"></div>
@@ -306,9 +338,13 @@ const WINDOWS = [
   {id:'w4', label:'15–29 días', lo:15, hi:29, ceil:0},
   {id:'w5', label:'30+ días', lo:30, hi:9999, ceil:15}
 ];
+/* Calculadora opcional de costos por noche a partir de líneas reales — no reemplaza
+   fixedCost/varCost, los calcula y escribe ahí (compute() sigue leyendo solo esos dos). */
+function defaultCostBreakdown(){ return {rent:0, admin:0, utilities:0, insurance:0, tech:0, occNights:22, cleaning:0, laundry:0, consumables:0, supplies:0}; }
 let state = {
   name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
   avgNights:3, matrixNights:1,
+  costBreakdown: defaultCostBreakdown(),
   channels: CHANNELS.map(c=>({...c})),
   discounts: defaultDiscounts(),
   ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil]))
@@ -715,10 +751,24 @@ function buildTabbar(){
 }
 function renderAll(){
   const model=compute();
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model);
+  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
+}
+/* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche */
+function costCalcTotals(){
+  const cb=state.costBreakdown;
+  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(state.avgNights)||1);
+  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
+  const varSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.consumables)||0)+(parseFloat(cb.supplies)||0);
+  return {fixedPerNight:fixedSum/occ, varPerNight:varSum/avgN};
+}
+function renderCostCalc(){
+  const t=costCalcTotals();
+  if(cbFixedResult) cbFixedResult.textContent='= '+f$(t.fixedPerNight)+'/noche';
+  if(cbVarResult) cbVarResult.textContent='= '+f$(t.varPerNight)+'/noche';
 }
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
+  document.querySelectorAll('[data-cb]').forEach(el=>el.value=state.costBreakdown[el.dataset.cb]);
   simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 }
 buildTabbar();
@@ -741,6 +791,15 @@ document.addEventListener('change',e=>{
     if(c){ c[t.dataset.chf]=parseFloat(t.value)||0; renderAll(); }
   }
   else if(t.dataset.ceil){state.ceilings[t.dataset.ceil]=parseFloat(t.value)||0;renderAll();}
+  else if(t.dataset.cb){
+    state.costBreakdown[t.dataset.cb]=parseFloat(t.value)||0;
+    const tot=costCalcTotals();
+    state.fixedCost=Math.round(tot.fixedPerNight);
+    state.varCost=Math.round(tot.varPerNight);
+    const fcEl=document.querySelector('[data-k="fixedCost"]'); if(fcEl) fcEl.value=state.fixedCost;
+    const vcEl=document.querySelector('[data-k="varCost"]'); if(vcEl) vcEl.value=state.varCost;
+    renderAll();
+  }
   else if(['simPrice','simDays','simNights','simChannel'].includes(t.id)){renderSim(compute());}
 });
 document.addEventListener('click',e=>{
@@ -780,6 +839,8 @@ unitList.addEventListener('change',async e=>{
       /* garantizar techos por ventana */
       if(!state.ceilings) state.ceilings={};
       WINDOWS.forEach(w=>{ if(state.ceilings[w.id]===undefined) state.ceilings[w.id]=w.ceil; });
+      /* merge campo por campo contra defaults — unidades guardadas antes de la calculadora no la traen */
+      state.costBreakdown = {...defaultCostBreakdown(), ...(d.costBreakdown||{})};
       unitName.value=d.name||''; hydrate(); renderAll(); status('Cargado ✓');}
   }catch(e){console.error(e);status('No encontrado');}
 });

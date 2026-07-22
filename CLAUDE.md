@@ -172,6 +172,21 @@ sección 2, "Offset por canal").
   por ventana" como dos conceptos separados sin reglas de combinación reales —
   estructuralmente inválido. Se reescribió desde cero como v2 con un catálogo único de
   descuentos + motor de reglas por canal. La v2 (este archivo) es la autoridad.
+- Calculadora de costos detallados (jul 2026, `state.costBreakdown`) es un ayudante
+  OPCIONAL sobre `fixedCost`/`varCost`, no un reemplazo — `compute()` sigue leyendo solo
+  esos dos campos, cero cambios al motor. Vive colapsada (`<details class="cost-calc">`)
+  dentro de "Costos por noche" en Resumen. Al editar cualquier línea (`data-cb`), se
+  recalculan `fixedPerNight = suma_fijos_mensuales / occNights` y
+  `varPerNight = suma_variables_por_turno / avgNights` (reusa el `avgNights` ya existente)
+  y se escriben directo en `state.fixedCost`/`state.varCost`, sincronizando también los
+  inputs visibles de esos campos (`document.querySelector('[data-k="fixedCost"]').value=...`)
+  — si no se hace esto además de actualizar el estado, el input queda mostrando un valor
+  viejo aunque el estado ya cambió. Es deliberadamente **opt-in**: si el usuario nunca toca
+  un campo `data-cb`, nunca se sobreescribe `fixedCost`/`varCost` (los defaults de
+  `costBreakdown` son todos 0, así que aplicarlos siempre en cada render pisaría el valor
+  manual sin que el usuario lo pidiera — por eso el cálculo+escritura solo ocurre dentro
+  del handler de `change` de `data-cb`, nunca en `renderAll()`; `renderAll()` solo actualiza
+  el texto de previsualización vía `renderCostCalc()`, que es de solo lectura).
 
 ---
 
