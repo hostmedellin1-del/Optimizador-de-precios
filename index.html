@@ -320,7 +320,7 @@ import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
 import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
-import {criticalDaysInWindow} from './src/domain/thresholds.js';
+import {worstScenariosInWindow} from './src/domain/matrix.js';
 import {defaultVerification, mergeVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
 import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
@@ -393,14 +393,19 @@ function costBreakdownIsFilled(cb){
     .some(k=>(parseFloat(cb[k])||0)>0);
 }
 function compute(){
+  /* BLOQUEANTE CRITICO corregido: el Piso/Base ahora SI reciben `ceilings` y
+     `lmConfig` — antes esta llamada nunca los pasaba, asi que compute() jamas
+     podia proteger contra un Last-Minute configurado, sin importar que
+     src/domain/engine.js ya supiera hacerlo. */
   return computeBase({
     fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
-    channels: state.channels, discounts: state.discounts, windows: WINDOWS,
+    channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
+    lmConfig: state.lmConfig,
     costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined
   });
 }
 function suggestedOffset(chId, effBase, netObjetivo){
-  return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo});
+  return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo, lmConfig: state.lmConfig, windows: WINDOWS, ceilings: state.ceilings});
 }
 /* config compartido para quoteScenario() — Fase 2.1: unico punto de armado, lo usan
    renderMatrix()/renderChannelPages()/renderSim() para no duplicar sus campos. */
@@ -517,31 +522,30 @@ function renderMatrix(model){
     <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${f$(model.floor)}</span></div>
     <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos de hoy</span></span><span class="mi-val">${f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
-  /* Fase 2.1: `nights` sigue siendo el valor UNICO que Dani configura para esta
-     vista (dato de negocio, no se toca) — lo que se corrigio es el DIA: antes se
-     usaba un punto medio (`mid`) fijo por ventana, que podia esconder el peor caso
-     real (ej. un early-bird que solo aplica desde el dia 90 dentro de "30+ dias").
-     Ahora se enumeran los dias criticos de la ventana y se usa el que de verdad da
-     el peor nativo — el resto de la fila (nativo/total/neto) se cotiza con
-     quoteScenario() en ESE MISMO dia, para que las columnas cuenten la misma
-     historia. Cero formula propia: quoteScenario es la unica fuente. */
-  const nights=Math.max(1,parseFloat(state.matrixNights)||1);
+  /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
+     dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
+     Last-Minute (lmCriticalDays) y no enumeraba noches criticas — asi que un
+     LM configurable (flat/gradual/precio fijo/tramos) podia hacer que el
+     verdadero peor payout ocurriera en un dia/noche que la matriz ni evaluaba.
+     Ahora se enumera dia critico x noche critica x canal (OTA + LM), se cotiza
+     CADA combinacion con quoteScenario(), y la fila se arma sobre el escenario
+     que realmente da el PEOR NETO, no el que solo tiene mas descuento nativo.
+     `matrixNights` (el input de "noches a evaluar") ya no filtra el peor caso —
+     se mantiene solo como referencia manual de Dani, el veredicto siempre usa
+     el peor caso real encontrado. */
   const qConfig = quoteConfig();
   matrixBody.innerHTML = WINDOWS.map(w=>{
     const ceil=pct(state.ceilings[w.id]);
-    const daysGrid = criticalDaysInWindow(state.discounts, w);
-    let worstDay=daysGrid[0], worstMaxN=-1;
-    daysGrid.forEach(d=>{
-      const probe = quoteScenario({chId:state.channels[0].id, days:d, nights, price:model.effBase}, qConfig);
-      if(probe.maxNAtScenario>worstMaxN){worstMaxN=probe.maxNAtScenario; worstDay=d;}
-    });
-    const per=state.channels.map(c=>({c,q:quoteScenario({chId:c.id, days:worstDay, nights, price:model.effBase}, qConfig)}));
-    const maxN=per[0].q.maxNAtScenario;
-    const maxCh=per[0].q.worstChannelAtScenario;
-    const breach=per[0].q.breach;
-    const lm=per[0].q.lm;
-    const netPer=per.map(p=>({c:p.c, netV:p.q.payout}));
-    const worst = netPer.reduce((a,b)=>b.netV<a.netV?b:a, netPer[0]);
+    const {worstTecho, worstPayoutRow, perChannel} = worstScenariosInWindow(qConfig, w, model.effBase);
+    const breach=worstTecho.q.breach;
+    const maxN=worstTecho.q.maxNAtScenario;
+    const maxCh=worstTecho.q.worstChannelAtScenario;
+    const lm=worstPayoutRow.q.lm;
+    /* Cada canal muestra SU PROPIO peor (dia,noche) — igual que la alerta PISO —
+       porque el peor caso de un canal no tiene por que coincidir con el de otro. */
+    const per = perChannel;
+    const worst = per.reduce((a,b)=>b.q.payout<a.q.payout?b:a, per[0]);
+    const worstAsNet = {c: worst.c, netV: worst.q.payout};
     /* Veredicto en una frase: primero el techo (bloquea el LM de PriceLabs), luego el
        piso (vender bajo costo), luego el objetivo de margen — en ese orden de gravedad,
        para que Dani sepa qué revisar primero sin tener que leer las 4 columnas viejas. */
@@ -549,24 +553,31 @@ function renderMatrix(model){
     if(breach){
       vLvl='bad'; vTag='TECHO EXCEDIDO';
       vMsg=`${maxCh?maxCh.name:'un canal'} ya suma ${fP(maxN)} de descuento propio — más que tu techo de ${fP(ceil)}. PriceLabs se queda en 0% de LM aquí y aun así se pasa: baja el descuento nativo de ${maxCh?maxCh.name:'ese canal'} o sube el techo.`;
-    } else if(worst.netV<model.cost){
+    } else if(worstAsNet.netV<model.cost){
       vLvl='bad'; vTag='BAJO COSTO';
-      vMsg=`Con ${fP(lm)} de LM, ${worst.c.name} te dejaría ${f$(worst.netV)} — menos que tu costo de ${f$(model.cost)}. Súbele el Offset a ${worst.c.name} en su pestaña, o baja su descuento nativo.`;
-    } else if(worst.netV<model.net){
+      vMsg=`Con ${fP(lm)} de LM, ${worstAsNet.c.name} te dejaría ${f$(worstAsNet.netV)} — menos que tu costo de ${f$(model.cost)}. Súbele el Offset a ${worstAsNet.c.name} en su pestaña, o baja su descuento nativo.`;
+    } else if(worstAsNet.netV<model.net){
       vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
-      vMsg=`Todos los canales quedan sobre tu costo, pero ${worst.c.name} solo te deja ${f$(worst.netV)} — por debajo de tu margen objetivo (${f$(model.net)}). Revisa su Offset si quieres acercarlo.`;
+      vMsg=`Todos los canales quedan sobre tu costo, pero ${worstAsNet.c.name} solo te deja ${f$(worstAsNet.netV)} — por debajo de tu margen objetivo (${f$(model.net)}). Revisa su Offset si quieres acercarlo.`;
     } else {
       vLvl='ok'; vTag='RENTABLE EN TODOS';
-      vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worst.c.name}, con ${f$(worst.netV)}.`;
+      vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worstAsNet.c.name}, con ${f$(worstAsNet.netV)}.`;
+    }
+    /* BLOQUEANTE ALTO (revision externa): un veredicto "RENTABLE" no puede
+       presentarse como un hecho confirmado si depende de LM automatico
+       (ceiling_auto) sin verificar contra PriceLabs — es una PROYECCION. */
+    if(worst.q.lmMode==='ceiling_auto' && !worst.q.lmVerified){
+      vTag += ' ⚠ LM SIN VERIFICAR';
+      vMsg += ' Este veredicto asume el modo automático de Last-Minute (proyección propia, no confirmada con PriceLabs) — confírmalo en "Last-Minute de PriceLabs" antes de tratarlo como definitivo.';
     }
     const natCol=per.map(p=>`<span class="${p.q.nativoPct>ceil+0.5?'bad':''}">${escapeHtml(p.c.name)}: ${fP(p.q.nativoPct)}${p.q.applied.length?' <span style="color:var(--faint)">('+p.q.applied.map(a=>escapeHtml(a.name.split(' ')[0])).join('+')+')</span>':''}</span>`).join('');
     const totCol=per.map(p=>{
-      const t=100*(1-(1-lm/100)*p.q.nativoFactor); // exacto (factor), no totalPct redondeado
+      const t=100*(1-(1-p.q.lm/100)*p.q.nativoFactor); // exacto (factor), no totalPct redondeado; LM del propio peor escenario de este canal
       return `<span class="${t>ceil+0.5?'bad':'ok'}">${escapeHtml(p.c.name)}: ${fP(t)}</span>`;
     }).join('');
-    const netCol=netPer.map(p=>{
-      const cls=p.netV<model.cost?'bad':(p.netV<model.net?'warn':'ok');
-      return `<span class="${cls}">${escapeHtml(p.c.name)}: ${f$(p.netV)}</span>`;
+    const netCol=per.map(p=>{
+      const cls=p.q.payout<model.cost?'bad':(p.q.payout<model.net?'warn':'ok');
+      return `<span class="${cls}">${escapeHtml(p.c.name)}: ${f$(p.q.payout)} <span style="color:var(--faint)">(día ${p.day}, ${p.night}n, LM ${fP(p.q.lm)})</span></span>`;
     }).join('');
     return `<tr>
       <td>${w.label}</td>
@@ -574,7 +585,7 @@ function renderMatrix(model){
       <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
-          <div class="hint" style="margin:6px 0 2px;">Peor caso real dentro de esta ventana: <strong>día ${worstDay}</strong>, ${nights} noche${nights===1?'':'s'} · LM de PriceLabs: <strong>${breach?'0% ⚠':fP(lm)}</strong></div>
+          <div class="hint" style="margin:6px 0 2px;">Peor payout real detectado: <strong>día ${worstPayoutRow.d}</strong>, ${worstPayoutRow.n} noche${worstPayoutRow.n===1?'':'s'} (${escapeHtml(worstPayoutRow.c.name)}) · LM en ese escenario: <strong>${fP(lm)}</strong>${breach?' · TECHO tambien excedido en algun escenario de esta ventana':''}</div>
           <div class="hint" style="margin:6px 0 2px;">Nativo combinado (sin LM):</div>
           <div class="cell-ch">${natCol}</div>
           <div class="hint" style="margin:6px 0 2px;">Total visto por el huésped (nativo + LM):</div>

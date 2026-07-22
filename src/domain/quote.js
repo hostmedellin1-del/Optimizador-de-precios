@@ -76,6 +76,14 @@ export function quoteScenario(scenario, config){
   if(lmResult.mode!=='ceiling_auto' && !lmResult.verified)
     assumptions.push(`LM en modo "${lmResult.mode}" configurado pero NO VERIFICADO — Dani debe confirmar que este es el modo real que usa PriceLabs para esta unidad antes de confiar en este numero para una recomendacion categorica.`);
   const priceAfterLm = lmResult.priceOverride!=null ? lmResult.priceOverride : price*(1-lm/100);
+  /* Bloqueante 3 (revision externa): antes `blocked`/`verified`/`mode` se calculaban
+     dentro de priceLabsLm() pero NUNCA salian de quoteScenario() — ninguna vista
+     podia condicionar nada sobre "esto no es verificable". Ahora son campos de
+     primer nivel: `lmBlocked` es true si el modo es ceiling_auto (proyeccion, no
+     confirmado con PriceLabs) O si es otro modo pero no fue marcado verificado. */
+  const lmMode = lmResult.mode;
+  const lmVerifiedFlag = !!lmResult.verified;
+  const lmBlocked = !!lmResult.blocked || !lmVerifiedFlag;
 
   /* 2. Offset del canal (PriceLabs Pricing Offset), sobre el precio ya con LM. */
   const off = pct2(ch.offsetPct);
@@ -129,6 +137,7 @@ export function quoteScenario(scenario, config){
 
   return {
     chId, ch, days, nights, w, ceil, maxNAtScenario, worstChannelAtScenario, breach, lm,
+    lmMode, lmVerified: lmVerifiedFlag, lmBlocked, lmPriceOverrideActive: lmResult.priceOverride!=null,
     nativoPct: r.totalPct, // SOLO presentacion (redondeado) — para matematica financiera usar nativoFactor
     nativoFactor: r.factor, // exacto — 1-nativoFactor es la fraccion real que aplica el canal
     price, priceAfterLm, off, priceAfterOffset,

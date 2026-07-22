@@ -28,6 +28,8 @@ import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
 import {reservationCostBreakdown} from './costs.js';
 import {validateCostInputs, validateChannelInputs, validateResultFinite} from './validate.js';
+import {worstScenarioFactor} from './worstcase.js';
+import {priceLabsLm} from './pricelabs-lm.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -184,11 +186,29 @@ export function compute(config){
      (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
      baja de verdad si TODOS tienen offset positivo. */
   let floor=0, floorCh='';
+  const lmInfeasible = [];
   channels.forEach(c=>{
-    const wn = worstNative(discounts, c.id, windows)/100, pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
-    const denom = (1+off)*(1-wn)*pf;
-    const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
-    if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+    const pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
+    if(config.lmConfig){
+      /* CRITICO corregido (ver worstcase.js): el peor caso ahora incluye LM,
+         no solo el descuento nativo OTA — un LM verificado que el Piso
+         ignoraba podia netear por debajo del costo real aunque el modelo
+         dijera valid:true. */
+      const {worstFactor, worstDay, worstNight, infeasible} = worstScenarioFactor({
+        chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost
+      });
+      lmInfeasible.push(...infeasible);
+      const denom = worstFactor*pf;
+      const p = denom>0 ? cost/denom : Infinity;
+      if(p>floor){floor=p;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(off!==0?' + offset '+fP(off*100):'')+')';}
+    } else {
+      /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
+         de siempre, solo nativo OTA — no incluye LM. */
+      const wn = worstNative(discounts, c.id, windows)/100;
+      const denom = (1+off)*(1-wn)*pf;
+      const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
+      if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+    }
   });
   /* base: pushed price that nets target on every channel using its CONSTANT natives (window natives are tactical) */
   let base=0, baseCh='';
@@ -206,10 +226,14 @@ export function compute(config){
      se puede confiar, en vez de mostrar NaN/Infinity/negativo como si fuera una
      recomendacion valida. `valid` es false si hay al menos un error de nivel
      'error' (los 'warning' no bloquean, solo informan). */
+  /* Un precio Last-Minute FIJO (lmConfig.mode='fixed_price') que ya neta bajo
+     costo por si solo es un error BLOQUEANTE — ningun Piso lo arregla, porque
+     PriceLabs va a publicar ese precio fijo sin importar el Min Price. */
   const errors = [
     ...validateCostInputs({fixedCost: config.fixedCost, varCost: config.varCost, margin: config.margin}),
     ...validateChannelInputs(channels),
-    ...validateResultFinite({floor, base, net, cost}, ['floor','base','net','cost'])
+    ...validateResultFinite({floor, base, net, cost}, ['floor','base','net','cost']),
+    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${cost}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`}))
   ];
   const valid = !errors.some(e=>e.level==='error');
   return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid};
@@ -218,7 +242,10 @@ export function compute(config){
 /* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),
    evaluado sobre la ESTADÍA PROMEDIO: así el nativo incluye descuentos por duración que la
    reserva típica sí califica, y el aseo (fijo por reserva) se diluye correctamente por noche.
-   config = {chId, channels, discounts, avgNights, effBase, netObjetivo} */
+   Fase LM-fix: si config.lmConfig esta presente, el LM en ese MISMO dia de referencia
+   (45) se incluye en la formula — antes se ignoraba por completo, asi que el offset
+   sugerido no compensaba un LM real configurado en esa ventana.
+   config = {chId, channels, discounts, avgNights, effBase, netObjetivo, lmConfig?, windows?, ceilings?} */
 export function suggestedOffset(config){
   const {chId, channels, discounts, effBase, netObjetivo} = config;
   const c = channels.find(x=>x.id===chId);
@@ -228,9 +255,24 @@ export function suggestedOffset(config){
   const nat = 1-combineChannel(discounts, chId, 45, avgN).factor; /* nativo a estadía promedio, sin ventanas tácticas cortas */
   const pf = payoutFactor(c);
   const feePN = cleanFeePerNight(c, avgN);
-  const denom = effBase*(1-nat);
+  let lm = 0;
+  if(config.lmConfig && config.windows){
+    const w45 = config.windows.find(win=>45>=win.lo && 45<=win.hi) || config.windows[config.windows.length-1];
+    const ceil45 = pct((config.ceilings||{})[w45.id]);
+    let sharedNative45 = 0;
+    if(config.lmConfig.mode==='ceiling_auto'){
+      channels.forEach(c2=>{
+        const f2 = combineChannel(discounts, c2.id, 45, avgN).factor;
+        const p2 = (1-f2)*100;
+        if(p2>sharedNative45) sharedNative45=p2;
+      });
+    }
+    const lmResult = priceLabsLm(config.lmConfig, {day:45, ceilingPct:ceil45, nativePct:sharedNative45});
+    if(lmResult.priceOverride==null) lm = lmResult.lmPct; // precio-fijo: el offset no cambia lo que PriceLabs publica, se ignora aqui
+  }
+  const denom = effBase*(1-lm/100)*(1-nat);
   if(denom<=0 || pf<=0) return 0;
-  /* net = [effBase*(1+off)*(1-nat) + feePN]*pf = netObjetivo
-     => off = (netObjetivo/pf - feePN)/(effBase*(1-nat)) - 1 */
+  /* net = [effBase*(1-lm/100)*(1+off)*(1-nat) + feePN]*pf = netObjetivo
+     => off = (netObjetivo/pf - feePN)/(effBase*(1-lm/100)*(1-nat)) - 1 */
   return ((netObjetivo/pf - feePN)/denom - 1)*100;
 }
