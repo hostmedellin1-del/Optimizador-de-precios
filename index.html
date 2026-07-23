@@ -575,31 +575,40 @@ function renderChannelPages(model){
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
           ${(()=>{
-            const chReady = !model.readiness || !model.readiness.byChannel[c.id] || model.readiness.byChannel[c.id].ready;
             /* Fase 5 (revision externa — "datos financieros verificados"): si
                ESTE canal depende de un dato de negocio sin confirmar (comision
                bancaria real, Offset aislado en Hospy, VIP de Expedia,
                Genius+Mobile de Booking, no-reembolsable de Airbnb), su Offset
                sugerido/neto estimado tampoco es una recomendacion confiable —
                mismo principio que lmBlocked/baseBlocked, pero para datos que
-               no tienen nada que ver con Last-Minute (ver readiness.js). Esta
-               rama es la UNICA nueva; las tres siguientes (lmBlocked/
-               baseBlocked/normal) no cambian. */
-            if(!model.lmBlocked && chReady===false){
+               no tienen nada que ver con Last-Minute (ver readiness.js).
+               Prioridad de motivos (lmBlocked > baseBlocked > datos de negocio
+               > normal): lmBlocked/baseBlocked son MAS especificos (explican
+               ademas el numero corregido de Offset) y no deben ocultarse
+               detras de un aviso generico de datos pendientes — si ambos
+               aplican a la vez, el aviso de datos pendientes se agrega como
+               nota adicional, nunca reemplaza la explicacion de LM/precio fijo. */
+            const chReady = !model.readiness || !model.readiness.byChannel[c.id] || model.readiness.byChannel[c.id].ready;
+            const readinessNote = (!model.lmBlocked && chReady===false)
+              ? ` <span class="hint">(además, sin confirmar: ${model.readiness.byChannel[c.id].missing.map(m=>escapeHtml(m.label)).join('; ')} — ver Resumen → "Verificación de datos financieros")</span>`
+              : '';
+            if(model.lmBlocked){
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).</div>`;
+            }
+            if(model.baseBlocked){
+              /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
+                 (precio LM fijo activo en el dia de referencia), pero el
+                 Offset SI puede seguir controlando el resultado — se aplica
+                 DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
+                 Se muestra el numero corregido, con nota explicita de que ya
+                 NO se calcula sobre Base. */
+              return `<div class="offset-hint">⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b>${readinessNote}<br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
+            }
+            if(chReady===false){
               const missing = model.readiness.byChannel[c.id].missing;
               return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos en Resumen → "Verificación de datos financieros".</div>`;
             }
-            return `<div class="offset-hint">${model.lmBlocked
-              ? '⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).'
-              : model.baseBlocked
-                /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
-                   (precio LM fijo activo en el dia de referencia), pero el
-                   Offset SI puede seguir controlando el resultado — se aplica
-                   DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
-                   Se muestra el numero corregido, con nota explicita de que ya
-                   NO se calcula sobre Base. */
-                ? `⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`
-                : `Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`}</div>`;
+            return `<div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
           })()}
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>

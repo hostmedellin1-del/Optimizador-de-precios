@@ -8,8 +8,24 @@
    el modelo bloqueado, el botón NO precarga ningún precio, muestra una
    explicación (toast + mensaje en el propio Simulador) y deja la simulación
    manual disponible (escribiendo un precio a mano) claramente separada de
-   cualquier recomendación automática. */
+   cualquier recomendación automática.
+
+   Fase 5 (revision externa — "datos financieros verificados"): Base Price
+   ahora tiene un segundo gate ortogonal a LM (ver src/domain/readiness.js) —
+   resolveAllFinancialFacts() aisla el comportamiento de LM/bypass bajo
+   prueba dejando esos otros datos ya resueltos. */
 import {test, expect} from '@playwright/test';
+
+async function resolveAllFinancialFacts(page){
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
+  await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'verificado');
+  await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
+  for(const chId of ['airbnb','booking','expedia','direct']){
+    await page.selectOption(`select[data-verif-status="bankFeePctByChannel"][data-verif-ch="${chId}"]`, 'no_aplica');
+  }
+}
 
 test('config por defecto (LM sin verificar): el botón del Simulador NO precarga Base Price bloqueado', async ({page}) => {
   await page.goto('/index.html');
@@ -54,6 +70,7 @@ test('una vez el LM está verificado (no bloqueado), el botón SÍ precarga Base
   const pct = page.locator('[data-lmf="flat.pct"]');
   await pct.click(); await pct.fill('20'); await pct.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
+  await resolveAllFinancialFacts(page);
   await expect(page.locator('#kBase')).not.toHaveText('—');
 
   await page.locator('#goSimBtn').click();
