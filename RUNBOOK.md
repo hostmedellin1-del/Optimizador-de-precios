@@ -70,6 +70,23 @@ cubre todavía, corre esto a mano en un navegador real:
     cada canal debe seguir mostrando un número (no bloqueado), con la nota de
     que se calculó sobre el precio fijo real. El botón "Ver el paso a paso" NO
     debe precargar ningún precio mientras esto esté bloqueado.
+12. **Verificación de datos financieros (Fase 5)**: en una unidad nueva, verifica
+    el LM (modo plano + casilla "Confirmé..."). Min Price/Base Price deben SEGUIR
+    en "—" (ahora por "dato financiero sin verificar", no por LM) mientras Booking
+    (Genius+Mobile+comisión bancaria), Expedia (VIP) y la comisión bancaria de
+    Directo sigan sin marcar. Marca "Verificado" en Resumen → "Verificación de
+    datos financieros" para UN solo dato y confirma que solo se desbloquea lo que
+    ese dato afecta (no todo a la vez). La Matriz nunca debe decir "RENTABLE EN
+    TODOS" mientras falte alguno.
+13. **Rentabilidad mensual (planificación mensual)**: llena la calculadora de
+    costos detallada (Resumen → "Costos por noche") y confirma que "Rentabilidad
+    mensual y punto de equilibrio" deja de decir "NO CALCULABLE". Prueba un neto
+    manual bajo (que la contribución por noche quede <= 0) y confirma que dice
+    "EQUILIBRIO NO ALCANZABLE" (nunca un número de noches roto o "Infinity").
+    Activa el reparto Propietario/PM, pon Propietario+Administrador sumando más
+    de 100% y confirma que vuelve a "NO CALCULABLE" con el motivo exacto.
+    Desactívalo de nuevo y confirma que la utilidad vuelve a mostrarse completa
+    (sin restar una reserva/impuesto que quedó configurado de antes).
 
 ## Rollback
 

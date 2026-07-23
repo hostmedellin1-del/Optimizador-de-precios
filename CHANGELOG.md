@@ -4,6 +4,89 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.7.0] — Planificación mensual y reparto de utilidad
+
+Nuevo módulo `src/domain/monthly-economics.js` (dominio puro, sin fórmulas en
+`index.html`) que responde preguntas que `compute()`/`quoteScenario()` (rentabilidad
+de UNA reserva concreta) no respondían: ¿la unidad es rentable al final del mes?,
+¿cuántas noches hay que vender para no perder plata?, ¿qué le queda al propietario
+y al administrador/PM?
+
+- **Fuente de costos: reutiliza `state.costBreakdown` tal cual, cero campo nuevo.**
+  Costos fijos mensuales = `rent+admin+utilities+insurance+tech` (ya son montos
+  mensuales completos); variable/noche = `consumables`; costo por reserva (una
+  vez, no diluido) = `cleaning+laundry+supplies`; noches ocupadas planeadas =
+  `occNights` (ya significaba "noches ocupadas al mes"). Si la calculadora
+  detallada no está llena, el módulo se niega a inventar un total mensual desde
+  el modelo simple `fixedCost`/`varCost` por noche — devuelve `ok:false` con el
+  motivo exacto.
+- **Reservas estimadas = noches ocupadas planeadas ÷ estadía promedio** — una
+  PROYECCIÓN de planificación, nunca el número exacto de reservas reales del mes
+  ni el costo exacto de una reserva concreta (eso sigue siendo
+  `reservationCostBreakdown()`, sin tocar).
+- **Punto de equilibrio con contribución real por noche** (`neto/noche − consumo/noche
+  − costo por reserva ÷ estadía promedio`). Si esa contribución es `<= 0`, el
+  equilibrio es explícitamente `reachable:false` — nunca `Infinity` ni un número
+  falso. Los costos fijos NUNCA desaparecen con cero reservas (probado: 0 noches →
+  pérdida exacta = costos fijos).
+- **Reparto Propietario/Administrador (PM) explícito y apagado por defecto**
+  (`ownerTargetPct`/`managerTargetPct`/`reservePct`/`taxReservePct`,
+  `configured:false` de fábrica). Política única: `reservePct`/`taxReservePct` son
+  % del **ingreso neto mensual** (retención tipo impuesto, sobre lo facturado);
+  `ownerTargetPct`/`managerTargetPct` son % de la **utilidad distribuible**
+  (lo que queda después de costos+reserva+impuestos). El `margin` existente de
+  una unidad vieja **nunca** se reparte automáticamente — el reparto detallado
+  es una acción explícita, con aviso mientras esté apagado.
+- **Tres escenarios de ingreso**: manual (neto/noche directo), canal específico
+  (usa `quoteScenario()` real — misma fuente única que Piso/Base/Matriz/Simulador,
+  cero fórmula paralela), o mezcla de canales ponderada (pesos deben sumar 100%,
+  sin normalización silenciosa). Si el escenario depende de LM sin verificar o de
+  un dato de negocio pendiente (Fase 5, `readiness.js`), el resultado se etiqueta
+  "SIMULACIÓN NO CONFIABLE" — nunca se bloquea, nunca se presenta como
+  recomendación automática.
+- **UI**: nueva sección "Rentabilidad mensual y punto de equilibrio" en Resumen —
+  KPIs del mes, tabla de sensibilidad por ocupación (0/5/10/15/20/25/30 noches),
+  y la explicación textual de qué supuestos se usaron.
+- **Persistencia**: `monthlyIncomeScenario`/`monthlyDistribution` se guardan/
+  exportan/importan con la misma disciplina de `normalizeUnit()` — solo canales
+  conocidos (whitelist), porcentajes fuera de `[0,100]` se descartan, un `type`
+  desconocido cae a `'manual'` (el más seguro), una unidad vieja sin estos campos
+  recibe el default seguro (reparto apagado, escenario manual en 0).
+
+Tests: `tests/monthly-economics.test.js` (29, con fórmulas calculadas a mano en
+comentarios), `e2e/monthly-economics.spec.js` (8). 155/155 unitarios y 42/42 e2e en
+verde (incluye los fixes de rondas 2/3 y Fase 5, sin regresión).
+
+## [0.6.0] — Verificación de datos financieros como regla real, no etiqueta
+
+La revisión externa señaló que `src/domain/verification.js` reconocía datos "no
+verificados" (comisión bancaria real, aislamiento del Offset en Hospy, mezcla VIP
+de Expedia, Genius+Mobile de Booking, no-reembolsable de Airbnb) pero ningún
+cálculo se bloqueaba por eso — el motor podía ser matemáticamente correcto y aun
+así dar una recomendación incorrecta.
+
+- **Nuevo `src/domain/readiness.js`** (`evaluateRecommendationReadiness()`) — la
+  única fuente que decide, **por canal**, qué dato pendiente lo afecta y bloquea
+  su Piso/Base/Offset/"Rentable" como recomendación confiable.
+- **`verification.js`**: cada registro guarda `status`/`source`/`date`/`note`
+  (antes solo `status`/`note`); nuevo estado `'no_aplica'` (resuelto, no bloquea);
+  `bankFeePctByChannel` pasó de un registro plano a uno **por canal**.
+- **`engine.js`**: `compute()` expone `readiness`/`floorReadinessBlocked`/
+  `baseReadinessBlocked` — ortogonales a `lmBlocked`/`baseBlocked` (ronda 2/3, sin
+  tocarlos).
+- **`matrix.js`/`alerts.js`**: "RENTABLE EN TODOS" y "Sin conflictos" ya no se
+  sostienen si CUALQUIER canal de la ventana depende de un dato pendiente.
+- **`persistence.js`**: migración siempre seguro a `'no_verificado'` por canal
+  (incluido el formato plano pre-0.6.0) — jamás hereda `'verificado'`; payload
+  malformado nunca se acepta como verificado.
+- **`index.html`**: bloqueo por canal en KPIs/pestañas/Matriz/Simulador con
+  explicación específica; Simulador etiqueta "SIMULACIÓN NO CONFIABLE" sin
+  bloquear la simulación manual; formulario de verificación con fuente/fecha/nota.
+
+Tests: `tests/fase5-financial-readiness.test.js` (20),
+`tests/fase5-verification-persistence.test.js` (8), `e2e/financial-readiness.spec.js`
+(9). 126/126 unitarios, 34/34 e2e en verde.
+
 ## [0.5.0] — Correcciones de revisión externa, ronda 3 (2 P1)
 
 - **P1 — Base Price/Offset rotos con LM `fixed_price` cubriendo el día de referencia

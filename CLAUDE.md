@@ -622,6 +622,82 @@ etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal elegido dependa de algo pe
 (LM incluido). El botón "Ver el paso a paso" tampoco precarga Base cuando
 `baseReadinessBlocked` es true (mismo patrón que `lmBlocked`/`baseBlocked`, ronda 3).
 
+### Planificación mensual y reparto de utilidad (`src/domain/monthly-economics.js`)
+Responde lo que `compute()`/`quoteScenario()` (rentabilidad de UNA reserva concreta)
+no responden: ¿la unidad es rentable al final del mes?, ¿cuántas noches hay que
+vender para no perder plata?, ¿qué le queda al propietario y al administrador/PM?
+Dos conceptos separados a propósito, no los mezcles:
+- **Rentabilidad por RESERVA** (`compute()`/`quoteScenario()`): costo real de una
+  reserva concreta de N noches, `reservationCostBreakdown()` sin diluir
+  limpieza/lavandería/insumos por promedio. Sin cambios.
+- **Planificación MENSUAL** (`monthly-economics.js`): costos fijos mensuales
+  completos + una estimación de cuántas reservas caben en el mes. Es una
+  PROYECCIÓN de planificación, nunca el costo exacto de cada reserva real.
+
+**Fuente de costos — reutiliza `state.costBreakdown` tal cual, cero campo nuevo:**
+costos fijos mensuales = `rent+admin+utilities+insurance+tech` (ya eran montos
+mensuales completos, ver `costs.js`); variable/noche = `consumables`; costo por
+reserva (una vez, no diluido) = `cleaning+laundry+supplies`; noches ocupadas
+planeadas = `occNights` (ya significaba "noches ocupadas al mes"). Si la
+calculadora detallada no está llena, el módulo se niega a inventar un total
+mensual desde el modelo simple `fixedCost`/`varCost` por noche —
+`computeMonthlyEconomics()` devuelve `{ok:false, reason}`, nunca un número
+fabricado. Lo mismo si falta la Estadía promedio o el escenario de ingreso.
+
+**Reservas estimadas = noches ocupadas planeadas ÷ estadía promedio.** El costo
+por reserva (turno) se multiplica por ESTE número, nunca por las noches ocupadas
+directamente — evita reintroducir el bug P5/P13 (diluir el turno por promedio) a
+nivel mensual.
+
+**Punto de equilibrio** — contribución REAL por noche ocupada:
+`neto/noche − consumo/noche − costo por reserva ÷ estadía promedio`. Si esa
+contribución es `<= 0`, el equilibrio es explícitamente `{reachable:false}` —
+NUNCA `Infinity` ni un número falso: ningún volumen de ventas cubre los fijos con
+ese precio/costo. Los costos fijos mensuales NUNCA desaparecen con cero reservas
+(probado: 0 noches ocupadas → pérdida exacta = costos fijos mensuales, ni un peso
+menos).
+
+**Reparto Propietario/Administrador (PM) — política única, documentada aquí, no
+la reinventes en otro lado:**
+- `reservePct`/`taxReservePct` son % del **ingreso neto mensual** (retención tipo
+  impuesto, sobre lo facturado, antes de repartir utilidad).
+- `ownerTargetPct`/`managerTargetPct` son % de la **utilidad distribuible** (lo
+  que queda DESPUÉS de costos fijos+variables+reserva+impuestos).
+- Los cuatro viven bajo un único interruptor, `distribution.configured` — si está
+  en `false` (default de fábrica, y de cualquier unidad vieja que no lo tenía),
+  NINGUNO de los cuatro aplica, ni siquiera si quedó un valor viejo en `state`
+  (bug real encontrado y corregido durante el desarrollo: desactivar el reparto
+  debe volver EXACTAMENTE al mismo resultado que nunca haberlo configurado).
+- El `margin` existente (objetivo total sin repartir, usado en Piso/Base/Offset
+  por-reserva) **NUNCA** se reparte automáticamente entre Propietario/PM —
+  `computeMonthlyEconomics()` no lee ese campo en absoluto. Activar el reparto
+  detallado es una acción explícita de Dani, con aviso mientras esté apagado.
+
+**Tres escenarios de ingreso mensual** (`incomeScenario.type`):
+- `'manual'`: neto/noche que Dani escribe directo — nunca se marca "no
+  verificado" (es un dato que Dani ya confirmó al escribirlo, no una proyección
+  del motor).
+- `'channel'`: cotiza con `quoteScenario()` REAL (misma fuente única que Piso/
+  Base/Matriz/Simulador) — cero fórmula de comisiones/descuentos/LM/Offset
+  paralela en este archivo.
+- `'mix'`: promedio ponderado de varios canales cotizados con `quoteScenario()`;
+  los pesos deben sumar 100% exacto — nunca se normaliza en silencio si suman
+  otra cosa.
+
+Si el escenario `'channel'`/`'mix'` depende de LM sin verificar (`quoteScenario().lmBlocked`)
+o de un dato de negocio pendiente (Fase 5, `readiness.byChannel[chId]`), el
+resultado se etiqueta `incomeSource.unverified:true` — la UI muestra
+"SIMULACIÓN NO CONFIABLE" pero SIGUE calculando: nunca se bloquea la simulación
+manual/exploratoria, solo se etiqueta como no confiable para no usarla como
+recomendación automática.
+
+Persistencia: `monthlyIncomeScenario`/`monthlyDistribution` siguen la misma
+disciplina que el resto de `normalizeUnit()` — solo canales conocidos
+(whitelist contra `CHANNELS`), porcentajes fuera de `[0,100]` se descartan a
+favor del default, un `type` desconocido cae a `'manual'` (el más seguro — nunca
+calcula sin que Dani escriba un número él mismo), una unidad vieja sin estos
+campos recibe el default seguro (reparto apagado, escenario manual en 0).
+
 ### Validación y bloqueo (`src/domain/validate.js`)
 El motor nunca lanza (`compute()`/`quoteScenario()` siempre devuelven algo), pero
 `compute()` ahora también devuelve `valid`/`errors`. Un resultado no confiable (margen
@@ -777,6 +853,33 @@ cierto (los datos de negocio son un gate ortogonal nuevo); se ajustaron con un h
 `resolveAllFinancialFacts()` que aísla específicamente el comportamiento de LM que esos
 tests prueban, sin cambiar lo que verifican.
 
+### Actualización — Planificación mensual y reparto de utilidad
+Nuevo `src/domain/monthly-economics.js` (contrato completo documentado arriba, sección
+"Planificación mensual y reparto de utilidad") para responder rentabilidad de MES
+completo (no solo de una reserva): ingreso neto mensual, costos fijos+variables,
+utilidad distribuible, punto de equilibrio (nunca `Infinity`, "no alcanzable" explícito
+si la contribución por noche es `<=0`), y reparto Propietario/Administrador (apagado
+por defecto, política única documentada, nunca reparte el `margin` viejo
+automáticamente). Reutiliza `state.costBreakdown` existente (cero campo de costos
+nuevo) y `quoteScenario()` para cualquier ingreso modelado por canal (cero fórmula
+financiera paralela). Nueva sección en Resumen: "Rentabilidad mensual y punto de
+equilibrio" — KPIs del mes, tabla de sensibilidad por ocupación (0/5/10/15/20/25/30
+noches), explicación textual de los supuestos. Se etiqueta "SIMULACIÓN NO CONFIABLE"
+(reutilizando `readiness`/`lmBlocked` de Fase 5, sin reimplementar esa regla) cuando el
+escenario de ingreso depende de un dato sin confirmar — nunca se bloquea, nunca se
+presenta como recomendación automática.
+
+Bug real encontrado y corregido durante el desarrollo (antes de cualquier commit):
+`reservePct`/`taxReservePct` seguían aplicándose aunque `distribution.configured`
+pasara a `false` (un valor viejo quedaba en `state` y el módulo lo aplicaba igual) —
+corregido para que los cuatro porcentajes del reparto vivan bajo el mismo interruptor.
+
+Tests: `tests/monthly-economics.test.js` (29, con fórmulas calculadas a mano en
+comentarios — reconciliación exacta, punto de equilibrio en el borde de contribución
+cero, reparto que suma exacto, `quoteScenario()` real para canal/mezcla, moneda que
+nunca se mezcla), `e2e/monthly-economics.spec.js` (8). 155/155 unitarios, 42/42 e2e
+(incluye rondas 2/3 y Fase 5, sin regresión).
+
 ### Pendiente explícito de esta ronda (no completado, no ocultado)
 - **Accesibilidad**: se corrigieron los controles nuevos sin texto visible (editor de
   tramos). El resto del formulario (pre-existente, antes de esta auditoría) usa `<span>`
@@ -789,3 +892,8 @@ tests prueban, sin cambiar lo que verifican.
   cargado; eso solo lo puede hacer Dani desde sus extranets/facturas/reportes reales.
 - **Multi-moneda por canal (COP/USD) sigue sin convertir tasas** — fuera de alcance de
   esta ronda, no se tocó.
+- **Reparto Propietario/PM real**: el módulo mensual construyó el mecanismo (política
+  documentada, validación, apagado por defecto) pero los % reales de
+  `ownerTargetPct`/`managerTargetPct`/`reservePct`/`taxReservePct` son una decisión de
+  negocio 100% de Dani — nadie inventó un split (ni siquiera 50/50). Actívalo en
+  Resumen → "Reparto Propietario/Administrador" cuando tengas esos números reales.
