@@ -109,6 +109,29 @@ cubre todavía, corre esto a mano en un navegador real:
     rango para que ya no cubra el día 45: Base Price vuelve a mostrar un número. Esto
     confirma que `baseBlocked` nunca contamina `floorReadinessBlocked` (contrato de
     `evaluateGlobalRecommendationReadiness()`, ver CLAUDE.md).
+17. **Reconciliar una reserva real**: en Resumen → "Validar contra una reserva real",
+    ingresa canal/precio/noches/días y un payout recibido IGUAL al estimado que muestra la
+    app (cópialo del resultado tras escribir cualquier payout) — debe decir "CONFIABLE" y
+    "Diferencia USD 0". Cambia el payout a un valor bien bajo (ej. 10% del estimado) — debe
+    mostrar una alerta roja clara. Escribe una comisión OTA real distinta a la configurada
+    — debe aparecer en el desglose por componente con una causa explícita. Guarda la
+    conciliación (botón "+ Guardar") — debe aparecer en la lista de abajo; bórrala con el
+    botón "✕" y confirma que desaparece. Verifica en la pestaña del canal que su comisión
+    configurada NO cambió por hacer esto — la reconciliación nunca toca la configuración.
+18. **Moneda: consolidación multi-moneda bloqueada sin tipo de cambio verificado**: en la
+    pestaña de un canal (ej. Airbnb), cambia "Moneda de liquidación" a una distinta de la
+    moneda de la unidad. Vuelve a Resumen → "Validar contra una reserva real", cotiza ese
+    canal con la moneda de liquidación seleccionada — debe decir "MONEDA SIN CONVERSIÓN —
+    BLOQUEADO" y mencionar el par de monedas exacto. Ve a "Moneda y tipo de cambio",
+    escribe un tipo de cambio y márcalo "Verificado" — la conciliación debe dejar de estar
+    bloqueada y mostrar el monto convertido con la nota "es una REFERENCIA...". Borra el
+    tipo de cambio (deja el campo vacío) o cámbialo a 0/negativo — debe volver a bloquear.
+19. **Auditoría de datos reales**: en una unidad nueva, "Auditoría de datos reales" debe
+    decir "SIMULACION". Carga costos reales (o llena la calculadora detallada) — pasa a
+    "DATOS PARCIALES". Verifica todos los datos de negocio pendientes (Verificación de
+    datos financieros), confirma LM, resuelve cualquier moneda pendiente, y guarda una
+    conciliación con diferencia baja — el estado debe pasar a "LISTO PARA USO INTERNO
+    SUPERVISADO". En ningún punto debe decir "producción".
 
 ## Rollback
 

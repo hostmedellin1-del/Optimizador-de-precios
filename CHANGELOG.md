@@ -4,6 +4,45 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.8.0] — Preparación para uso operativo con datos reales: reconciliación, moneda, auditoría
+
+Tres módulos puros nuevos que responden "¿cómo sé que el modelo se está desviando de lo
+que de verdad pasa en mis reservas?" sin inventar ningún dato (comisión, impuesto, tipo de
+cambio, promoción o regla de plataforma).
+
+- **`src/domain/reconciliation.js` — `reconcileReservation()`**: compara el estimado de
+  `quoteScenario()` (fuente única, sin fórmula paralela) contra una reserva real que Dani
+  ingresa a mano (canal, precio, noches, días, comisión OTA/bancaria/aseo/descuento nativo
+  reales — todos opcionales —, payout recibido, moneda, referencia opcional; **nunca** se
+  piden datos de huésped). Devuelve diferencia absoluta/%, desglose por componente, causas
+  posibles, severidad (`'ok'` `<=3%`, `'warn'` real>estimado o hasta 10% por debajo,
+  `'bad'` real<estimado y más de 10% por debajo) y si el modelo sigue siendo confiable.
+  **Nunca cambia `channels`/`discounts` automáticamente** — solo sugiere qué revisar.
+- **`src/domain/currency.js` — contrato de moneda**: cada canal puede declarar
+  `settlementCurrency` (USD/COP/null) distinta a la moneda base de la unidad.
+  `resolveConversion()` es la única función que convierte montos — exige un tipo de cambio
+  MANUAL en `state.fxRates[moneda]` con `status:'verificado'` y `rate` válido `> 0`; si
+  falta o es inválido, bloquea explícitamente cualquier consolidación multi-moneda (nunca
+  asume 1:1, nunca inventa, nunca llama una API externa). Integrado en `reconciliation.js`
+  y en `monthly-economics.js` (escenarios `'channel'`/`'mix'` con un canal en otra moneda).
+- **`src/domain/audit.js` — `buildAuditChecklist()`**: rollup de 7 verificaciones (costos
+  reales, comisiones por canal, LM, Offset, promociones, moneda, última reconciliación)
+  hacia un estado final de 3 valores — `'simulacion'` / `'datos_parciales'` /
+  `'listo_supervisado'` ("listo para uso interno supervisado") — **nunca "producción"**.
+- **Bug real encontrado y corregido**: el aviso "EJEMPLO" de costos (`renderDataProvenance`)
+  solo miraba el modo simple (`fixedCost`/`varCost`) — una unidad con la calculadora
+  detallada llena pero esos dos campos sin tocar seguía mostrando "EJEMPLO" pese a tener
+  costos reales. Corregido para contar también `costBreakdownIsFilled()`.
+- **UI**: nuevas secciones en Resumen — "Moneda y tipo de cambio", "Validar contra una
+  reserva real" (formulario + resultado en vivo + conciliaciones guardadas localmente, con
+  borrado explícito), "Auditoría de datos reales". Selector de moneda de liquidación en
+  cada pestaña de canal.
+
+Tests: `tests/currency.test.js` (8), `tests/reconciliation.test.js` (12),
+`tests/audit.test.js` (8), `tests/monthly-economics.test.js` (+4), 
+`tests/real-data-persistence.test.js` (15, incluye payloads malformados/XSS).
+`e2e/real-data.spec.js` (9). **221/221 unitarios, 60/60 e2e, sin regresión.**
+
 ## [0.7.2] — Refactor de cierre: única fuente de verdad para los bloqueos globales
 
 Problema (revisión independiente): `globalRecommendationReady()` (0.7.1) estaba

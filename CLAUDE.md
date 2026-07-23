@@ -411,9 +411,14 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
    Expedia 0% — son estimados de Dani a falta de revisar facturas, no verificados.
    **(clave `bankFeePctByChannel`, POR CANAL — bloquea cada canal con comisión > 0%
    mientras esté pendiente; Airbnb/Expedia en 0% no lo necesitan.)**
-4. Multi-moneda: existe el campo `currency` (USD/COP) pero es solo una etiqueta de
-   visualización, no convierte tasas. Varias unidades reales de Dani están en COP
-   (Distrito Primavera, Casa Río Adentro, Villa Juliana, El Refugio).
+4. **[Actualizado — infraestructura lista, falta el dato real]** Multi-moneda: el
+   contrato de conversión YA EXISTE (`src/domain/currency.js`) — cada canal puede declarar
+   `settlementCurrency` distinta a la moneda base, y cualquier consolidación entre monedas
+   distintas queda bloqueada mientras no exista un tipo de cambio manual VERIFICADO en
+   Resumen → "Moneda y tipo de cambio". Lo que sigue pendiente es 100% de Dani: marcar qué
+   canal liquida en qué moneda para cada unidad real (Distrito Primavera, Casa Río Adentro,
+   Villa Juliana, El Refugio están en COP) y el tipo de cambio real que usa para
+   convertir — nadie lo inventó, arranca vacío/no verificado.
 5. Multi-unidad simultánea: el sistema permite guardar/cargar unidades por nombre, pero
    no comparar varias a la vez en una sola vista (portafolio). No construir esto sin que
    Dani lo pida — es una función nueva, no un arreglo.
@@ -433,9 +438,14 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
 9. % exacto del descuento no reembolsable de Airbnb, si este listing lo tiene activo.
    Hoy apagado en 0% por defecto (nadie inventó un 10%). **(clave `airbnbNonRefundable` —
    solo bloquea Airbnb si Dani activa este descuento sin confirmar el % real.)**
-10. Moneda real y tipo de cambio por canal, si una unidad opera con monedas distintas
-    entre OTAs (ver punto 4) — hoy no modelado, no confundir con el punto 4 (ese es
-    "no convierte", este es "no está ni preguntado por canal").
+10. **[Actualizado]** Moneda real y tipo de cambio por canal — ya se pregunta explícitamente
+    por canal (`channel.settlementCurrency`, pestaña de cada canal) y por tipo de cambio
+    (`state.fxRates`, Resumen → "Moneda y tipo de cambio"). Ver punto 4.
+11. **[Nuevo]** Reconciliar reservas reales: la herramienta existe (Resumen → "Validar
+    contra una reserva real") pero no se ha cargado ninguna conciliación real de ninguna
+    unidad todavía — el checklist de auditoría de cada unidad seguirá en "simulación"/
+    "datos parciales" hasta que Dani compare al menos una reserva real reciente por canal
+    contra el estimado del motor.
 
 ---
 
@@ -772,7 +782,101 @@ disciplina que el resto de `normalizeUnit()` — solo canales conocidos
 (whitelist contra `CHANNELS`), porcentajes fuera de `[0,100]` se descartan a
 favor del default, un `type` desconocido cae a `'manual'` (el más seguro — nunca
 calcula sin que Dani escriba un número él mismo), una unidad vieja sin estos
-campos recibe el default seguro (reparto apagado, escenario manual en 0).
+campos recibe el default seguro (reparto apagado, escenario manual SIN
+CONFIGURAR — `manualNetPerNight:null`, nunca `0`, ver corrección P2 más abajo).
+
+### Preparación para datos reales: reconciliación de reservas, contrato de moneda y auditoría (`src/domain/reconciliation.js`, `src/domain/currency.js`, `src/domain/audit.js`)
+
+El motor es matemáticamente correcto dado lo que Dani configura — pero eso NO
+prueba que la configuración represente su cuenta real. Esta sección responde
+"¿cómo sé si el modelo se está desviando de lo que de verdad pasa en mis
+reservas?" sin inventar ningún dato nuevo (comisión, impuesto, tipo de cambio,
+promoción o regla de plataforma).
+
+**Reconciliar una reserva** = comparar el estimado que da `quoteScenario()`
+(el mismo motor que ya usan Piso/Base/Matriz/Simulador, nunca una fórmula
+paralela) contra los datos REALES de una reserva/liquidación ya cerrada que
+Dani escribe a mano: canal, precio publicado, noches, días de anticipación,
+comisión OTA real, comisión bancaria real, tarifa de aseo cobrada, payout
+recibido, moneda, y una referencia de reserva opcional (nunca datos del
+huésped — nombre/email/teléfono no se piden ni se guardan).
+
+**Diferencia entre estimado y liquidación real**: `reconcileReservation()`
+(`src/domain/reconciliation.js`) calcula `payoutReceivedEnMonedaBase −
+estimate.payout`, en absoluto y en %. Severidad — umbral fijo, documentado en
+el código, no lo reinventes en otro lado:
+- `|diff%| <= 3%` → `'ok'` (ruido normal, confiable).
+- `real > estimado` y `|diff%| > 3%` → `'warn'` (mejor de lo esperado —
+  informativo, no una alarma).
+- `real < estimado` y `|diff%| > 10%` → `'bad'` (alerta clara: estás
+  recibiendo menos de lo que el modelo asume, revisa qué cambió).
+Si Dani escribió comisión OTA/bancaria/tarifa de aseo/descuento nativo
+reales, cada uno se compara contra lo configurado y aparece en el desglose
+con una causa explícita; si no escribió ninguno, la causa queda genérica
+("ingresa comisiones/tarifas reales para acotar el motivo"). **La
+reconciliación NUNCA cambia `channels`/`discounts` automáticamente** — solo
+sugiere qué revisar; confirmar un valor real sigue siendo 100% manual en
+Resumen → "Verificación de datos financieros".
+
+**Contrato de moneda** (`src/domain/currency.js`) — la app soporta 2 monedas
+(USD/COP). Cada unidad tiene una moneda BASE (`state.currency`, la de
+siempre); cada canal puede declarar su propia `settlementCurrency` si liquida
+en OTRA moneda (ej. Airbnb vía Supra en USD mientras la unidad opera en
+COP) — `null` (default) significa "misma que la unidad". `resolveConversion()`
+es la ÚNICA función que convierte un monto entre monedas: si
+`fromCurrency===toCurrency` no hay nada que convertir; si son distintas, EXIGE
+una entrada en `state.fxRates[fromCurrency]` con `status:'verificado'` y un
+`rate` numérico finito `> 0` — cualquier otra cosa (entrada ausente,
+no_verificado, rate vacío/0/negativo/NaN/texto) **bloquea** la conversión,
+nunca asume 1:1 ni inventa un valor. Nunca se llama a una API externa de tipo
+de cambio. Dos consumidores reusan esta misma función (nadie reimplementa la
+regla): `reconciliation.js` (convierte el payout real antes de comparar) y
+`monthly-economics.js` (escenarios `'channel'`/`'mix'` — si el canal usado
+liquida en otra moneda sin FX verificado, el escenario ENTERO queda
+`ok:false`, nunca mezcla montos en silencio). Una cotización de un solo canal
+en su propia moneda sigue mostrándose sin este chequeo — el bloqueo aplica
+solo cuando dos montos en monedas distintas necesitan consolidarse en un
+número.
+
+**Auditoría de datos reales** (`src/domain/audit.js`, `buildAuditChecklist()`)
+— rollup puro de señales que YA calculan otros módulos (nunca reimplementa
+qué está pendiente): costos reales cargados, comisiones por canal
+verificadas, Last-Minute verificado, Offset verificado, promociones
+verificadas (Booking Genius+Mobile, Expedia VIP, Airbnb no-reembolsable),
+moneda/tipo de cambio verificado si aplica, y la última reserva conciliada
+con su diferencia. Estado final — **SOLO 3 valores, NUNCA "producción"**:
+- `'simulacion'`: los costos siguen en el valor ilustrativo de fábrica.
+- `'datos_parciales'`: hay costos reales pero falta confirmar algo, o no se
+  ha conciliado ninguna reserva, o la última conciliación no fue confiable.
+- `'listo_supervisado'` ("listo para uso interno supervisado"): costos
+  reales, TODO el negocio confirmado, LM confirmado, moneda resuelta si
+  aplica, y al menos una reconciliación reciente dentro de lo esperado.
+  Sigue sin ser "producción" — esa palabra la usa Dani, nunca la herramienta.
+
+**Qué revisar antes de confiar en una recomendación de precio** (checklist
+recomendado, en orden):
+1. Airbnb: comisión real (Host-Only o Split-Fee), tarifa de aseo por listing,
+   si el descuento no reembolsable está activo y su % exacto.
+2. Booking.com: extranet → confirma si Genius y Mobile Rate están AMBOS
+   activos hoy (cambia cuál canal fija el Piso).
+3. Expedia: mezcla real de niveles VIP de tus huéspedes (hoy se asume el
+   peor caso, 20%).
+4. Hospy/PriceLabs: si el Offset por canal se aísla de verdad por canal o se
+   distribuye a todos los conectados; el modo real de Last-Minute que usa la
+   cuenta.
+5. Extractos bancarios/pasarela: comisión real por transacción, y si hay un
+   tipo de cambio real distinto al configurado (compáralo contra `fxRates`).
+6. Guarda una conciliación real por canal periódicamente — un solo dato
+   verificado en el formulario no reemplaza revisar reservas de verdad.
+
+**Limitaciones explícitas de esta herramienta**: no llama a ninguna API
+(PriceLabs, bancos, tipo de cambio) — todo dato real lo escribe Dani a mano;
+no detecta automáticamente cuándo una comisión configurada quedó desactualizada
+(solo lo hace evidente si Dani concilia una reserva); las conciliaciones
+guardadas viven SOLO en este navegador (`localStorage`, mismo mecanismo que
+el resto de la app) — no hay respaldo en la nube más allá de Exportar/Importar
+manual; el checklist de auditoría es un resumen, no un sustituto de revisar
+la cuenta real periódicamente.
 
 ### Validación y bloqueo (`src/domain/validate.js`)
 El motor nunca lanza (`compute()`/`quoteScenario()` siempre devuelven algo), pero
@@ -1076,3 +1180,44 @@ insumos, ahora contra `evaluateGlobalRecommendationReadiness()` — más 3 tests
 bloqueado bloquea Piso+Base, todo resuelto sin fixed_price desbloquea ambos, y la guarda
 anti-regresión), `e2e/base-fixedprice.spec.js` (+1, fixed_price deja el Piso disponible y
 solo bloquea Base). **174/174 unitarios, 51/51 e2e, sin regresión.**
+
+### Actualización (revisión externa) — preparación para uso operativo con datos reales: reconciliación de reservas, contrato de moneda y auditoría
+
+Tres módulos nuevos, documentados en detalle en la sección "Preparación para datos
+reales" de arriba — resumen de la entrega:
+
+- **`src/domain/reconciliation.js`** (`reconcileReservation()`): compara el estimado de
+  `quoteScenario()` contra una reserva real que Dani ingresa a mano (canal, precio, noches,
+  días, comisiones/tarifas reales opcionales, payout recibido, moneda, referencia opcional
+  — nunca datos de huésped). Devuelve diferencia absoluta/%, desglose por componente,
+  causas posibles, severidad (`'ok'`/`'warn'`/`'bad'`, umbral documentado: `<=3%` ok, `>3%`
+  warn, `real<estimado` y `>10%` bad) y si el modelo sigue siendo confiable. NUNCA cambia
+  `channels`/`discounts` — solo sugiere qué revisar.
+- **`src/domain/currency.js`** (`resolveConversion()`): contrato de moneda — cada canal
+  puede declarar `settlementCurrency` (USD/COP/null) distinta a la moneda base de la
+  unidad; cualquier consolidación entre monedas distintas exige `state.fxRates[moneda]`
+  con `status:'verificado'` y un `rate` válido `> 0`, si no, bloquea explícitamente (nunca
+  1:1, nunca inventado, nunca una API externa). Reusada por `reconciliation.js` y por
+  `monthly-economics.js` (escenarios `'channel'`/`'mix'` con un canal en otra moneda).
+- **`src/domain/audit.js`** (`buildAuditChecklist()`): rollup de 7 verificaciones (costos,
+  comisiones, LM, Offset, promociones, moneda, última reconciliación) hacia un estado final
+  de 3 valores posibles (`'simulacion'`/`'datos_parciales'`/`'listo_supervisado'`) — NUNCA
+  "producción". Reusa `readiness.byChannel`/`resolveConversion()`, no reimplementa ninguna
+  regla de bloqueo existente.
+- **Bug real encontrado y corregido en el mismo commit**: `renderDataProvenance()`
+  (aviso "EJEMPLO" de `fixedCost`/`varCost`) solo miraba el modo simple — una unidad que
+  llenó la calculadora de costos detallada con datos reales pero nunca tocó los campos
+  simples (que quedan en 32/22 sin usarse) seguía mostrando "EJEMPLO" como si nada fuera
+  real. Corregido para contar también `costBreakdownIsFilled()`, mismo helper que ya usa
+  `compute()`.
+- **UI** (`index.html`): nuevas secciones en Resumen — "Moneda y tipo de cambio" (una fila
+  por cada moneda de liquidación distinta a la de la unidad), "Validar contra una reserva
+  real" (formulario + resultado en vivo + lista de conciliaciones guardadas localmente, con
+  borrado explícito), "Auditoría de datos reales" (checklist + estado). Selector de moneda
+  de liquidación agregado a la pestaña de cada canal.
+
+Tests: `tests/currency.test.js` (8), `tests/reconciliation.test.js` (12),
+`tests/audit.test.js` (8), `tests/monthly-economics.test.js` (+4, contrato de moneda en
+escenarios `'channel'`/`'mix'`), `tests/real-data-persistence.test.js` (15, incluye
+payloads malformados/XSS en `reconciliations`, monedas inventadas, rates inválidos).
+`e2e/real-data.spec.js` (9). **221/221 unitarios, 60/60 e2e, sin regresión.**
