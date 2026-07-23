@@ -46,6 +46,49 @@ test('sin la calculadora de costos detallada llena, el resultado mensual dice "N
   await expect(result).toContainText('calculadora de costos detallada');
 });
 
+/* P2 (revision externa): con los costos llenos pero SIN escribir un neto
+   manual, el resultado debe decir explícitamente "Falta ingresar neto manual
+   por noche" — antes el default era 0 y el motor lo aceptaba como un ingreso
+   real, mostrando una proyección de pérdida mensual completa que nadie
+   configuró. */
+test('P2: costos llenos pero neto manual SIN CONFIGURAR (default de fábrica) — el resultado pide explícitamente el dato, nunca calcula desde 0 en silencio', async ({page}) => {
+  await page.goto('/index.html');
+  await fillCostBreakdown(page, BASE_COSTS);
+  const result = page.locator('#monthlyResult');
+  await expect(result).toContainText('NO CALCULABLE');
+  await expect(result).toContainText('Falta ingresar neto manual por noche');
+});
+
+test('P2: escribir 0 explícitamente en el neto manual tampoco calcula — 0 no es un ingreso real configurado', async ({page}) => {
+  await page.goto('/index.html');
+  await fillCostBreakdown(page, BASE_COSTS);
+  await fillField(page, '[data-mon="manualNetPerNight"]', '0');
+  const result = page.locator('#monthlyResult');
+  await expect(result).toContainText('Falta ingresar neto manual por noche');
+});
+
+test('P2: borrar el campo (dejarlo vacío) después de haber escrito un valor vuelve a pedir el dato, en vez de revertir a un 0 silencioso', async ({page}) => {
+  await page.goto('/index.html');
+  await fillCostBreakdown(page, BASE_COSTS);
+  await fillField(page, '[data-mon="manualNetPerNight"]', '80');
+  await expect(page.locator('#monthlyResult')).not.toContainText('NO CALCULABLE');
+
+  await fillField(page, '[data-mon="manualNetPerNight"]', '');
+  await expect(page.locator('#monthlyResult')).toContainText('Falta ingresar neto manual por noche');
+  await expect(page.locator('[data-mon="manualNetPerNight"]')).toHaveValue('');
+});
+
+test('P2: al ingresar un neto manual positivo después del estado "sin configurar", el cálculo mensual vuelve a funcionar', async ({page}) => {
+  await page.goto('/index.html');
+  await fillCostBreakdown(page, BASE_COSTS);
+  await expect(page.locator('#monthlyResult')).toContainText('Falta ingresar neto manual por noche');
+
+  await fillField(page, '[data-mon="manualNetPerNight"]', '80');
+  const result = page.locator('#monthlyResult');
+  await expect(result).not.toContainText('NO CALCULABLE');
+  await expect(result).toContainText('USD 1.760');
+});
+
 test('caso manual (mismo caso que el test unitario): con los costos llenos, el resultado coincide con el cálculo a mano', async ({page}) => {
   await page.goto('/index.html');
   await fillCostBreakdown(page, BASE_COSTS);

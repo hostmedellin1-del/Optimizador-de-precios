@@ -4,6 +4,40 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.7.1] — Revisión externa: Min Price/Base Price globales inseguros (P1); neto manual mensual en 0 aceptado como dato real (P2)
+
+Dos fallos encontrados por una revisión independiente, no cubiertos por los 155/42 tests
+de 0.7.0.
+
+- **P1 — `floorReadinessBlocked`/`baseReadinessBlocked` solo miraban el canal que fija el
+  número HOY, no todos los canales activos.** Min Price/Base Price son números **GLOBALES**
+  (un solo valor que PriceLabs aplica a los 4 canales) — un canal que hoy NO fija el número
+  pero tiene un dato pendiente (comisión bancaria, Offset) puede pasar a fijarlo en cuanto
+  se conozca su valor real. Corregido con una nueva función pura y compartida,
+  `unreadyChannels(readiness, channels)` (`src/domain/readiness.js`), que ahora usan
+  `engine.js` (gate global), `matrix.js` y `alerts.js` (sus propios veredictos, ya lo hacían
+  bien — ahora sin duplicar el filtro). También se agrega `globalRecommendationReady(...)`,
+  la regla combinada (datos de negocio + LM + precio fijo) documentada para cualquier
+  consumidor futuro. Caso obligatorio probado: Airbnb fija hoy el Piso (perfectamente
+  verificado); Directo no lo fija hoy pero tiene su comisión bancaria sin confirmar → Min
+  Price/Base Price siguen bloqueados globalmente hasta confirmar Directo también.
+- **P2 — `manualNetPerNight:0` (default de fábrica) se aceptaba como ingreso mensual real.**
+  `computeMonthlyEconomics()` solo validaba "es un número finito" — `0` lo es, así que una
+  unidad nueva (sin tocar ese campo) proyectaba una PÉRDIDA mensual completa basada en un
+  ingreso que nadie configuró. Corregido: default pasa a `null` ("sin configurar", nunca
+  `0`); `null`/`''`/`0`/negativo devuelven `{ok:false}` con el mensaje "Falta ingresar neto
+  manual por noche"; solo un número `> 0` calcula. `persistence.js` preserva `null` sin
+  generar warnings falsos (`nullableNumField()`).
+- Regresión encontrada y corregida en el mismo commit: `e2e/base-fixedprice.spec.js` (un
+  test asumía que el mecanismo de LM `fixed_price` era el único gate en juego; con el fix
+  de P1 el Base global también queda bloqueado por la comisión bancaria sin confirmar de
+  Booking/Directo del catálogo de fábrica, independientemente del rango de `fixed_price` —
+  se aisló con `resolveAllFinancialFacts()`, mismo patrón ya usado en otros specs).
+
+Tests: +6 en `tests/fase5-financial-readiness.test.js`, +9 en `tests/monthly-economics.test.js`,
++4 en `e2e/financial-readiness.spec.js`, +4 en `e2e/monthly-economics.spec.js`.
+**170/170 unitarios, 50/50 e2e, sin regresión.**
+
 ## [0.7.0] — Planificación mensual y reparto de utilidad
 
 Nuevo módulo `src/domain/monthly-economics.js` (dominio puro, sin fórmulas en
@@ -51,7 +85,8 @@ y al administrador/PM?
   exportan/importan con la misma disciplina de `normalizeUnit()` — solo canales
   conocidos (whitelist), porcentajes fuera de `[0,100]` se descartan, un `type`
   desconocido cae a `'manual'` (el más seguro), una unidad vieja sin estos campos
-  recibe el default seguro (reparto apagado, escenario manual en 0).
+  recibe el default seguro (reparto apagado, escenario manual sin configurar —
+  ver corrección en [0.7.1]).
 
 Tests: `tests/monthly-economics.test.js` (29, con fórmulas calculadas a mano en
 comentarios), `e2e/monthly-economics.spec.js` (8). 155/155 unitarios y 42/42 e2e en

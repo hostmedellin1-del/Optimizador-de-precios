@@ -209,6 +209,46 @@ test('falta el escenario de ingreso (manual sin número, o tipo no configurado):
   assert.equal(r2.ok, false);
 });
 
+/* P2 (revision externa): el bug real era que `manualNetPerNight` en 0 (el
+   default viejo) pasaba la validación de "es un número finito" y el motor
+   proyectaba una PÉRDIDA mensual completa (todos los costos, cero ingreso)
+   para una unidad nueva donde nadie escribió nada — 0 no es "sin dato", es un
+   ingreso real de $0. Estos tests prueban que 0/vacío/null/negativo NUNCA
+   calculan, con el mismo mensaje explícito que la UI debe mostrar, y que un
+   valor positivo real sigue funcionando exactamente igual que antes. */
+test('P2: escenario manual con el default de fábrica (defaultMonthlyIncomeScenario, manualNetPerNight:null) NO calcula — "no configurado" nunca es un ingreso válido', () => {
+  const sc = defaultMonthlyIncomeScenario(['airbnb','booking','expedia','direct']);
+  const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario: sc, currency:'USD'});
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Falta ingresar neto manual por noche/);
+});
+
+test('P2: escenario manual con manualNetPerNight:0 explícito NO calcula — 0 no es "sin dato", pero tampoco se acepta como ingreso real sin que sea > 0', () => {
+  const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:0}, currency:'USD'});
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Falta ingresar neto manual por noche/);
+});
+
+test('P2: escenario manual con manualNetPerNight:"" (string vacío, como llega de un input HTML sin tocar) NO calcula', () => {
+  const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:''}, currency:'USD'});
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Falta ingresar neto manual por noche/);
+});
+
+test('P2: escenario manual con manualNetPerNight negativo NO calcula (un neto negativo no es un escenario simulable, es un dato roto)', () => {
+  const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:-10}, currency:'USD'});
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Falta ingresar neto manual por noche/);
+});
+
+test('P2: al ingresar un neto manual positivo, el cálculo mensual vuelve a funcionar exactamente igual que antes del fix', () => {
+  const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:80}, currency:'USD'});
+  assert.equal(r.ok, true);
+  // mismo caso ya probado en el resto del archivo: ingreso neto 80*22=1760, utilidad 546.67
+  assert.ok(Math.abs(r.netIncomeMonthly-1760)<0.01);
+  assert.ok(Math.abs(r.profitMonthly-546.6666666666667)<0.01);
+});
+
 test('ESCENARIO DE CANAL usa quoteScenario() REAL — el neto por noche coincide exactamente con llamar quoteScenario() directo (no una fórmula paralela)', () => {
   const quoteConfig = quoteConfigFor();
   const scenario = {chId:'direct', days:45, nights:3, price:150};
@@ -307,12 +347,49 @@ test('sensibilidad: fila de 0 noches tiene pérdida = costos fijos (misma regla 
   assert.equal(zero.profitMonthly, -700);
 });
 
-test('defaultMonthlyIncomeScenario()/defaultMonthlyDistribution(): una unidad nueva arranca en manual/0 y reparto apagado — nunca inventa un canal, mezcla o reparto activo', () => {
+test('defaultMonthlyIncomeScenario()/defaultMonthlyDistribution(): una unidad nueva arranca en manual/SIN CONFIGURAR (null, no 0) y reparto apagado — nunca inventa un canal, mezcla, ingreso o reparto activo', () => {
   const sc = defaultMonthlyIncomeScenario(['airbnb','booking','expedia','direct']);
   assert.equal(sc.type, 'manual');
-  assert.equal(sc.manualNetPerNight, 0);
+  // P2 (revision externa): el default NUNCA puede ser 0 — 0 es un ingreso real
+  // (ceros por noche), null es "todavia no lo escribiste". Antes el default
+  // era 0 y el motor lo aceptaba como valido, proyectando una perdida mensual
+  // que nadie configuro.
+  assert.equal(sc.manualNetPerNight, null);
   assert.equal(sc.mix.length, 4);
   assert.ok(sc.mix.every(m=>m.on===false));
   const dist = defaultMonthlyDistribution();
   assert.equal(dist.configured, false);
+});
+
+/* P2 (revision externa) — persistencia: normalizeUnit() (persistence.js) es la
+   UNICA puerta de entrada para guardar/cargar/importar una unidad. `null` en
+   manualNetPerNight debe sobrevivir el ciclo completo SIN generar un warning
+   falso positivo (es un estado valido, no un dato invalido) — y una unidad
+   completamente vieja (que nunca tuvo este campo) debe migrar al mismo
+   default seguro (null), nunca a 0. */
+test('P2 persistencia: normalizeUnit() preserva manualNetPerNight:null exactamente, sin generar ningun warning', async () => {
+  const {normalizeUnit} = await import('../src/domain/persistence.js');
+  const {state, warnings} = normalizeUnit({name:'Unidad nueva', monthlyIncomeScenario:{type:'manual', manualNetPerNight:null}});
+  assert.equal(state.monthlyIncomeScenario.manualNetPerNight, null);
+  assert.equal(warnings.filter(w=>w.startsWith('monthlyIncomeScenario')).length, 0, 'null es un estado valido ("no configurado") — no debe generar warning');
+});
+
+test('P2 persistencia: unidad vieja sin monthlyIncomeScenario en absoluto migra a manualNetPerNight:null (nunca a 0)', async () => {
+  const {normalizeUnit} = await import('../src/domain/persistence.js');
+  const {state} = normalizeUnit({name:'Unidad vieja', channels:[], discounts:[]});
+  assert.equal(state.monthlyIncomeScenario.manualNetPerNight, null);
+});
+
+test('P2 persistencia: un valor no-numerico (string invalida) en manualNetPerNight cae al default (null) con warning explicito', async () => {
+  const {normalizeUnit} = await import('../src/domain/persistence.js');
+  const {state, warnings} = normalizeUnit({name:'Evil', monthlyIncomeScenario:{type:'manual', manualNetPerNight:'no-es-un-numero'}});
+  assert.equal(state.monthlyIncomeScenario.manualNetPerNight, null);
+  assert.ok(warnings.some(w=>w.includes('manualNetPerNight')));
+});
+
+test('P2 persistencia: un neto manual positivo real se preserva exacto a traves de normalizeUnit()', async () => {
+  const {normalizeUnit} = await import('../src/domain/persistence.js');
+  const {state, warnings} = normalizeUnit({name:'Unidad con dato real', monthlyIncomeScenario:{type:'manual', manualNetPerNight:65.5}});
+  assert.equal(state.monthlyIncomeScenario.manualNetPerNight, 65.5);
+  assert.equal(warnings.filter(w=>w.startsWith('monthlyIncomeScenario')).length, 0);
 });

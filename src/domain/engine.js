@@ -41,7 +41,7 @@ import {reservationCostBreakdown} from './costs.js';
 import {validateCostInputs, validateChannelInputs, validateResultFinite, validateLmTiersOverlap} from './validate.js';
 import {worstScenarioFactor} from './worstcase.js';
 import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
-import {evaluateRecommendationReadiness} from './readiness.js';
+import {evaluateRecommendationReadiness, unreadyChannels} from './readiness.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -379,15 +379,28 @@ export function compute(config){
   const readiness = config.verification
     ? evaluateRecommendationReadiness({channels, discounts, verification: config.verification})
     : null;
-  const channelReady = chId => !readiness || !readiness.byChannel[chId] || readiness.byChannel[chId].ready;
   const missingFor = chId => (readiness && readiness.byChannel[chId] && readiness.byChannel[chId].missing) || [];
-  const floorReadinessBlocked = !!(floorChId && !channelReady(floorChId));
+  /* BLOQUEANTE P1 corregido (revision externa — "Min Price/Base Price globales
+     siguen siendo inseguros"): floorReadinessBlocked/baseReadinessBlocked
+     ANTES solo miraban si el canal que HOY resulta ser el peor (floorChId/
+     baseChId) tenia un dato de negocio pendiente. Min Price y Base Price son
+     numeros GLOBALES — un solo valor que se lleva a PriceLabs y rige TODOS
+     los canales — asi que un canal que HOY no fija el numero pero tiene un
+     dato pendiente (ej. Directo con comision bancaria sin confirmar, mientras
+     Airbnb fija el Piso hoy) igual puede pasar a fijarlo en cuanto se conozca
+     su dato real. unreadyChannels() (readiness.js) es la fuente unica que
+     responde "que canales, de TODOS los activos, siguen con algo pendiente" —
+     matrix.js/alerts.js ya la reusan para sus propios veredictos ("RENTABLE
+     EN TODOS"/"sin conflictos"); aqui se usa exactamente igual para el gate
+     global de Piso/Base, sin reimplementar el filtro. */
+  const unready = unreadyChannels(readiness, channels);
+  const floorReadinessBlocked = unready.length>0;
   const floorReadinessBlockedReason = floorReadinessBlocked
-    ? `Min Price hoy lo fija ${floorCh} — pero ese canal depende de un dato financiero sin confirmar: ${missingFor(floorChId).map(m=>m.reason).join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" antes de tratar este número como definitivo.`
+    ? `Min Price es un número GLOBAL que se usa en PriceLabs para TODOS los canales — hoy lo fija ${floorCh}, pero ${unready.map(c=>c.name).join(', ')} también depende${unready.length===1?'':'n'} de datos financieros sin confirmar: ${unready.map(c=>missingFor(c.id).map(m=>m.reason).join(' ')).join(' ')} Si esos datos reales resultan distintos de lo asumido, ${unready.length===1?'ese canal podría pasar':'alguno de esos canales podría pasar'} a fijar el Min Price real. Confírmalos en Resumen → "Verificación de datos financieros" antes de usar este número en PriceLabs.`
     : null;
-  const baseReadinessBlocked = !!(baseChId && !channelReady(baseChId));
+  const baseReadinessBlocked = unready.length>0;
   const baseReadinessBlockedReason = baseReadinessBlocked
-    ? `Base Price hoy lo fija ${baseCh} — pero ese canal depende de un dato financiero sin confirmar: ${missingFor(baseChId).map(m=>m.reason).join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" antes de tratar este número como definitivo.`
+    ? `Base Price es un número GLOBAL que se usa en PriceLabs para TODOS los canales — hoy lo fija ${baseCh}, pero ${unready.map(c=>c.name).join(', ')} también depende${unready.length===1?'':'n'} de datos financieros sin confirmar: ${unready.map(c=>missingFor(c.id).map(m=>m.reason).join(' ')).join(' ')} Si esos datos reales resultan distintos de lo asumido, ${unready.length===1?'ese canal podría pasar':'alguno de esos canales podría pasar'} a fijar el Base Price real. Confírmalos en Resumen → "Verificación de datos financieros" antes de usar este número en PriceLabs.`
     : null;
   return {
     cost, net, floor, floorCh, floorChId, base, baseCh, baseChId, effBase, errors, valid,

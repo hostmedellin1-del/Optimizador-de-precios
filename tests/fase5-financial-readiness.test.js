@@ -12,7 +12,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
-import {evaluateRecommendationReadiness} from '../src/domain/readiness.js';
+import {evaluateRecommendationReadiness, unreadyChannels, globalRecommendationReady} from '../src/domain/readiness.js';
 import {defaultVerification, isVerified} from '../src/domain/verification.js';
 import {buildMatrixVerdict, worstScenariosInWindow} from '../src/domain/matrix.js';
 import {buildAlerts} from '../src/domain/alerts.js';
@@ -255,6 +255,104 @@ test('Alertas: el fallback "OK: sin conflictos" no se muestra si un canal tiene 
   const alerts = buildAlerts(alertConfig, model);
   assert.ok(!alerts.some(a=>a.tag==='OK'), 'no debe quedar ningun veredicto "OK: sin conflictos" mientras Booking siga sin confirmar Genius+Mobile');
   assert.ok(alerts.some(a=>a.tag==='DATOS SIN VERIFICAR'), 'debe explicar exactamente que dato falta y de que canal');
+});
+
+/* ============================================================================
+   P1 (revision externa — "Min Price y Base Price globales siguen siendo
+   inseguros"): floorReadinessBlocked/baseReadinessBlocked ANTES solo miraban
+   si el canal que HOY fija el numero (floorChId/baseChId) tenia un dato
+   pendiente. Min Price/Base Price son numeros GLOBALES que PriceLabs aplica a
+   TODOS los canales — un canal que HOY no fija el numero pero tiene un dato
+   pendiente (comision bancaria, Offset, etc.) puede pasar a fijarlo en cuanto
+   se conozca su valor real. Caso obligatorio del encargo: Airbnb fija hoy el
+   Piso/Base; Directo NO lo fija hoy; Directo tiene comision bancaria sin
+   confirmar (default de fabrica) -> el Piso/Base global deben seguir
+   bloqueados aunque Airbnb (el canal que manda hoy) este perfectamente
+   confirmado. ============================================================ */
+
+function readyCatalogExcept(pendingKey){
+  // Config aislada: todos los hechos de negocio resueltos EXCEPTO uno, para
+  // que el unico motivo de bloqueo posible sea el que el test declara.
+  const discounts = freshDiscounts().map(d=>['bk_gen','bk_mob','ex_mod'].includes(d.id) ? {...d, on:false} : d);
+  const verification = defaultVerification();
+  verification.hospyOffsetIsolated.status = 'no_aplica';
+  verification.bookingGeniusMobileBoth.status = 'no_aplica';
+  verification.expediaVipTierMix.status = 'no_aplica';
+  verification.airbnbNonRefundable.status = 'no_aplica';
+  Object.keys(verification.bankFeePctByChannel).forEach(chId=>{ verification.bankFeePctByChannel[chId].status = 'verificado'; });
+  if(pendingKey==='direct-bank-fee') verification.bankFeePctByChannel.direct.status = 'no_verificado';
+  return {discounts, verification};
+}
+
+test('P1: Directo NO fija hoy el Piso (lo fija Airbnb) pero tiene comisión bancaria sin confirmar — Min Price y Base Price GLOBALES quedan bloqueados igual', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
+  const model = compute(config({discounts, verification}));
+  assert.equal(model.floorChId, 'airbnb', 'precondicion del test: Airbnb debe ser quien fija el Piso hoy, no Directo');
+  assert.equal(model.readiness.byChannel.airbnb.ready, true, 'Airbnb (el canal que fija hoy) esta perfectamente confirmado');
+  assert.equal(model.readiness.byChannel.direct.ready, false, 'Directo tiene su comision bancaria sin confirmar');
+  assert.equal(model.floorReadinessBlocked, true, 'el Piso GLOBAL debe bloquearse aunque el canal que lo fija hoy este confirmado, porque Directo podria pasar a fijarlo');
+  assert.match(model.floorReadinessBlockedReason, /Directo/);
+  assert.match(model.floorReadinessBlockedReason, /GLOBAL/);
+  assert.equal(model.baseReadinessBlocked, true, 'lo mismo aplica al Base Price global');
+  assert.match(model.baseReadinessBlockedReason, /Directo/);
+});
+
+test('P1: al confirmar TAMBIÉN el dato pendiente de Directo (aunque Directo no fije el número hoy), el Piso/Base global se desbloquean', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
+  verification.bankFeePctByChannel.direct.status = 'verificado'; // ahora TODOS confirmados
+  const model = compute(config({discounts, verification}));
+  assert.equal(model.readiness.ready, true);
+  assert.equal(model.floorReadinessBlocked, false);
+  assert.equal(model.baseReadinessBlocked, false);
+});
+
+test('P1: unreadyChannels() es la fuente central — devuelve el canal pendiente aunque no sea el que fija Piso/Base, y [] si todo está resuelto', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
+  const readiness = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  const unready = unreadyChannels(readiness, freshChannels());
+  assert.equal(unready.length, 1);
+  assert.equal(unready[0].id, 'direct');
+  verification.bankFeePctByChannel.direct.status = 'verificado';
+  const readiness2 = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  assert.deepEqual(unreadyChannels(readiness2, freshChannels()), []);
+});
+
+test('P1: globalRecommendationReady() combina readiness + lmBlocked + baseBlocked en una sola regla — cualquiera de los tres bloquea el global', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
+  const readiness = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  // Solo el dato de negocio pendiente:
+  assert.equal(globalRecommendationReady({readiness, channels: freshChannels(), lmBlocked:false, baseBlocked:false}).ready, false);
+  // Todo resuelto salvo LM:
+  verification.bankFeePctByChannel.direct.status = 'verificado';
+  const readinessAllDone = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  assert.equal(globalRecommendationReady({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:true, baseBlocked:false}).ready, false, 'LM sin verificar tambien debe bloquear el global');
+  assert.equal(globalRecommendationReady({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:false, baseBlocked:true}).ready, false, 'precio fijo activo tambien debe bloquear el global');
+  assert.equal(globalRecommendationReady({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:false, baseBlocked:false}).ready, true, 'con los tres gates resueltos, el global queda listo');
+});
+
+test('P1: Matriz — "RENTABLE EN TODOS" sigue bloqueado si un canal AJENO a la ventana peor caso tiene un dato pendiente (regresion del refactor a unreadyChannels compartido)', () => {
+  const channels = generousChannelsWithOneOffset();
+  const discounts = freshDiscounts().map(d=>({...d, on:false}));
+  const windows = freshWindows();
+  const ceilings = defaultCeilings(windows);
+  const verification = defaultVerification();
+  const lmConfig = {mode:'flat', verified:true, flat:{pct:20, fromDay:0, toDay:3, on:true}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
+  const qConfig = {channels, discounts, windows, ceilings, fixedCost:20, varCost:0, lmConfig, verification};
+  const model = compute({...qConfig, margin:10, marketBase:0});
+  const w5 = windows.find(w=>w.id==='w5');
+  const ceil = ceilings[w5.id];
+  const {worstTecho, worstPayoutRow, perChannel} = worstScenariosInWindow(qConfig, w5, model.effBase || 150);
+  const {vTag} = buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, perChannel, currency:'USD'});
+  assert.notEqual(vTag, 'RENTABLE EN TODOS');
+});
+
+test('P1: las simulaciones/diagnósticos POR CANAL siguen disponibles pese al gate global — readiness.byChannel de un canal confirmado sigue en ready:true aunque el global (floorReadinessBlocked) esté bloqueado por otro canal', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
+  const model = compute(config({discounts, verification}));
+  assert.equal(model.floorReadinessBlocked, true, 'precondicion: el global esta bloqueado por Directo');
+  assert.equal(model.readiness.byChannel.airbnb.ready, true, 'Airbnb sigue disponible para simulacion/diagnostico individual pese al bloqueo global');
+  assert.equal(model.readiness.byChannel.booking.ready, true);
+  assert.equal(model.readiness.byChannel.expedia.ready, true);
 });
 
 test('isVerified()/defaultVerification(): unidad nueva arranca 100% no_verificado, nunca verificado por defecto (ninguna clave, ni global ni por canal)', () => {

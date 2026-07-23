@@ -1235,7 +1235,10 @@ document.addEventListener('change',e=>{
     const sc = state.monthlyIncomeScenario;
     if(key==='incomeType'){ sc.type = t.value; renderAll(); return; }
     if(key==='manualNetPerNight'){
-      const r = readNumField(t, sc.manualNetPerNight, {min:-1e7, max:1e7, label:'Neto por noche (planificación mensual)'});
+      /* P2 (revision externa): vacio es un estado VALIDO ("todavia no lo
+         configuraste"), no un error — allowEmpty/emptyValue:null en vez de
+         revertir al valor anterior o forzar un 0 silencioso. */
+      const r = readNumField(t, sc.manualNetPerNight, {min:-1e7, max:1e7, allowEmpty:true, emptyValue:null, label:'Neto por noche (planificación mensual)'});
       if(!r.ok) return;
       sc.manualNetPerNight = r.value; renderAll();
     }

@@ -14,6 +14,7 @@ import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays} from './pricelabs-lm.js';
 import {fP, f$} from './format.js';
+import {unreadyChannels} from './readiness.js';
 
 /* config = {channels, discounts, windows, ceilings, ...costBreakdown/fixedCost/
    varCost/lmConfig/verification (todo lo que necesita quoteScenario)}
@@ -76,9 +77,12 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
      de Booking, no-reembolsable de Airbnb), esa afirmacion conjunta no se
      puede sostener, aunque el canal problematico no sea el "peor" de la
      ventana. model.readiness (src/domain/readiness.js) es la UNICA fuente que
-     decide esto — no se reimplementa aqui ninguna regla nueva. */
+     decide esto — no se reimplementa aqui ninguna regla nueva. unreadyChannels()
+     (readiness.js) es la MISMA funcion que ahora tambien usa engine.js para el
+     gate global de Piso/Base (revision externa, P1) — ninguno de los dos
+     reimplementa el filtro por su cuenta. */
   const readiness = model.readiness;
-  const unreadyChannels = readiness ? perChannel.map(p=>p.c).filter(c=>!(readiness.byChannel[c.id]||{ready:true}).ready) : [];
+  const unready = unreadyChannels(readiness, perChannel.map(p=>p.c));
   let vLvl, vTag, vMsg;
   if(breach){
     vLvl='bad'; vTag='TECHO EXCEDIDO';
@@ -94,9 +98,9 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
     vMsg = `Esta ventana solo sale "rentable" asumiendo Last-Minute ${worst.q.lmMode==='ceiling_auto'
       ? 'en modo automático (proyección propia, no verificable matemáticamente sin el precio diario real de PriceLabs)'
       : `en modo "${worst.q.lmMode}" configurado pero sin marcar como verificado`} — confírmalo en Resumen → "Last-Minute de PriceLabs" (modo real + casilla "Confirmé este modo directamente en PriceLabs") antes de tratar este veredicto como definitivo.`;
-  } else if(unreadyChannels.length){
+  } else if(unready.length){
     vLvl='warn'; vTag='DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
-    vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unreadyChannels.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unreadyChannels.map(c=>c.name).join(', ')}: ${unreadyChannels.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en Resumen → "Verificación de datos financieros" antes de tratar este veredicto como definitivo.`;
+    vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unready.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unready.map(c=>c.name).join(', ')}: ${unready.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en Resumen → "Verificación de datos financieros" antes de tratar este veredicto como definitivo.`;
   } else {
     vLvl='ok'; vTag='RENTABLE EN TODOS';
     vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worstAsNet.c.name}, con ${f$(worstAsNet.netV,currency)}.`;

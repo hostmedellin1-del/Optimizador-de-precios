@@ -392,7 +392,10 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 datos financieros", BLOQUEAN activamente Piso/Base/Offset/"Rentable" de los canales que
 afectan (ver tabla en sección 9). Confirmarlos ahí (marcar "Verificado" con fuente/fecha,
 o "No aplica" si Dani confirma que no corresponde a esta unidad) es lo único que los
-desbloquea — nunca se infieren ni se asumen.**
+desbloquea — nunca se infieren ni se asumen. Corrección P1 (revisión externa): como Min
+Price/Base Price son números GLOBALES (un solo valor para los 4 canales), basta que
+CUALQUIERA de los puntos 2/3/6/7 esté pendiente en CUALQUIER canal activo para que el
+número global quede bloqueado — no solo el canal que hoy resulta ser el más ajustado.**
 
 1. Costos reales de la unidad 902 (Alcázar de Oviedo). Hoy el modelo usa el ejemplo
    genérico del webinar de Kunas ($54 costo/noche, $98 neto objetivo, margen 45%) — son
@@ -612,15 +615,41 @@ afecta:
 
 Es **ortogonal** a `lmBlocked` (ronda 2) y `baseBlocked` (ronda 3) — ninguno de los tres se
 reimplementa en función de los otros. `compute()` expone `readiness` (el resultado
-completo), y `floorReadinessBlocked`/`baseReadinessBlocked` (según qué canal fija Piso/Base
-en ese momento — `floorChId`/`baseChId`). La Matriz (`buildMatrixVerdict()`) nunca dice
-"RENTABLE EN TODOS" si CUALQUIERA de los 4 canales de esa ventana depende de un dato
-pendiente (no solo el más ajustado) — el veredicto cambia a
-"DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN". Igual la alerta "Sin conflictos"
-(`buildAlerts()`) de Resumen. El Simulador NUNCA bloquea la simulación manual, pero la
-etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal elegido dependa de algo pendiente
-(LM incluido). El botón "Ver el paso a paso" tampoco precarga Base cuando
-`baseReadinessBlocked` es true (mismo patrón que `lmBlocked`/`baseBlocked`, ronda 3).
+completo, por canal) y `floorReadinessBlocked`/`baseReadinessBlocked`.
+
+**Corrección P1 (revisión externa — "Min Price/Base Price globales siguen siendo
+inseguros"): `floorReadinessBlocked`/`baseReadinessBlocked` bloquean si CUALQUIER canal
+ACTIVO tiene un dato pendiente — no solo el canal que HOY fija el Piso/Base
+(`floorChId`/`baseChId`).** Min Price y Base Price son números **GLOBALES**: un solo valor
+que se lleva a PriceLabs y rige los 4 canales a la vez. La versión anterior (rondas previas)
+solo miraba si el canal que hoy resulta ser el peor tenía un dato pendiente — pero un canal
+que HOY no fija el número puede pasar a fijarlo en cuanto se conozca su dato real. Caso
+real que esto corrige: Airbnb fija hoy el Piso (su comisión efectiva es la más alta con el
+catálogo de fábrica); Directo NO lo fija hoy (comisión más baja), pero tiene su comisión
+bancaria real sin confirmar — si esa comisión real resulta más alta de lo asumido, Directo
+podría pasar a ser el canal que fija el Piso. Mientras eso siga sin confirmarse, Min
+Price/Base Price no se pueden tratar como recomendación confiable, **aunque el canal que
+manda hoy (Airbnb) esté perfectamente verificado**. `unreadyChannels(readiness, channels)`
+(`src/domain/readiness.js`) es la función pura y única que responde "¿qué canales, de
+TODOS los activos, siguen con algo pendiente?" — la reusan `engine.js` (gate global de
+Piso/Base), `matrix.js` (veredicto "RENTABLE EN TODOS" por ventana) y `alerts.js` (fallback
+"Sin conflictos"); ninguno de los tres reimplementa el filtro por su cuenta.
+`globalRecommendationReady({readiness, channels, lmBlocked, baseBlocked})` (misma función,
+exportada, pura y testeada en `tests/fase5-financial-readiness.test.js`) es la regla
+combinada documentada para cualquier consumidor que necesite una sola respuesta "¿es seguro
+mostrar el número global?" — basta que uno de los tres gates (datos de negocio pendientes,
+LM sin verificar, precio fijo activo) bloquee para que el global quede bloqueado.
+
+La Matriz (`buildMatrixVerdict()`) nunca dice "RENTABLE EN TODOS" si CUALQUIERA de los 4
+canales de esa ventana depende de un dato pendiente (no solo el más ajustado) — el
+veredicto cambia a "DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN". Igual la alerta
+"Sin conflictos" (`buildAlerts()`) de Resumen. El Simulador NUNCA bloquea la simulación
+manual por canal (diagnóstico/simulación individual sigue disponible aunque el global esté
+bloqueado por OTRO canal), pero la etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal
+elegido dependa de algo pendiente (LM incluido). El botón "Ver el paso a paso" tampoco
+precarga Base cuando `baseReadinessBlocked` es true (mismo patrón que `lmBlocked`/
+`baseBlocked`, ronda 3) — y nunca sugiere "configura este precio global en PriceLabs"
+mientras esté bloqueado.
 
 ### Planificación mensual y reparto de utilidad (`src/domain/monthly-economics.js`)
 Responde lo que `compute()`/`quoteScenario()` (rentabilidad de UNA reserva concreta)
@@ -676,7 +705,20 @@ la reinventes en otro lado:**
 **Tres escenarios de ingreso mensual** (`incomeScenario.type`):
 - `'manual'`: neto/noche que Dani escribe directo — nunca se marca "no
   verificado" (es un dato que Dani ya confirmó al escribirlo, no una proyección
-  del motor).
+  del motor). **Corrección P2 (revisión externa):** el default de fábrica es
+  `manualNetPerNight: null` ("todavía no lo escribiste"), **nunca `0`** — un `0`
+  es un ingreso real de cero, no la ausencia del dato, y el bug real era que el
+  default viejo (`0`) pasaba la validación de "es un número finito" y una
+  unidad nueva (donde nadie tocó este campo) mostraba una proyección de
+  PÉRDIDA mensual completa basada en un ingreso que nadie configuró.
+  `null`/`undefined`/`''`/`0`/negativo devuelven `{ok:false, reason:'Falta
+  ingresar neto manual por noche...'}` explícito — solo un número `> 0` calcula.
+  No existe (a propósito) una vía para "simular en 0" sin escribir un número
+  real: nadie lo pidió y abriría el mismo hueco por otra puerta.
+  `src/domain/persistence.js` preserva `null` exactamente (sin generar un
+  warning falso positivo — `null` es un estado válido, no un dato inválido) vía
+  `nullableNumField()`, y migra cualquier unidad vieja sin este campo al mismo
+  default seguro (`null`, nunca `0`).
 - `'channel'`: cotiza con `quoteScenario()` REAL (misma fuente única que Piso/
   Base/Matriz/Simulador) — cero fórmula de comisiones/descuentos/LM/Offset
   paralela en este archivo.
@@ -897,3 +939,57 @@ nunca se mezcla), `e2e/monthly-economics.spec.js` (8). 155/155 unitarios, 42/42 
   `ownerTargetPct`/`managerTargetPct`/`reservePct`/`taxReservePct` son una decisión de
   negocio 100% de Dani — nadie inventó un split (ni siquiera 50/50). Actívalo en
   Resumen → "Reparto Propietario/Administrador" cuando tengas esos números reales.
+
+### Actualización (revisión externa) — P1: Min Price/Base Price globales inseguros; P2: neto manual mensual en 0 aceptado como dato real
+Revisión independiente encontró dos fallos que los 155/42 tests anteriores no cubrían:
+
+**P1 — el gate de Fase 5 solo miraba el canal que fija el número hoy, no todos los
+canales activos.** `floorReadinessBlocked`/`baseReadinessBlocked` (`src/domain/engine.js`)
+comparaban `channelReady(floorChId)`/`channelReady(baseChId)` — si el canal que hoy fija
+Min Price/Base Price estaba confirmado, el número global se mostraba aunque OTRO canal
+(que no fija el número hoy) tuviera un dato pendiente que podría hacerlo pasar a fijarlo
+en cuanto se conociera su valor real (comisión bancaria, Offset, etc.). Corregido: nueva
+función pura `unreadyChannels(readiness, channels)` (`src/domain/readiness.js`) — "¿qué
+canales, de TODOS los activos, siguen con algo pendiente?" — y `globalRecommendationReady
+({readiness, channels, lmBlocked, baseBlocked})`, la regla combinada documentada (datos de
+negocio + LM + precio fijo) para cualquier consumidor que necesite una sola respuesta.
+`floorReadinessBlocked`/`baseReadinessBlocked` ahora se derivan de `unreadyChannels(...)`
+sobre TODOS los canales, no solo el que fija el número hoy — y el motivo (`...Reason`)
+lista explícitamente qué canales y qué datos faltan. `matrix.js`/`alerts.js` se
+refactorizaron para reusar la misma `unreadyChannels()` en vez de reimplementar el mismo
+filtro cada uno por su cuenta (ya lo hacían correctamente para sus propios veredictos —
+ahora comparten la función con `engine.js`). Ningún texto de la UI sugiere "configura este
+precio global en PriceLabs" mientras esté bloqueado (ya no lo hacía; se verificó
+explícitamente). Las simulaciones/diagnósticos POR CANAL (pestaña de cada canal, Simulador)
+siguen disponibles sin cambios — el bloqueo es solo sobre el número GLOBAL.
+
+**P2 — `manualNetPerNight:0` (el default de fábrica) pasaba como ingreso mensual válido.**
+`defaultMonthlyIncomeScenario()` arrancaba en `manualNetPerNight: 0`, y
+`computeMonthlyEconomics()` solo validaba "es un número finito" — `0` lo es, así que una
+unidad nueva (donde Dani nunca tocó ese campo) mostraba una PROYECCIÓN DE PÉRDIDA mensual
+completa basada en un ingreso que nadie configuró. Corregido: el default pasa a `null`
+("todavía no lo escribiste", nunca `0` como sustituto silencioso de "sin dato");
+`resolveIncomeScenario()` en modo manual rechaza `null`/`undefined`/`''`/`0`/negativo con
+`{ok:false, reason:'Falta ingresar neto manual por noche...'}` explícito — solo un número
+`> 0` calcula. `src/domain/persistence.js` gana `nullableNumField()` para que `null`
+sobreviva el ciclo de guardado/importación exactamente, sin generar un warning falso
+positivo (es un estado válido, no inválido). La UI (`index.html`) usa
+`allowEmpty:true, emptyValue:null` en el campo — borrar el campo vuelve a "sin configurar",
+nunca revierte a un `0` silencioso.
+
+Regresión encontrada y corregida en el mismo commit: `e2e/base-fixedprice.spec.js` (test
+"día 45 no cubierto, Base Price vuelve a mostrarse normal") asumía que el mecanismo de LM
+`fixed_price` era el único gate en juego, pero con el catálogo de fábrica Booking y Directo
+siempre tienen comisión bancaria real sin confirmar — con el fix de P1, eso ahora bloquea
+el Base global independientemente del rango de `fixed_price`. Se aisló con el mismo patrón
+ya usado en `lm-blocking.spec.js`/`sim-blocked-bypass.spec.js` (`resolveAllFinancialFacts()`
+antes de mover el rango), para que el test siga probando específicamente el mecanismo de
+precio fijo, no el gate de datos financieros.
+
+Tests nuevos: `tests/fase5-financial-readiness.test.js` (+6, caso obligatorio Airbnb-fija-hoy/
+Directo-pendiente, `unreadyChannels()`/`globalRecommendationReady()` directos, Matriz),
+`tests/monthly-economics.test.js` (+9, `manualNetPerNight` en `0`/`''`/`null`/negativo/
+positivo, a nivel `computeMonthlyEconomics()` y a nivel `normalizeUnit()`),
+`e2e/financial-readiness.spec.js` (+4), `e2e/monthly-economics.spec.js` (+4). **170/170
+unitarios, 50/50 e2e, sin regresión** (incluye el fix del test de `base-fixedprice.spec.js`
+arriba).

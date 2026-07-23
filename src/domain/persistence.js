@@ -36,6 +36,18 @@ function numField(raw, key, fallback, warnings, path){
   if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
   return r;
 }
+/* P2 (revision externa) — para campos donde `null` es un estado VALIDO de
+   "todavia no configurado" (ej. monthlyIncomeScenario.manualNetPerNight),
+   distinto de un valor invalido. Si `raw[key]` es null explicito, se preserva
+   tal cual, sin warning — un warning ahi seria un falso positivo cada vez que
+   se exporta/reimporta una unidad que nunca configuro este campo. */
+function nullableNumField(raw, key, fallback, warnings, path){
+  if(!(key in raw)) return fallback;
+  if(raw[key]===null) return null;
+  const r = safeNum(raw[key], fallback);
+  if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
+  return r;
+}
 function pctField(raw, key, fallback, warnings, path, {min=0, max=100}={}){
   let v = numField(raw, key, fallback, warnings, path);
   if(v<min || v>max){
@@ -223,7 +235,7 @@ function normalizeMonthlyIncomeScenario(raw, warnings){
   if(!raw || typeof raw!=='object') return def;
   const type = MONTHLY_INCOME_TYPES.includes(raw.type) ? raw.type : 'manual';
   if(raw.type!==undefined && type!==raw.type) warnings.push(`monthlyIncomeScenario.type: "${String(raw.type).slice(0,40)}" no es un tipo reconocido — se uso 'manual'.`);
-  const manualNetPerNight = numField(raw, 'manualNetPerNight', def.manualNetPerNight, warnings, 'monthlyIncomeScenario');
+  const manualNetPerNight = nullableNumField(raw, 'manualNetPerNight', def.manualNetPerNight, warnings, 'monthlyIncomeScenario');
   const channel = normalizeMonthlyChannelScenario(raw.channel, def.channel, warnings, 'monthlyIncomeScenario.channel');
   const rawMixById = Object.fromEntries((Array.isArray(raw.mix) ? raw.mix : []).filter(m => m && CHANNEL_IDS.includes(m.chId)).map(m => [m.chId, m]));
   if(!Array.isArray(raw.mix) && raw.mix!==undefined) warnings.push('monthlyIncomeScenario.mix: no es un arreglo — se uso el default (todos apagados).');

@@ -106,3 +106,44 @@ export function evaluateRecommendationReadiness(config){
   const ready = Object.values(byChannel).every(x=>x.ready);
   return {ready, byChannel};
 }
+
+/* unreadyChannels() — helper puro compartido (revision externa, P1): matrix.js
+   y alerts.js ya recorrian `channels`/`perChannel` filtrando por
+   `readiness.byChannel[c.id].ready` cada uno por su cuenta para no afirmar
+   "rentable en todos"/"sin conflictos" si CUALQUIER canal (no solo el peor)
+   tenia un dato pendiente — la misma pregunta ("¿qué canales, de esta lista,
+   siguen con algo sin confirmar?") no debe reimplementarse una tercera vez
+   en engine.js para el gate de Min Price/Base Price global. Recibe la LISTA
+   de canales a revisar (matrix/alerts a veces solo miran los de una ventana;
+   engine.js mira TODOS los canales activos) para no asumir cuál es la
+   correcta en cada caller. */
+export function unreadyChannels(readiness, channels){
+  if(!readiness) return [];
+  return channels.filter(c => !(readiness.byChannel[c.id] || {ready:true}).ready);
+}
+
+/* globalRecommendationReady() — P1 (revision externa): Min Price y Base Price
+   son numeros GLOBALES, un solo valor que se lleva a PriceLabs y rige TODOS
+   los canales a la vez — no "el numero de tal canal". Antes,
+   floorReadinessBlocked/baseReadinessBlocked (engine.js) solo miraban si el
+   canal que HOY resulta ser el peor (floorChId/baseChId) tenia un dato
+   pendiente. Eso es insuficiente: un canal que HOY no fija el numero (ej.
+   Directo, con una comision bancaria sin confirmar) puede pasar a fijarlo en
+   cuanto se conozca su dato real — mientras siga pendiente, ese riesgo existe
+   y el numero global no se puede tratar como recomendacion confiable, aunque
+   el canal que manda hoy este perfectamente confirmado.
+   Esta es la UNICA regla que decide si un numero GLOBAL (Min Price/Base
+   Price) es confiable — deriva de evaluateRecommendationReadiness() (datos de
+   negocio por canal) + lmBlocked (Last-Minute) + baseBlocked (precio LM fijo
+   en el dia de referencia): basta que UNO de los tres bloquee para que el
+   global quede bloqueado. engine.js, y solo engine.js, computa esta funcion;
+   toda vista (KPIs, Matriz, Alertas, Simulador) consume el resultado ya
+   calculado (model.floorReadinessBlocked/model.baseReadinessBlocked), nunca
+   recalcula sus propios "¿algun canal pendiente?" para el gate GLOBAL (matrix.js/
+   alerts.js SI tienen su propio uso legitimo y distinto de unreadyChannels():
+   deciden el veredicto de UNA VENTANA/alerta puntual, no el numero global). */
+export function globalRecommendationReady({readiness, channels, lmBlocked, baseBlocked}){
+  const unready = unreadyChannels(readiness, channels);
+  const ready = unready.length===0 && !lmBlocked && !baseBlocked;
+  return {ready, unready};
+}

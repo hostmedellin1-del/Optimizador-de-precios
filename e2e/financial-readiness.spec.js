@@ -25,6 +25,24 @@ async function verifyLm(page){
   await page.locator('[data-lm="verified"]').check();
 }
 
+/* P1 (revision externa — "Min Price y Base Price globales siguen siendo
+   inseguros"): resuelve TODOS los hechos de negocio EXCEPTO la comisión
+   bancaria de Directo — Directo no fija el Piso/Base con el catálogo de
+   fábrica (su comisión es la más baja), así que este helper aísla
+   exactamente el caso obligatorio del encargo: un canal que NO fija el
+   número global hoy, pero sigue pendiente. */
+async function resolveAllExceptDirectBankFee(page){
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
+  await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'verificado');
+  await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
+  for(const chId of ['airbnb','booking','expedia']){
+    await page.selectOption(`select[data-verif-status="bankFeePctByChannel"][data-verif-ch="${chId}"]`, 'no_aplica');
+  }
+  // Directo se deja EXPLICITAMENTE sin tocar (no_verificado, el default).
+}
+
 test('catálogo de fábrica: con LM ya verificado, Min Price/Base Price siguen bloqueados por datos financieros pendientes (Genius+Mobile, VIP Expedia, comisión bancaria)', async ({page}) => {
   await page.goto('/index.html');
   await verifyLm(page);
@@ -112,6 +130,69 @@ test('bypass del botón "Ver el paso a paso": con LM verificado pero datos finan
   await expect(page.locator('#simPrice')).toHaveValue('');
   await expect(page.locator('#inputErrorToast')).toContainText('Base Price está bloqueado');
   await expect(page.locator('#inputErrorToast')).toContainText('dato financiero');
+});
+
+test('P1: Directo NO fija hoy el Piso/Base (su comisión es la más baja) pero sigue sin confirmar su comisión bancaria — Min Price/Base Price GLOBALES siguen bloqueados', async ({page}) => {
+  await page.goto('/index.html');
+  await verifyLm(page);
+  await resolveAllExceptDirectBankFee(page);
+
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('dato financiero sin verificar');
+  await expect(page.locator('#kBase')).toHaveText('—');
+  await expect(page.locator('#kBaseWhy')).toContainText('dato financiero sin verificar');
+
+  // El motivo COMPLETO (que canal falta y por qué es un numero GLOBAL) vive en
+  // #validationBanner — el KPI solo muestra un resumen corto.
+  const banner = page.locator('#validationBanner');
+  await expect(banner).toContainText('GLOBAL');
+  await expect(banner).toContainText('Directo');
+});
+
+test('P1: al confirmar también la comisión bancaria de Directo (el último dato pendiente), Min Price/Base Price GLOBALES se desbloquean', async ({page}) => {
+  await page.goto('/index.html');
+  await verifyLm(page);
+  await resolveAllExceptDirectBankFee(page);
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await expect(page.locator('#kFloor')).toHaveText('—'); // precondicion: sigue bloqueado
+
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'verificado');
+  await expect(page.locator('#kFloor')).not.toHaveText('—', {timeout: 3000});
+  await expect(page.locator('#kBase')).not.toHaveText('—');
+});
+
+test('P1: "Ir al simulador" no precarga Base Price mientras un canal que NO fija el número (Directo) siga con un dato pendiente', async ({page}) => {
+  await page.goto('/index.html');
+  await verifyLm(page);
+  await resolveAllExceptDirectBankFee(page);
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await expect(page.locator('#kBase')).toHaveText('—'); // precondicion
+
+  await page.locator('#goSimBtn').click();
+  await expect(page.locator('#simPrice')).toHaveValue('');
+  await expect(page.locator('#inputErrorToast')).toContainText('Base Price está bloqueado');
+});
+
+test('P1: las simulaciones/diagnósticos individuales de Airbnb (canal ya confirmado) siguen disponibles pese al bloqueo global causado por Directo', async ({page}) => {
+  await page.goto('/index.html');
+  await verifyLm(page);
+  await resolveAllExceptDirectBankFee(page);
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await expect(page.locator('#kFloor')).toHaveText('—'); // precondicion: el global sigue bloqueado por Directo
+
+  await page.locator('[data-tabbtn="ch-airbnb"]').click();
+  await expect(page.locator('.tab-panel[data-tab="ch-airbnb"] .offset-hint')).not.toContainText('NO son una recomendación confiable');
+
+  await page.locator('[data-tabbtn="simulador"]').click();
+  await page.selectOption('#simChannel', 'airbnb');
+  const simPrice = page.locator('#simPrice');
+  await simPrice.click();
+  await simPrice.fill('200');
+  await simPrice.dispatchEvent('change');
+  const text = await page.locator('#simResult').innerText();
+  expect(text).not.toContain('SIMULACIÓN NO CONFIABLE');
+  expect(text).toMatch(/De USD 200 que puso PriceLabs/);
 });
 
 test('exportar/importar conserva status, fuente, fecha y nota de verificación exactamente', async ({page}) => {

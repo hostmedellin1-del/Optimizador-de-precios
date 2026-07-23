@@ -14,6 +14,26 @@
    interacción aquí hace `.click()` antes de `.fill()`. */
 import {test, expect} from '@playwright/test';
 
+/* P1 (revision externa): floorReadinessBlocked/baseReadinessBlocked ahora
+   bloquean Min Price/Base Price GLOBALES si CUALQUIER canal activo tiene un
+   dato financiero pendiente — no solo el canal que hoy fija el numero. Este
+   spec prueba especificamente el mecanismo de LM fixed_price/Base (bloqueante
+   P1 ronda 3), ortogonal a esa verificacion de negocio — Booking y Directo
+   tienen comision bancaria real (6%) sin confirmar por defecto, asi que sin
+   resolver esos hechos el Base GLOBAL quedaria bloqueado por ESE motivo
+   incluso fuera del rango de precio fijo, enmascarando lo que este test
+   realmente quiere aislar. Mismo patron ya usado en e2e/lm-blocking.spec.js /
+   e2e/sim-blocked-bypass.spec.js. */
+async function resolveAllFinancialFacts(page){
+  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
+  for(const chId of ['airbnb','booking','expedia','direct']){
+    await page.selectOption(`select[data-verif-status="bankFeePctByChannel"][data-verif-ch="${chId}"]`, 'no_aplica');
+  }
+}
+
 async function fillField(page, selector, value){
   const loc = page.locator(selector);
   await loc.click();
@@ -73,6 +93,7 @@ test('el Offset sugerido SÍ se recalcula sobre el precio fijo real (no se bloqu
 
 test('justo fuera del rango del precio fijo (día 45 no cubierto), Base Price vuelve a mostrarse normal', async ({page}) => {
   await setupFixedPriceScenario(page);
+  await resolveAllFinancialFacts(page); // aisla el mecanismo de LM/fixed_price bajo prueba del gate de datos financieros (P1)
   // Mismo escenario base (costos/descuentos aislados) que ya prueba que el
   // precio fijo de 150 SI alcanza el objetivo — solo se mueve el rango para
   // que el día 45 (referencia de Base) quede FUERA de él.

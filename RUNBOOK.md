@@ -87,6 +87,21 @@ cubre todavía, corre esto a mano en un navegador real:
     de 100% y confirma que vuelve a "NO CALCULABLE" con el motivo exacto.
     Desactívalo de nuevo y confirma que la utilidad vuelve a mostrarse completa
     (sin restar una reserva/impuesto que quedó configurado de antes).
+14. **Piso/Base globales bloqueados por CUALQUIER canal pendiente (P1)**: en una unidad
+    nueva, verifica LM (modo plano + "Confirmé...") y resuelve TODOS los datos financieros
+    de Booking/Expedia/Airbnb en "Verificación de datos financieros", pero deja SIN
+    confirmar la comisión bancaria de Directo (déjala en su default). Min Price/Base Price
+    deben seguir en "—" aunque Directo no sea hoy el canal que fija esos números — el aviso
+    en Resumen debe mencionar explícitamente a Directo y la palabra "GLOBAL". Confirma esa
+    última comisión y verifica que Min Price/Base Price se desbloquean. Verifica también
+    que la pestaña de un canal YA confirmado (ej. Airbnb) y el Simulador con ese canal
+    siguen funcionando sin la etiqueta de no confiable, pese al bloqueo global.
+15. **Neto manual mensual en blanco/0 nunca calcula (P2)**: en una unidad nueva, llena la
+    calculadora de costos detallada pero NO toques "Neto por noche" en "Rentabilidad
+    mensual". Debe decir "Falta ingresar neto manual por noche" (nunca un número). Escribe
+    0 explícitamente — debe seguir pidiendo el dato. Escribe un neto positivo — debe
+    calcular normalmente. Bórralo de nuevo (deja el campo vacío) — debe volver a pedir el
+    dato, nunca quedar en 0 silencioso.
 
 ## Rollback
 

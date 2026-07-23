@@ -46,7 +46,7 @@ import {quoteScenario} from './quote.js';
 export function defaultMonthlyIncomeScenario(channelIds = ['airbnb','booking','expedia','direct']){
   return {
     type: 'manual',
-    manualNetPerNight: 0,
+    manualNetPerNight: null, // no configurado — ver P2 (revision externa): 0 NO es "sin dato", es un ingreso real de $0
     channel: {chId: channelIds[0], days:45, nights:1, price:0},
     mix: channelIds.map(chId => ({chId, on:false, weightPct:0, days:45, nights:1, price:0}))
   };
@@ -91,9 +91,19 @@ export function validateDistribution(distribution){
 function resolveIncomeScenario(incomeScenario, quoteConfig, readiness){
   const type = incomeScenario && incomeScenario.type;
   if(type==='manual'){
-    const netPerNight = parseFloat(incomeScenario.manualNetPerNight);
-    if(!Number.isFinite(netPerNight))
-      return {ok:false, reason:'Escenario manual: falta un neto por noche numérico.'};
+    /* P2 (revision externa): `manualNetPerNight` en null/undefined/'' significa
+       "todavia no lo escribiste" — DISTINTO de 0, que es un ingreso real de
+       cero. Antes el default era 0 y `Number.isFinite(0)` es true, asi que una
+       unidad nueva (nadie toco este campo) mostraba una proyeccion mensual de
+       PERDIDA basada en un ingreso que nadie configuro. Ahora null/''/NaN/0/
+       negativo devuelven ok:false explicito — no hay una via para "simular en
+       0" sin escribir un numero positivo real; no se agrega ese atajo porque
+       ningun test/UI lo pide y evita reabrir el mismo hueco por otra puerta. */
+    const raw = incomeScenario.manualNetPerNight;
+    const netPerNight = parseFloat(raw);
+    if(raw===null || raw===undefined || raw===''
+      || !Number.isFinite(netPerNight) || netPerNight<=0)
+      return {ok:false, reason:'Falta ingresar neto manual por noche — escribe un neto por noche (después de comisiones) mayor que 0 para proyectar el mes. Un campo vacío o en 0 no es un ingreso real, es la ausencia del dato.'};
     return {ok:true, netPerNight, unverified:false, unverifiedReasons:[], usedChannels:[],
       description:`Neto manual: ${netPerNight}/noche (dato directo que escribiste, no calculado por el motor).`};
   }
