@@ -548,9 +548,36 @@ costos reales de una unidad (ver sección 5, punto 1).
   dentro de un `innerHTML` DEBE pasar por `escapeHtml()` — no asumir que el dato es
   confiable solo porque hoy lo escribe la propia UI (mañana puede venir de un import).
 
+### Actualización (revisión externa) — LM integrado en Piso/Base-offset/Matriz, XSS/import endurecidos, E2E
+Una revisión posterior encontró que `compute()`/`suggestedOffset()` nunca recibían
+`lmConfig`/`ceilings` — el Piso ignoraba Last-Minute por completo aunque hubiera un
+modo VERIFICADO configurado (caso reproducido: Directo, costo 100, LM flat 50%
+verificado → Piso viejo 109.89 neteaba 50 real, no 100). Corregido en
+`src/domain/worstcase.js` (enumeración exhaustiva canal×día×noche×OTA×LM×offset,
+usada por `compute().floor`) y `src/domain/matrix.js` (la fila de la matriz ahora
+elige el escenario de PEOR PAYOUT real, no el de mayor descuento nativo). El
+descuento por defecto (`ceiling_auto`, modo de todas las unidades hasta que Dani
+confirme otro) ahora SÍ protege el Piso — el Piso base pasó de USD 90 a USD 111 en
+el estado por defecto, un cambio de número esperado y correcto, no una regresión.
+`quoteScenario()` expone `lmMode`/`lmVerified`/`lmBlocked`; los veredictos
+"RENTABLE EN TODOS" que dependen de LM automático sin confirmar ahora se marcan
+"⚠ LM SIN VERIFICAR" explícitamente. `src/domain/persistence.js` ganó
+`normalizeUnit()` — normalización estricta y única para cualquier registro v2/v3
+(guardar/cargar/importar/migrar todos pasan por ahí): todo campo numérico se
+coerciona con validación explícita (nunca `Math.max(0,x)` ni `parseFloat(x)||0`
+silenciosos — un valor inválido se descarta a favor del default y se reporta en
+`warnings`), ids desconocidos de descuentos/canales se descartan, tramos LM
+malformados no rompen la UI. Esto cierra en la raíz el vector XSS que quedaba en
+atributos "numéricos" (`pct`, `comm`, `offsetPct`, etc.) — el import ahora
+re-serializa la versión normalizada antes de escribir a storage, no el JSON crudo.
+La alerta REALIDAD también migró a `worstScenarioFactor()`+`quoteScenario()` (antes
+tenía su propia fórmula sin LM ni aseo) — cero fórmula financiera duplicada en todo
+`alerts.js`. Se agregó E2E automatizado real (Playwright, `e2e/smoke.spec.js`,
+corre en CI job `e2e`) cubriendo carga limpia, Simulador, bloqueo de validación,
+guardar/cargar/eliminar con confirmación, importación con payload XSS real
+(confirma que no se ejecuta), y la matriz.
+
 ### Pendiente explícito de esta ronda (no completado, no ocultado)
-- **E2E automatizado en CI**: hoy es un checklist manual (`RUNBOOK.md`). Agregar
-  Playwright a CI es una decisión de dependencias que no se tomó unilateralmente.
 - **Accesibilidad**: se corrigieron los controles nuevos sin texto visible (editor de
   tramos). El resto del formulario (pre-existente, antes de esta auditoría) usa `<span>`
   en vez de `<label for>` — auditoría completa queda pendiente si se prioriza.

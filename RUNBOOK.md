@@ -13,17 +13,26 @@ GitHub Pages (https) no tiene este problema.
 ## Tests y lint
 
 ```
-npm test    # node --test — corre todo tests/*.test.js
-npm run lint  # node --check en src/ y tests/
+npm test        # node --test — corre todo tests/*.test.js (unitarios, sin dependencias)
+npm run lint    # node --check en src/, tests/, e2e/
+npm run test:e2e  # Playwright — navegador real, requiere: npx playwright install --with-deps chromium
 ```
 
-Ambos deben estar en verde antes de cualquier merge a `main`. CI (GitHub
-Actions, `.github/workflows/ci.yml`) corre lo mismo en cada push/PR.
+Los tres deben estar en verde antes de cualquier merge a `main`. CI (GitHub
+Actions, `.github/workflows/ci.yml`, jobs `unit` y `e2e`) corre los tres en
+cada push/PR — el job `e2e` sube el reporte de Playwright como artefacto si
+falla.
 
-## Checklist de QA manual (E2E) antes de desplegar
+`npm run test:e2e` levanta el mismo servidor estático de desarrollo local
+(`python3 -m http.server`) — no es un build step nuevo, Playwright solo
+automatiza un navegador real contra el sitio estático de siempre.
 
-No hay E2E automatizado en CI todavía (ver "Pendiente" abajo) — hasta que se
-agregue, corre esto a mano en un navegador real después de cualquier cambio:
+## Checklist de QA manual (complemento del E2E automatizado)
+
+El E2E (`e2e/smoke.spec.js`) cubre carga limpia, Simulador, bloqueo de
+validación, guardar/cargar/eliminar con confirmación, importación con payload
+XSS (verifica que no se ejecuta), y la matriz. Para cambios que el E2E no
+cubre todavía, corre esto a mano en un navegador real:
 
 1. **Carga limpia**: abre la app, confirma cero errores en consola.
 2. **KPIs por defecto**: Resumen muestra Min Price y Base Price (no "—" a menos
@@ -69,9 +78,6 @@ el sitio estático automáticamente. Ningún paso de esta auditoría requiere bu
 
 ## Pendiente (no completado en esta ronda, para no sobre-reportar)
 
-- **E2E automatizado en CI**: hoy es un checklist manual (arriba). Agregar
-  Playwright real a CI es una decisión de dependencias (~300MB de Chromium en
-  el pipeline) que no se tomó unilateralmente — pregúntame si lo quieres.
 - **Accesibilidad**: se corrigieron los controles nuevos sin texto visible
   (editor de tramos de Last-Minute). El resto del formulario (pre-existente)
   usa `<span>` en vez de `<label for>` — funciona visualmente pero un lector de

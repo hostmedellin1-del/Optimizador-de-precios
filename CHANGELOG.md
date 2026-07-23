@@ -4,6 +4,47 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.3.0] — Correcciones de revisión externa (post Fase 7)
+
+Una revisión independiente encontró bloqueantes reales sobre el trabajo de
+Fases 1-7 — ninguno de los 44 tests que estaban verdes en ese momento cubría
+estos casos. Todos corregidos con evidencia numérica y tests nuevos:
+
+- **CRÍTICO** — `compute().floor`/`suggestedOffset()` nunca recibían
+  `lmConfig`/`ceilings`: el Piso ignoraba Last-Minute por completo, incluso
+  configurado y VERIFICADO. Caso reproducido y en test:
+  `tests/fase-lm-floor.test.js`. Corregido en `src/domain/worstcase.js`.
+- **CRÍTICO** — la matriz elegía el "peor día" solo por mayor descuento OTA,
+  ignorando fronteras de LM y noches críticas. Corregido en
+  `src/domain/matrix.js` (`worstScenariosInWindow`), selecciona por PAYOUT
+  real. Test: `tests/fase-matrix-worstcase.test.js`.
+- **ALTO** — `quoteScenario()` calculaba `blocked`/`verified`/`mode` de LM
+  automático pero nunca los exponía; ninguna vista podía bloquear un
+  veredicto "Rentable" basado en una proyección sin confirmar. Ahora expuesto
+  y usado en la matriz (badge "⚠ LM SIN VERIFICAR").
+- **ALTO** — XSS real en atributos "numéricos" de descuentos/canales/LM vía
+  unidades importadas (`validateImportFile` solo validaba `name`). Cerrado en
+  la raíz con `normalizeUnit()` (`src/domain/persistence.js`) — coerción
+  estricta de tipos, whitelist de ids conocidos, el import re-serializa la
+  versión normalizada antes de escribir a storage. Test:
+  `tests/fase-normalize-import.test.js` + E2E con payload real.
+- **ALTO** — datos importados malformados (discounts no-array, tramos LM
+  rotos, ids desconocidos) podían romper `map`/`find`/render. `normalizeUnit()`
+  produce siempre un estado completo y seguro basado en defaults.
+- **MEDIO** — coerciones silenciosas `Math.max(0,x)`/`parseFloat(x)||0` para
+  datos ingresados/importados reemplazadas por validación explícita con
+  `warnings` reportados (nunca un 0 sin decir por qué).
+- **MEDIO** — la alerta REALIDAD reimplementaba su propia fórmula (sin LM ni
+  aseo). Migrada a `worstScenarioFactor()`+`quoteScenario()` — cero fórmula
+  financiera duplicada en `alerts.js`.
+- **E2E automatizado real**: Playwright (`e2e/smoke.spec.js`, CI job `e2e`) —
+  ya no es solo un checklist manual.
+- Cambio de número esperado (no una regresión): el Piso por defecto pasa de
+  USD 90 a USD 111 en el estado base, porque ahora protege también contra el
+  LM automático (`ceiling_auto`) que antes ignoraba.
+
+npm test: 67/67 · npm run test:e2e: 6/6 · lint limpio.
+
 ## [0.2.0] — Auditoría técnica (Fases 1-7)
 
 ### Fase 1 — Modularización

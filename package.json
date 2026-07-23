@@ -1,6 +1,6 @@
 {
   "name": "revenue-ops-host-medellin",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Motor de precios y descuentos por canal (Host Medellin). Sitio estatico sin build; este package.json solo habilita modulos ES nativos y el runner de tests de Node.",
   "type": "module",
@@ -9,6 +9,10 @@
   },
   "scripts": {
     "test": "node --test",
-    "lint": "find src tests -name '*.js' -exec node --check {} +"
+    "test:e2e": "playwright test",
+    "lint": "find src tests e2e -name '*.js' -exec node --check {} + && node --check playwright.config.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }
