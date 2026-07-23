@@ -281,6 +281,40 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 
   <div id="monthlyResult"></div>
 </section>
+<section class="card">
+  <h2>Moneda y tipo de cambio <span class="hint">evita mezclar montos de monedas distintas sin conversión explícita</span></h2>
+  <p class="hint">La moneda base de esta unidad es la que elegiste arriba ("Moneda de esta unidad"). Si algún canal liquida en OTRA moneda (ej. Airbnb vía Supra en USD mientras la unidad está en COP), márcalo en la pestaña de ese canal ("Moneda de liquidación"). Mientras no confirmes aquí un tipo de cambio real, cualquier resultado que necesite consolidar ese canal con la moneda base (mezcla mensual, conciliación) queda bloqueado — nunca se asume una conversión 1:1 ni se inventa un valor.</p>
+  <div id="fxRatesList"></div>
+</section>
+<section class="card">
+  <h2>Validar contra una reserva real <span class="hint">compara el estimado del motor contra una liquidación real ya cerrada</span></h2>
+  <p class="hint">Ingresa los datos reales de UNA reserva/liquidación ya cerrada — el motor cotiza el mismo escenario con quoteScenario() (la misma fuente que usan Piso/Base/Matriz/Simulador) y muestra la diferencia. Esto NUNCA cambia tu configuración (comisiones, descuentos) automáticamente — solo dice qué revisar. No ingreses datos del huésped (nombre, email, teléfono); solo números financieros y, si quieres, una referencia/código de reserva.</p>
+  <div class="row">
+    <div class="field"><span>Canal</span><select id="recChId"></select></div>
+    <div class="field"><span>Precio publicado por PriceLabs</span><input type="number" id="recPrice"></div>
+    <div class="field"><span>Noches</span><input type="number" id="recNights" min="1" step="1"></div>
+    <div class="field"><span>Días de anticipación</span><input type="number" id="recDays" min="0" step="1"></div>
+    <div class="field"><span>Moneda de esta liquidación</span><select id="recCurrency"><option value="USD">USD</option><option value="COP">COP</option></select></div>
+  </div>
+  <div class="row">
+    <div class="field"><span>Comisión OTA real % <span class="hint">opcional</span></span><input type="number" id="recOtaCommissionPct"></div>
+    <div class="field"><span>Comisión bancaria real % <span class="hint">opcional</span></span><input type="number" id="recBankFeePct"></div>
+    <div class="field"><span>Tarifa de aseo cobrada <span class="hint">opcional</span></span><input type="number" id="recCleaningFeeCharged"></div>
+    <div class="field"><span>Descuento nativo reportado % <span class="hint">opcional</span></span><input type="number" id="recNativeDiscountPct"></div>
+  </div>
+  <div class="row">
+    <div class="field"><span>Payout/liquidación real recibido</span><input type="number" id="recPayoutReceived"></div>
+    <div class="field"><span>Referencia de reserva <span class="hint">opcional — código/confirmación, nunca datos del huésped</span></span><input type="text" id="recReference" maxlength="120"></div>
+  </div>
+  <button type="button" class="ghost" id="recSaveBtn" style="margin-top:8px;">+ Guardar esta conciliación</button>
+  <div id="reconcileResult" style="margin-top:12px;"></div>
+  <h3 style="margin-top:16px;">Conciliaciones guardadas <span class="hint">solo datos locales, en este navegador — bórralas cuando quieras</span></h3>
+  <div id="reconciliationsList"></div>
+</section>
+<section class="card">
+  <h2>Auditoría de datos reales <span class="hint">qué falta confirmar antes de confiar en la recomendación</span></h2>
+  <div id="auditChecklist"></div>
+</section>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -352,6 +386,9 @@ import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {computeMonthlyEconomics, defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './src/domain/monthly-economics.js';
+import {defaultFxRates, defaultFxEntry, resolveConversion} from './src/domain/currency.js';
+import {reconcileReservation} from './src/domain/reconciliation.js';
+import {buildAuditChecklist} from './src/domain/audit.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -396,7 +433,9 @@ let state = {
   lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   monthlyIncomeScenario: defaultMonthlyIncomeScenario(CHANNELS.map(c=>c.id)), // PLANIFICACIÓN MENSUAL — escenario de ingreso para planificación mensual
-  monthlyDistribution: defaultMonthlyDistribution() // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
+  monthlyDistribution: defaultMonthlyDistribution(), // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
+  fxRates: defaultFxRates(), // DATOS REALES — tipo de cambio manual por moneda de liquidación distinta a la de la unidad
+  reconciliations: [] // DATOS REALES — reconciliaciones locales guardadas (auditoría, nunca datos sensibles de huésped)
 };
 
 /* ================== ENGINE ================== */
@@ -551,10 +590,17 @@ function renderValidation(model){
    exactamente en ese default sin tocar, se avisa explicitamente para que no se
    confunda con un dato real ya cargado. */
 const EXAMPLE_DEFAULTS = {fixedCost:32, varCost:22};
+/* Bug real encontrado y corregido (revision externa, preparacion datos
+   reales): `isExample` solo miraba fixedCost/varCost (modo simple) — una
+   unidad que llenó la calculadora detallada con costos reales, pero nunca
+   tocó los campos simples (siguen en 32/22 por no usarse), seguía mostrando
+   "EJEMPLO" como si nada fuera real. Ahora también cuenta como "hay datos
+   reales" si `costBreakdown` está lleno (mismo helper que ya usa compute()
+   para decidir si usar el desglose detallado). */
 function renderDataProvenance(){
   const box = document.getElementById('dataProvenanceBanner');
   if(!box) return;
-  const isExample = parseFloat(state.fixedCost)===EXAMPLE_DEFAULTS.fixedCost && parseFloat(state.varCost)===EXAMPLE_DEFAULTS.varCost;
+  const isExample = parseFloat(state.fixedCost)===EXAMPLE_DEFAULTS.fixedCost && parseFloat(state.varCost)===EXAMPLE_DEFAULTS.varCost && !costBreakdownIsFilled(state.costBreakdown);
   box.innerHTML = isExample
     ? `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (32) y variable (22) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada) antes de confiar en el Min Price/Base Price.</span></div>`
     : '';
@@ -603,6 +649,13 @@ function renderChannelPages(model){
           <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${escapeHtml(c.comm)}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${escapeHtml(c.bankFeePct||0)}"></div>
           <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${escapeHtml(c.offsetPct||0)}"></div>
+          <div class="fld"><span>Moneda de liquidación <span class="hint">solo si es DISTINTA a la de la unidad (ej. Airbnb vía Supra en USD)</span></span>
+            <select data-ch-currency="${c.id}">
+              <option value="" ${!c.settlementCurrency?'selected':''}>Misma que la unidad (${escapeHtml(state.currency)})</option>
+              <option value="USD" ${c.settlementCurrency==='USD'?'selected':''}>USD</option>
+              <option value="COP" ${c.settlementCurrency==='COP'?'selected':''}>COP</option>
+            </select>
+          </div>
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
@@ -834,6 +887,7 @@ function renderAll(){
   renderValidation(model); renderDataProvenance();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig(); renderVerification(); renderMonthlyIncomeFields(); renderMonthlyDistFields(); renderMonthlyResult(model);
+  renderFxRates(); renderReconcileResult(model); renderReconciliationsList(model); renderAuditChecklist(model);
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -1034,10 +1088,123 @@ function renderMonthlyResult(model){
     <p class="hint" style="margin-top:6px;">${escapeHtml(m.incomeSource.description)}</p>
   `;
 }
+/* ================== MONEDA (contrato de moneda, revision externa) ========= */
+function fxEntryRef(code){
+  if(!state.fxRates[code]) state.fxRates[code] = defaultFxEntry();
+  return state.fxRates[code];
+}
+function renderFxRates(){
+  const box = document.getElementById('fxRatesList');
+  if(!box) return;
+  const needed = [...new Set(state.channels.map(c=>c.settlementCurrency).filter(cur=>cur && cur!==state.currency))];
+  if(!needed.length){
+    box.innerHTML = '<p class="hint">Ningún canal declara una moneda de liquidación distinta a la de la unidad — no hay nada que convertir.</p>';
+    return;
+  }
+  box.innerHTML = needed.map(code=>{
+    const entry = fxEntryRef(code);
+    return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
+      <span>1 ${escapeHtml(code)} = ? ${escapeHtml(state.currency)}</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+        <input type="number" data-fx-rate="${code}" value="${entry.rate==null?'':escapeHtml(entry.rate)}" placeholder="tipo de cambio" style="width:120px;">
+        <select data-fx-status="${code}">
+          <option value="no_verificado" ${entry.status==='no_verificado'?'selected':''}>No verificado</option>
+          <option value="verificado" ${entry.status==='verificado'?'selected':''}>Verificado</option>
+        </select>
+        <input type="text" data-fx-source="${code}" value="${escapeHtml(entry.source||'')}" placeholder="fuente (banco, Wise, TRM oficial...)" style="min-width:170px;">
+        <input type="date" data-fx-date="${code}" value="${escapeHtml(entry.date||'')}">
+      </div>
+      <p class="hint" style="margin-top:4px;">Referencia que TÚ confirmas — no necesariamente el tipo efectivo real que aplicó tu banco/pasarela en una liquidación concreta.</p>
+    </div>`;
+  }).join('');
+}
+
+/* ================== RECONCILIACIÓN (datos reales, revision externa) ====== */
+/* Lee los inputs del formulario (mismo patron que el Simulador: ids globales
+   via `id=`, no `state`) y arma el objeto `real` que espera reconciliation.js.
+   Campos opcionales vacios se pasan como null — reconcileReservation() los
+   ignora (no inventa un "real" para un campo que Dani no escribió). */
+function readReconcileForm(){
+  const opt = (el)=> el && el.value.trim()!=='' ? parseFloat(el.value) : null;
+  return {
+    chId: recChId.value,
+    price: parseFloat(recPrice.value)||0,
+    nights: parseFloat(recNights.value)||0,
+    days: parseFloat(recDays.value)||0,
+    currency: recCurrency.value,
+    otaCommissionPct: opt(recOtaCommissionPct),
+    bankFeePct: opt(recBankFeePct),
+    cleaningFeeCharged: opt(recCleaningFeeCharged),
+    nativeDiscountPct: opt(recNativeDiscountPct),
+    payoutReceived: recPayoutReceived.value.trim()!=='' ? parseFloat(recPayoutReceived.value) : NaN,
+    reference: recReference.value
+  };
+}
+function reconcileResultHTML(r){
+  if(!r.ok) return `<div class="alert warn"><span class="tag">FALTA UN DATO</span><span>${escapeHtml(r.reason)}</span></div>`;
+  if(r.currencyBlocked) return `<div class="alert bad"><span class="tag">MONEDA SIN CONVERSIÓN — BLOQUEADO</span><span>${escapeHtml(r.currencyBlockedReason)}</span></div>`;
+  const sevTag = {ok:'OK', warn:'AVISO', bad:'ALERTA'}[r.severity] || 'AVISO';
+  const sevCls = {ok:'ok', warn:'warn', bad:'bad'}[r.severity] || 'warn';
+  const rows = r.breakdown.map(b=>`<tr><td>${escapeHtml(b.component)}</td><td class="out">${typeof b.configured==='number'?b.configured.toFixed(2):b.configured}</td><td class="out">${typeof b.real==='number'?b.real.toFixed(2):b.real}</td></tr>`).join('');
+  return `
+    <div class="alert ${sevCls}"><span class="tag">${sevTag}${r.reliable?' — CONFIABLE':''}</span><span>Estimado ${f$(r.estimate.payout)} · Recibido ${f$(r.real.payoutReceivedInBase)}${r.real.currency!==state.currency?` (convertido desde ${escapeHtml(r.real.currency)})`:''} · Diferencia ${f$(r.diff.absolute)} (${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'})</span></div>
+    ${r.conversionCaveat ? `<p class="hint">${escapeHtml(r.conversionCaveat)}</p>` : ''}
+    ${rows ? `<div class="table-wrap"><table><thead><tr><th>Componente</th><th>Configurado</th><th>Real</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    ${r.causes.length ? `<p class="hint" style="margin-top:6px;"><strong>Posibles causas:</strong><br>${r.causes.map(c=>escapeHtml(c)).join('<br>')}</p>` : ''}
+    ${r.unverifiedAssumptions.length ? `<p class="hint" style="margin-top:6px;"><strong>El estimado ya dependía de supuestos sin confirmar:</strong><br>${r.unverifiedAssumptions.map(a=>escapeHtml(a)).join('<br>')}</p>` : ''}
+  `;
+}
+function renderReconcileResult(model){
+  const box = document.getElementById('reconcileResult');
+  if(!box || typeof recChId==='undefined') return;
+  const real = readReconcileForm();
+  if(!real.chId || (!real.price && !real.payoutReceived)){ box.innerHTML=''; return; } // formulario vacio: no mostrar nada todavia
+  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, fxRates: state.fxRates, readiness: model.readiness});
+  box.innerHTML = reconcileResultHTML(r);
+}
+function renderReconciliationsList(model){
+  const box = document.getElementById('reconciliationsList');
+  if(!box) return;
+  if(!state.reconciliations.length){ box.innerHTML = '<p class="hint">Todavía no has guardado ninguna conciliación.</p>'; return; }
+  box.innerHTML = state.reconciliations.map(rec=>{
+    const ch = state.channels.find(c=>c.id===rec.chId);
+    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, fxRates: state.fxRates, readiness: model.readiness});
+    const summary = !r.ok ? 'no calculable con la config actual'
+      : r.currencyBlocked ? 'bloqueada por moneda'
+      : `diferencia ${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'} (${r.severity})`;
+    return `<div class="d-item" style="flex-wrap:wrap;">
+      <span class="d-name">${escapeHtml(ch?ch.name:rec.chId)} · ${escapeHtml(rec.savedAt?new Date(rec.savedAt).toLocaleDateString('es-CO'):'')}${rec.reference?' · '+escapeHtml(rec.reference):''}<span class="d-meta">${escapeHtml(summary)}</span></span>
+      <button type="button" class="ghost" data-rec-del="${escapeHtml(rec.id)}" aria-label="Eliminar esta conciliación">✕</button>
+    </div>`;
+  }).join('');
+}
+
+/* ================== AUDITORÍA DE DATOS REALES (revision externa) ========= */
+function renderAuditChecklist(model){
+  const box = document.getElementById('auditChecklist');
+  if(!box) return;
+  const usingExampleCosts = parseFloat(state.fixedCost)===EXAMPLE_DEFAULTS.fixedCost && parseFloat(state.varCost)===EXAMPLE_DEFAULTS.varCost && !costBreakdownIsFilled(state.costBreakdown);
+  const lastReconciliation = state.reconciliations.length
+    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, fxRates: state.fxRates, readiness: model.readiness})
+    : null;
+  const audit = buildAuditChecklist({
+    usingExampleCosts, readiness: model.readiness, lmBlocked: model.lmBlocked,
+    channels: state.channels, currency: state.currency, fxRates: state.fxRates, lastReconciliation
+  });
+  const STATUS_CLS = {simulacion:'warn', datos_parciales:'warn', listo_supervisado:'ok'};
+  box.innerHTML = `
+    <div class="alert ${STATUS_CLS[audit.status]}"><span class="tag">${audit.status.toUpperCase().replace('_',' ')}</span><span>${escapeHtml(audit.statusLabel)}</span></div>
+    <div class="kpis" style="margin-top:10px;">
+      ${audit.items.map(i=>`<div class="kpi"><span class="l">${i.ok?'✓':'—'} ${escapeHtml(i.label)}</span><span class="s">${escapeHtml(i.detail)}</span></div>`).join('')}
+    </div>
+  `;
+}
+
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
   document.querySelectorAll('[data-cb]').forEach(el=>el.value=state.costBreakdown[el.dataset.cb]);
   simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  if(typeof recChId!=='undefined') recChId.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 buildTabbar();
 
@@ -1129,6 +1296,16 @@ document.addEventListener('change',e=>{
     const r = readNumField(t, c[f]||0, CH_FIELD_OPTS[f]||{min:0,max:1e7,label:`${c.name} — ${f}`});
     if(!r.ok) return;
     c[f]=r.value;
+    renderAll();
+  }
+  else if(t.dataset.chCurrency){
+    /* Contrato de moneda (revision externa): '' (opcion "Misma que la
+       unidad") se guarda como null — nunca como string vacio — para que
+       currency.js/monthly-economics.js/reconciliation.js lo traten
+       identico al default seguro (sin conversion). */
+    const c=state.channels.find(x=>x.id===t.dataset.chCurrency);
+    if(!c) return;
+    c.settlementCurrency = t.value || null;
     renderAll();
   }
   else if(t.dataset.ceil){
@@ -1231,6 +1408,31 @@ document.addEventListener('change',e=>{
     const entry = verifEntryRef(t.dataset.verifNote, t.dataset.verifCh);
     if(entry) entry.note = t.value;
   }
+  /* Contrato de moneda (revision externa): mismo patron que verificacion —
+     `status` SI cambia si una consolidacion multi-moneda queda bloqueada
+     (necesita renderAll de inmediato), source/date son informativos. `rate`
+     es numerico con validacion (mismo patron que cualquier otro campo). */
+  else if(t.dataset.fxRate){
+    const code = t.dataset.fxRate;
+    const entry = fxEntryRef(code);
+    const r = readNumField(t, entry.rate, {min:0.000001, max:1e9, allowEmpty:true, emptyValue:null, label:`Tipo de cambio ${code}→${state.currency}`});
+    if(!r.ok) return;
+    entry.rate = r.value;
+    renderAll();
+  }
+  else if(t.dataset.fxStatus){
+    const entry = fxEntryRef(t.dataset.fxStatus);
+    entry.status = t.value;
+    renderAll();
+  }
+  else if(t.dataset.fxSource){
+    const entry = fxEntryRef(t.dataset.fxSource);
+    entry.source = t.value;
+  }
+  else if(t.dataset.fxDate){
+    const entry = fxEntryRef(t.dataset.fxDate);
+    entry.date = t.value;
+  }
   /* PLANIFICACIÓN MENSUAL: mismo patrón que todo lo demás (Bloqueante
      MEDIO ronda 2) — cero `parseFloat(t.value)||0` silencioso, siempre
      readNumField()/parseValue() con rango y motivo explícito. */
@@ -1298,6 +1500,13 @@ document.addEventListener('change',e=>{
       row.price = r.value; renderAll();
     }
   }
+  /* Validar contra una reserva real: los campos viven fuera de `state` (mismo
+     patron que el Simulador: ids globales via `id=`) — cualquier cambio solo
+     tiene que re-pintar el resultado en vivo, no tocar `state`/renderAll()
+     completo (nada mas depende de estos valores hasta que se guarden). */
+  else if(t.id && t.id.startsWith('rec') && t.id!=='recSaveBtn'){
+    renderReconcileResult(compute());
+  }
 });
 document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
@@ -1338,6 +1547,20 @@ document.addEventListener('click',e=>{
   if(down){ const i=parseInt(down.dataset.tierDown,10); const arr=state.lmConfig.tiers; if(i<arr.length-1){[arr[i+1],arr[i]]=[arr[i],arr[i+1]]; renderAll();} }
   const del=e.target.closest('[data-tier-del]');
   if(del){ const i=parseInt(del.dataset.tierDel,10); state.lmConfig.tiers.splice(i,1); renderAll(); }
+  /* Validar contra una reserva real: "Guardar" solo agrega a
+     `state.reconciliations` si reconcileReservation() confirma que hay algo
+     calculable (evita guardar un registro roto que despues se muestre como
+     "no calculable" en la lista) — nunca cambia comisiones/descuentos, solo
+     archiva el dato real que Dani ingreso. */
+  if(e.target.id==='recSaveBtn'){
+    const real = readReconcileForm();
+    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, fxRates: state.fxRates, readiness: compute().readiness});
+    if(!check.ok){ showInputError('No se pudo guardar la conciliación: ' + check.reason); return; }
+    state.reconciliations.push({...real, id:'rec'+Date.now(), savedAt:new Date().toISOString()});
+    renderAll();
+  }
+  const recDel=e.target.closest('[data-rec-del]');
+  if(recDel){ state.reconciliations = state.reconciliations.filter(r=>r.id!==recDel.dataset.recDel); renderAll(); }
 });
 const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
