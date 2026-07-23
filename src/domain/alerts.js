@@ -16,13 +16,23 @@
    exacto que determino la alerta. El bloque DURACIÓN tambien migro a quoteScenario()
    (antes reimplementaba offset+nativo+aseo+payoutFactor con totalPct redondeado).
 
-   config = {discounts, channels, ceilings, marketWindow, marketBase, windows, chTab} */
-import {pct, pct2} from './percent.js';
+   Fix (revision externa, jul 2026): la alerta REALIDAD tambien reimplementaba su
+   propia formula (offset+nativo OTA+payoutFactor), omitiendo LM y tarifa de aseo
+   por completo. Ahora usa worstScenarioFactor() (src/domain/worstcase.js, la misma
+   enumeracion OTA+LM que protege el Piso) para encontrar el peor escenario real de
+   cada canal, y quoteScenario() para cotizarlo. Ya NO queda ninguna formula
+   financiera propia en este archivo — todo pasa por combineChannel()/
+   worstScenarioFactor()/quoteScenario().
+
+   config = {discounts, channels, ceilings, marketWindow, marketBase, windows, chTab,
+   lmConfig?, verification?} */
+import {pct} from './percent.js';
 import {fP, f$} from './format.js';
-import {combineChannel, worstNative, payoutFactor, cleanFeePerNight} from './engine.js';
+import {combineChannel} from './engine.js';
 import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays} from './pricelabs-lm.js';
+import {worstScenarioFactor} from './worstcase.js';
 
 export function buildAlerts(config, model){
   const {discounts, channels, ceilings, windows, chTab} = config;
@@ -111,14 +121,21 @@ export function buildAlerts(config, model){
     if(model.floor>mb)
       A.push({lvl:'bad',tag:'INVIABLE',tab:'resumen',msg:`Tu piso (${f$(model.floor, config.currency)}) está POR ENCIMA de la base de mercado (${f$(mb, config.currency)}). A precio de mercado y con estos descuentos, esta unidad no cubre costo. No es un problema de pricing: es costos, descuentos o producto.`});
     else if(model.base>mb*1.05){
-      /* margen alcanzable al precio de mercado, en el canal que peor te deja */
+      /* Bloqueante MEDIO corregido (revision externa): esta alerta reimplementaba
+         su propia formula (offset+nativo OTA+payoutFactor) — omitia el LM
+         configurado y la tarifa de aseo, a diferencia de todo lo demas
+         (Piso/Matriz/Simulador), que ya pasan por quoteScenario(). Ahora usa
+         worstScenarioFactor() (la misma enumeracion OTA+LM que protege el Piso)
+         para encontrar el peor escenario real de cada canal, y quoteScenario()
+         para cotizarlo — cero formula financiera propia. */
       let peorNeto=Infinity, peorCh='';
       channels.forEach(c=>{
-        const n = mb*(1+pct2(c.offsetPct)/100)*(1-worstNative(discounts, c.id, windows)/100)*payoutFactor(c);
-        if(n<peorNeto){peorNeto=n;peorCh=c.name;}
+        const {worstDay, worstNight} = worstScenarioFactor({chId:c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: model.cost});
+        const q = quoteScenario({chId:c.id, days:worstDay, nights:worstNight, price:mb}, config);
+        if(q.payout<peorNeto){peorNeto=q.payout;peorCh=c.name;}
       });
       const achievable = peorNeto>0 ? 100*(1-model.cost/peorNeto) : 0;
-      A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(config.margin))} es ${f$(model.base, config.currency)}, pero el mercado paga ~${f$(mb, config.currency)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso (${peorCh}): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
+      A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(config.margin))} es ${f$(model.base, config.currency)}, pero el mercado paga ~${f$(mb, config.currency)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso real (${peorCh}, incluye LM y aseo): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
     }
   }
   if(!A.length) A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
