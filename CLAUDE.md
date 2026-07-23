@@ -613,32 +613,62 @@ afecta:
 | `airbnbNonRefundable` | global | Airbnb | solo si el no-reembolsable (`ab_nonref`) está activo |
 | `priceLabsLmMode` | global | (informativo) | el bloqueo real de LM ya vive en `lmConfig.verified`/`isLmBlocked()` — esta clave es solo para dejar nota/fuente/fecha de esa confirmación, nunca una segunda fuente de verdad |
 
-Es **ortogonal** a `lmBlocked` (ronda 2) y `baseBlocked` (ronda 3) — ninguno de los tres se
-reimplementa en función de los otros. `compute()` expone `readiness` (el resultado
-completo, por canal) y `floorReadinessBlocked`/`baseReadinessBlocked`.
+`compute()` expone `readiness` (el resultado completo, por canal) y
+`floorReadinessBlocked`/`baseReadinessBlocked` — el gate GLOBAL para Min Price/Base Price.
 
 **Corrección P1 (revisión externa — "Min Price/Base Price globales siguen siendo
 inseguros"): `floorReadinessBlocked`/`baseReadinessBlocked` bloquean si CUALQUIER canal
 ACTIVO tiene un dato pendiente — no solo el canal que HOY fija el Piso/Base
 (`floorChId`/`baseChId`).** Min Price y Base Price son números **GLOBALES**: un solo valor
-que se lleva a PriceLabs y rige los 4 canales a la vez. La versión anterior (rondas previas)
-solo miraba si el canal que hoy resulta ser el peor tenía un dato pendiente — pero un canal
-que HOY no fija el número puede pasar a fijarlo en cuanto se conozca su dato real. Caso
-real que esto corrige: Airbnb fija hoy el Piso (su comisión efectiva es la más alta con el
-catálogo de fábrica); Directo NO lo fija hoy (comisión más baja), pero tiene su comisión
-bancaria real sin confirmar — si esa comisión real resulta más alta de lo asumido, Directo
-podría pasar a ser el canal que fija el Piso. Mientras eso siga sin confirmarse, Min
-Price/Base Price no se pueden tratar como recomendación confiable, **aunque el canal que
-manda hoy (Airbnb) esté perfectamente verificado**. `unreadyChannels(readiness, channels)`
-(`src/domain/readiness.js`) es la función pura y única que responde "¿qué canales, de
-TODOS los activos, siguen con algo pendiente?" — la reusan `engine.js` (gate global de
-Piso/Base), `matrix.js` (veredicto "RENTABLE EN TODOS" por ventana) y `alerts.js` (fallback
-"Sin conflictos"); ninguno de los tres reimplementa el filtro por su cuenta.
-`globalRecommendationReady({readiness, channels, lmBlocked, baseBlocked})` (misma función,
-exportada, pura y testeada en `tests/fase5-financial-readiness.test.js`) es la regla
-combinada documentada para cualquier consumidor que necesite una sola respuesta "¿es seguro
-mostrar el número global?" — basta que uno de los tres gates (datos de negocio pendientes,
-LM sin verificar, precio fijo activo) bloquee para que el global quede bloqueado.
+que se lleva a PriceLabs y rige los 4 canales a la vez. Caso real que esto corrige: Airbnb
+fija hoy el Piso (su comisión efectiva es la más alta con el catálogo de fábrica); Directo
+NO lo fija hoy (comisión más baja), pero tiene su comisión bancaria real sin confirmar — si
+esa comisión real resulta más alta de lo asumido, Directo podría pasar a ser el canal que
+fija el Piso. Mientras eso siga sin confirmarse, Min Price/Base Price no se pueden tratar
+como recomendación confiable, **aunque el canal que manda hoy (Airbnb) esté perfectamente
+verificado**.
+
+**Refactor de cierre — `evaluateGlobalRecommendationReadiness()` (`src/domain/readiness.js`),
+la ÚNICA fuente de verdad, y `engine.js` la consume directamente (ya no hay una segunda
+copia de la regla).** Contrato exacto — `evaluateGlobalRecommendationReadiness({readiness,
+channels, lmBlocked, baseBlocked})` devuelve:
+
+| Campo | Regla |
+|---|---|
+| `floorReady` | `true` **solo si** todos los canales activos tienen sus datos financieros resueltos (`unreadyChannels(...).length===0`) **y** `lmBlocked===false`. |
+| `baseReady` | `true` **solo si** `floorReady===true` **y** `baseBlocked===false`. |
+| `unreadyChannels` | lista de canales (`{id,name,...}`) con al menos un dato pendiente. |
+| `reasons` | frases reusables (datos de negocio + LM + precio fijo, las que apliquen). |
+| `floorReason`/`baseReason` | texto listo para mostrar, o `null` si está `ready`. |
+
+Puntos del contrato que NO deben revertirse sin querer:
+- **`baseBlocked` (precio LM fijo activo en el día 45) NUNCA bloquea `floorReady`** — el
+  Piso sigue protegiendo de verdad porque evalúa el **peor escenario real** (LM incluido,
+  vía `worstScenarioFactor()`), a diferencia de Base, que solo evalúa el día de referencia
+  45 (y por eso SÍ queda irrelevante cuando ese día tiene un precio fijo).
+- **`lmBlocked` bloquea AMBOS** — un LM sin verificar hace que cualquier número global
+  (Piso incluido) sea una proyección no verificable.
+- **Un dato de negocio pendiente en CUALQUIER canal activo bloquea AMBOS** — el mismo
+  razonamiento del caso Airbnb/Directo de arriba aplica igual a Base.
+
+`engine.js` deriva `floorReadinessBlocked = !floorReady`, `floorReadinessBlockedReason =
+floorReason`, `baseReadinessBlocked = !baseReady`, `baseReadinessBlockedReason = baseReason`
+— **nunca recalcula `unreadyChannels()` ni arma su propio texto de motivo**; ese fue
+exactamente el bug de arquitectura que este refactor cierra (existía una
+`globalRecommendationReady()` documentada y con tests, pero `engine.js` no la consumía —
+calculaba su propia versión inline, con riesgo real de desalinearse). Hay un test dedicado
+(`tests/fase5-financial-readiness.test.js`, "engine.js consume
+evaluateGlobalRecommendationReadiness() como UNICA fuente...") que compara campo por campo
+el resultado de `compute()` contra una llamada directa a la función central con los mismos
+insumos — si alguien reimplementa la lógica inline en `engine.js`, ese test falla.
+
+`unreadyChannels(readiness, channels)` (el bloque de construcción interno, también
+exportado) es la función que responde "¿qué canales, de la lista dada, siguen con algo
+pendiente?" — la reusan `matrix.js` (veredicto "RENTABLE EN TODOS" por ventana) y
+`alerts.js` (fallback "Sin conflictos") para su propia pregunta, legítimamente distinta
+("¿esta ventana/alerta puntual es confiable?", no "¿el número GLOBAL lo es?") — ninguno de
+los dos llama a `evaluateGlobalRecommendationReadiness()`, y `engine.js` no reimplementa el
+filtro de `matrix.js`/`alerts.js`.
 
 La Matriz (`buildMatrixVerdict()`) nunca dice "RENTABLE EN TODOS" si CUALQUIERA de los 4
 canales de esa ventana depende de un dato pendiente (no solo el más ajustado) — el
@@ -647,9 +677,13 @@ veredicto cambia a "DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN". Igual 
 manual por canal (diagnóstico/simulación individual sigue disponible aunque el global esté
 bloqueado por OTRO canal), pero la etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal
 elegido dependa de algo pendiente (LM incluido). El botón "Ver el paso a paso" tampoco
-precarga Base cuando `baseReadinessBlocked` es true (mismo patrón que `lmBlocked`/
-`baseBlocked`, ronda 3) — y nunca sugiere "configura este precio global en PriceLabs"
-mientras esté bloqueado.
+precarga Base cuando `baseReadinessBlocked` es true — y nunca sugiere "configura este
+precio global en PriceLabs" mientras esté bloqueado. En `index.html`, todo consumidor
+(KPIs, intro de Matriz, botón "Ir al simulador", precarga del Simulador) lee directamente
+`model.floorReadinessBlocked`/`model.baseReadinessBlocked` como el ÚNICO booleano de
+bloqueo — `model.lmBlocked`/`model.baseBlocked` solo se leen ahí para elegir CUÁL texto
+corto mostrar (el motivo más específico primero), nunca para volver a unir los tres gates
+con `||` (esa unión ya la hizo `evaluateGlobalRecommendationReadiness()`).
 
 ### Planificación mensual y reparto de utilidad (`src/domain/monthly-economics.js`)
 Responde lo que `compute()`/`quoteScenario()` (rentabilidad de UNA reserva concreta)
@@ -953,6 +987,11 @@ función pura `unreadyChannels(readiness, channels)` (`src/domain/readiness.js`)
 canales, de TODOS los activos, siguen con algo pendiente?" — y `globalRecommendationReady
 ({readiness, channels, lmBlocked, baseBlocked})`, la regla combinada documentada (datos de
 negocio + LM + precio fijo) para cualquier consumidor que necesite una sola respuesta.
+**[Nota: `globalRecommendationReady()` existió con esta firma solo en esta ronda —
+`engine.js` todavía NO la consumía (calculaba su propio `unreadyChannels()` inline), lo cual
+se corrigió en el refactor de cierre siguiente, que la reemplazó por
+`evaluateGlobalRecommendationReadiness()` con el contrato definitivo `floorReady`/`baseReady`
+— ver esa sección más arriba, es la que describe el comportamiento ACTUAL.]**
 `floorReadinessBlocked`/`baseReadinessBlocked` ahora se derivan de `unreadyChannels(...)`
 sobre TODOS los canales, no solo el que fija el número hoy — y el motivo (`...Reason`)
 lista explícitamente qué canales y qué datos faltan. `matrix.js`/`alerts.js` se
@@ -993,3 +1032,47 @@ positivo, a nivel `computeMonthlyEconomics()` y a nivel `normalizeUnit()`),
 `e2e/financial-readiness.spec.js` (+4), `e2e/monthly-economics.spec.js` (+4). **170/170
 unitarios, 50/50 e2e, sin regresión** (incluye el fix del test de `base-fixedprice.spec.js`
 arriba).
+
+### Actualización (revisión externa) — refactor de cierre: `evaluateGlobalRecommendationReadiness()` como única fuente de verdad de los bloqueos globales
+
+Problema encontrado por revisión independiente: `globalRecommendationReady()` (arriba)
+existía, estaba documentada como fuente única de verdad y tenía tests propios — pero
+`engine.js` **no la consumía**. El motor seguía calculando `floorReadinessBlocked`/
+`baseReadinessBlocked` con su propio `unreadyChannels()` inline, y la UI combinaba por
+separado `lmBlocked`/`baseBlocked`/`baseReadinessBlocked` con `||` en varios lugares
+(`renderKpis`, intro de Matriz, botón "Ir al simulador", precarga del Simulador). El
+resultado funcional YA era correcto, pero la regla vivía duplicada en cuatro sitios
+distintos, con riesgo real de desalinearse en un cambio futuro.
+
+Corrección: `globalRecommendationReady()` se **reemplazó** (no se mantuvo en paralelo) por
+`evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked})` — ver
+el contrato completo (`floorReady`/`baseReady`/`unreadyChannels`/`reasons`/`floorReason`/
+`baseReason`) en la sección "Verificado / No-verificado..." de arriba. Cambio de fondo en el
+contrato, no solo de nombre: la versión vieja ataba `baseBlocked` al `ready` GLOBAL (un solo
+booleano para Piso y Base), lo cual era incorrecto — un precio LM fijo (`baseBlocked`) hace
+irrelevante a Base, pero el Piso sigue protegiendo con el peor escenario real y NUNCA debe
+bloquearse por eso. La versión nueva separa `floorReady`/`baseReady` explícitamente, con
+`baseReady` dependiendo de `floorReady` pero no al revés.
+
+`engine.js` ahora deriva los cuatro campos que expone `compute()` directamente de esta
+función, sin recalcular nada. `index.html` (`renderKpis`, intro de Matriz, botón "Ir al
+simulador", precarga del Simulador) lee `model.floorReadinessBlocked`/
+`model.baseReadinessBlocked` como el ÚNICO booleano de gate — los `||` manuales con
+`lmBlocked`/`baseBlocked` se eliminaron; esas dos banderas solo se leen ahora para elegir
+qué texto corto mostrar. `#validationBanner` gana un ajuste para no duplicar el aviso de
+"dato financiero sin verificar" cuando el único motivo real es LM/precio fijo (esos ya
+tienen su propio aviso separado) — se muestra solo si además hay un dato de NEGOCIO
+pendiente (`model.readiness.ready===false`).
+
+Guarda anti-regresión: nuevo test en `tests/fase5-financial-readiness.test.js` que llama a
+`evaluateGlobalRecommendationReadiness()` directamente con los mismos insumos que ya usó
+`compute()`, y exige una igualdad EXACTA (booleans y texto) — verificado manualmente
+revirtiendo `engine.js` a una reimplementación inline: el test (y otros 3) fallan como se
+espera, confirmando que la guarda detecta la regresión.
+
+Tests nuevos/ajustados: `tests/fase5-financial-readiness.test.js` (el test de
+`globalRecommendationReady()` se reescribió para el nuevo contrato — mismo caso, mismos
+insumos, ahora contra `evaluateGlobalRecommendationReadiness()` — más 3 tests nuevos: LM
+bloqueado bloquea Piso+Base, todo resuelto sin fixed_price desbloquea ambos, y la guarda
+anti-regresión), `e2e/base-fixedprice.spec.js` (+1, fixed_price deja el Piso disponible y
+solo bloquea Base). **174/174 unitarios, 51/51 e2e, sin regresión.**

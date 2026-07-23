@@ -4,6 +4,40 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.7.2] — Refactor de cierre: única fuente de verdad para los bloqueos globales
+
+Problema (revisión independiente): `globalRecommendationReady()` (0.7.1) estaba
+documentada como fuente única de verdad y tenía tests, pero `src/domain/engine.js` **no la
+consumía** — seguía calculando `floorReadinessBlocked`/`baseReadinessBlocked` con su propio
+`unreadyChannels()` inline, y `index.html` combinaba por separado `lmBlocked`/`baseBlocked`/
+`baseReadinessBlocked` con `||` en cuatro lugares distintos. El resultado funcional ya era
+correcto, pero la regla vivía duplicada, con riesgo real de desalinearse a futuro.
+
+- **`globalRecommendationReady()` reemplazada por `evaluateGlobalRecommendationReadiness(
+  {readiness, channels, lmBlocked, baseBlocked})`**, con un contrato más preciso:
+  `floorReady` (todos los canales resueltos + LM verificado), `baseReady` (`floorReady` +
+  sin `fixed_price` activo), `unreadyChannels`, `reasons`, `floorReason`, `baseReason`.
+  Corrige además un error de la versión anterior: `baseBlocked` (precio LM fijo) estaba
+  atado al `ready` GLOBAL único — ahora `baseBlocked` **nunca** bloquea `floorReady` (el
+  Piso protege con el peor escenario real, LM incluido; Base solo evalúa el día 45).
+- **`engine.js` consume la función directamente** para `floorReadinessBlocked`/
+  `floorReadinessBlockedReason`/`baseReadinessBlocked`/`baseReadinessBlockedReason` — cero
+  recálculo inline.
+- **`index.html` simplificado**: `renderKpis`, la intro de Matriz, el botón "Ir al
+  simulador" y la precarga del Simulador leen `model.floorReadinessBlocked`/
+  `model.baseReadinessBlocked` como el único booleano de gate (se eliminaron los `||`
+  manuales con `lmBlocked`/`baseBlocked`); esas dos banderas solo eligen qué texto
+  específico mostrar. `#validationBanner` ya no duplica el aviso de "dato financiero" cuando
+  el único motivo real es LM/precio fijo.
+- **Guarda anti-regresión**: nuevo test que compara `compute()` contra una llamada directa a
+  `evaluateGlobalRecommendationReadiness()` con los mismos insumos — verificado manualmente
+  que falla si `engine.js` vuelve a reimplementar la lógica inline.
+
+Tests: `tests/fase5-financial-readiness.test.js` (reescrito el test del contrato viejo +3
+nuevos: LM bloquea Piso+Base, todo resuelto sin fixed_price desbloquea ambos, guarda
+anti-regresión), `e2e/base-fixedprice.spec.js` (+1: fixed_price deja el Piso disponible).
+**174/174 unitarios, 51/51 e2e, sin regresión.**
+
 ## [0.7.1] — Revisión externa: Min Price/Base Price globales inseguros (P1); neto manual mensual en 0 aceptado como dato real (P2)
 
 Dos fallos encontrados por una revisión independiente, no cubiertos por los 155/42 tests

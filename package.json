@@ -1,6 +1,6 @@
 {
   "name": "revenue-ops-host-medellin",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "description": "Motor de precios y descuentos por canal (Host Medellin). Sitio estatico sin build; este package.json solo habilita modulos ES nativos y el runner de tests de Node.",
   "type": "module",

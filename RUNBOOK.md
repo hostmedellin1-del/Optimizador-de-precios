@@ -102,6 +102,13 @@ cubre todavía, corre esto a mano en un navegador real:
     0 explícitamente — debe seguir pidiendo el dato. Escribe un neto positivo — debe
     calcular normalmente. Bórralo de nuevo (deja el campo vacío) — debe volver a pedir el
     dato, nunca quedar en 0 silencioso.
+16. **`fixed_price` bloquea SOLO Base, nunca el Piso (refactor de cierre)**: configura
+    Last-Minute en "Precio fijo" con un rango que cubra el día 45 (ej. 40-50) y márcalo
+    verificado. Base Price debe mostrar "—" ("Precio LM fijo activo"), pero **Min Price
+    (Piso) debe seguir mostrando un número real** — nunca "—" por este motivo. Mueve el
+    rango para que ya no cubra el día 45: Base Price vuelve a mostrar un número. Esto
+    confirma que `baseBlocked` nunca contamina `floorReadinessBlocked` (contrato de
+    `evaluateGlobalRecommendationReadiness()`, ver CLAUDE.md).
 
 ## Rollback
 

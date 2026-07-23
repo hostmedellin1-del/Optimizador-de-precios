@@ -483,44 +483,28 @@ function renderKpis(model){
     return;
   }
   kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
-  /* Bloqueante CRITICO (revision externa, ronda 2): Costo/Neto objetivo no
-     dependen de LM (son costo + margen objetivo, nada mas) y se siguen
-     mostrando siempre. Min Price y Base Price SI son recomendaciones
-     derivadas del peor escenario con LM incluido — si ese LM no es
-     verificable (model.lmBlocked, ver compute()/pricelabs-lm.js), no se
-     muestran como numero confiable: el aviso completo vive en
-     #validationBanner (renderValidation), aqui solo se bloquea el KPI. */
-  if(model.lmBlocked){
-    kFloor.textContent='—'; kBase.textContent='—';
-    kFloorWhy.textContent='LM sin verificar — ver aviso arriba'; kBaseWhy.textContent='LM sin verificar — ver aviso arriba';
-    return;
-  }
-  /* Fase 5 (revision externa — "datos financieros verificados"): floorReadinessBlocked
-     es ORTOGONAL a lmBlocked (arriba) — bloquea el Piso si el canal que lo
-     determina (model.floorChId) depende de un dato de negocio (comision
-     bancaria real, Offset aislado en Hospy, etc.) que Dani todavia no
-     confirmo (ver src/domain/readiness.js). */
+  /* Refactor de cierre (revision externa): `floorReadinessBlocked`/
+     `baseReadinessBlocked` (compute(), src/domain/readiness.js —
+     evaluateGlobalRecommendationReadiness()) son la UNICA fuente que decide
+     si Min Price/Base Price GLOBALES se muestran — ya incorporan LM sin
+     verificar (los dos) y el precio fijo activo (solo Base). Aqui NUNCA se
+     recalcula esa decision con `model.lmBlocked`/`model.baseBlocked`; esas
+     dos banderas solo se leen para elegir QUE TEXTO CORTO mostrar (el motivo
+     mas especifico primero), el aviso completo vive en #validationBanner. */
   if(model.floorReadinessBlocked){
-    kFloor.textContent='—'; kFloorWhy.textContent='dato financiero sin verificar — ver aviso arriba';
+    kFloor.textContent='—';
+    kFloorWhy.textContent = model.lmBlocked ? 'LM sin verificar — ver aviso arriba' : 'dato financiero sin verificar — ver aviso arriba';
   } else {
     kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
   }
-  /* Bloqueante P1 (revision externa, ronda 3): un precio LM FIJO activo en el
-     dia de referencia (45) hace que Base sea irrelevante ahi — PriceLabs
-     publica ese precio fijo sin importar Base. El Piso (floor) NO se bloquea
-     por esto: su busqueda exhaustiva (worstcase.js) ya resuelve el precio
-     fijo correctamente en CUALQUIER dia critico, incluido si no alcanza el
-     costo (lmInfeasible, error bloqueante aparte). Solo Base/Offset, que SI
-     evaluaban un unico dia (45) ignorando el override, quedan bloqueados aqui. */
-  if(model.baseBlocked){
-    kBase.textContent='—'; kBaseWhy.textContent='Precio LM fijo activo — ver aviso arriba';
-    return;
-  }
   if(model.baseReadinessBlocked){
-    kBase.textContent='—'; kBaseWhy.textContent='dato financiero sin verificar — ver aviso arriba';
-    return;
+    kBase.textContent='—';
+    kBaseWhy.textContent = model.lmBlocked ? 'LM sin verificar — ver aviso arriba'
+      : model.baseBlocked ? 'Precio LM fijo activo — ver aviso arriba'
+      : 'dato financiero sin verificar — ver aviso arriba';
+  } else {
+    kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
   }
-  kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
 }
 function renderValidation(model){
   const box = document.getElementById('validationBanner');
@@ -539,8 +523,18 @@ function renderValidation(model){
      Offset en Hospy, VIP de Expedia, Genius+Mobile de Booking, no-reembolsable
      de Airbnb) sin confirmar es un motivo de bloqueo DISTINTO a Last-Minute,
      aunque el LM ya este verificado. */
-  const floorReadinessBlock = model.floorReadinessBlocked ? [model.floorReadinessBlockedReason] : [];
-  const baseReadinessBlock = model.baseReadinessBlocked ? [model.baseReadinessBlockedReason] : [];
+  /* Refactor de cierre: floorReadinessBlocked/baseReadinessBlocked ahora
+     tambien quedan true cuando la UNICA causa es LM sin verificar o precio
+     fijo activo (evaluateGlobalRecommendationReadiness() los incluye para
+     que Min Price/Base Price nunca se muestren en ese caso) — esos dos
+     motivos YA tienen su propio banner arriba (lmBlock/baseBlock). Este
+     banner de "dato financiero" solo debe aparecer si además hay un dato de
+     NEGOCIO pendiente (`model.readiness.ready===false`, el mismo campo de
+     siempre de evaluateRecommendationReadiness), para no duplicar el aviso
+     cuando el motivo real es puramente LM/precio fijo. */
+  const hasPendingBusinessData = !!(model.readiness && !model.readiness.ready);
+  const floorReadinessBlock = (model.floorReadinessBlocked && hasPendingBusinessData) ? [model.floorReadinessBlockedReason] : [];
+  const baseReadinessBlock = (model.baseReadinessBlocked && hasPendingBusinessData) ? [model.baseReadinessBlockedReason] : [];
   if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
@@ -659,9 +653,13 @@ function renderMatrix(model){
   /* Bloqueante CRITICO (revision externa, ronda 2): Min Price/Base Price se
      bloquean aqui tambien (no solo en renderKpis) — matrixIntro es un resumen
      que Dani puede leer sin haber visto el KPI de Resumen. */
+  /* Refactor de cierre: gate unico por KPI (`floorReadinessBlocked`/
+     `baseReadinessBlocked`, ya incluyen LM/precio fijo) — `model.lmBlocked`/
+     `model.baseBlocked` solo se leen para elegir el texto mas especifico,
+     nunca para decidir si se bloquea (mismo patron que renderKpis()). */
   matrixIntro.innerHTML = `
-    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':model.floorReadinessBlocked?'— (dato financiero sin verificar)':f$(model.floor)}</span></div>
-    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':model.baseReadinessBlocked?'— (dato financiero sin verificar)':f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.floorReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':'— (dato financiero sin verificar)'):f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.baseReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':'— (dato financiero sin verificar)'):f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
      dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
@@ -744,7 +742,13 @@ function renderSim(model){
      bloqueado (LM sin verificar o precio LM fijo activo), no se simula nada
      con un numero inventado — se explica el motivo y se pide un precio manual. */
   const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
-  if((typedPrice==null || !Number.isFinite(typedPrice)) && (model.lmBlocked || model.baseBlocked || model.baseReadinessBlocked)){
+  /* Refactor de cierre: `model.baseReadinessBlocked` (evaluateGlobalRecommendationReadiness())
+     YA es true si LM esta sin verificar, si hay un precio fijo activo, O si un
+     canal tiene un dato de negocio pendiente — no hace falta volver a unir los
+     tres con `||`, eso seria la misma logica duplicada que este refactor
+     elimina. Solo se lee `model.lmBlocked`/`model.baseBlocked` para elegir el
+     texto mas especifico del motivo. */
+  if((typedPrice==null || !Number.isFinite(typedPrice)) && model.baseReadinessBlocked){
     const why = model.lmBlocked ? 'Last-Minute sin verificar' : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia' : 'un dato financiero del canal que fija Base sigue sin confirmar';
     simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen">Resumen → "Verificación de datos financieros" →</button>.</div>`;
     simIgnored.innerHTML = '';
@@ -1309,7 +1313,10 @@ document.addEventListener('click',e=>{
        bloqueado, NO se precarga nada (el campo queda vacio — renderSim()
        explica el motivo en vez de simular con un numero inventado) y se
        muestra el mismo aviso en el toast global. */
-    if(model.lmBlocked || model.baseBlocked || model.baseReadinessBlocked){
+    /* Refactor de cierre: `model.baseReadinessBlocked` ya es la union de los
+       tres motivos (LM/precio fijo/datos de negocio) — no se vuelve a armar
+       ese `||` aqui. */
+    if(model.baseReadinessBlocked){
       simPrice.value='';
       const why = model.lmBlocked ? 'Last-Minute sin verificar'
         : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'

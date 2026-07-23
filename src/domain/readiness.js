@@ -122,28 +122,69 @@ export function unreadyChannels(readiness, channels){
   return channels.filter(c => !(readiness.byChannel[c.id] || {ready:true}).ready);
 }
 
-/* globalRecommendationReady() — P1 (revision externa): Min Price y Base Price
-   son numeros GLOBALES, un solo valor que se lleva a PriceLabs y rige TODOS
-   los canales a la vez — no "el numero de tal canal". Antes,
-   floorReadinessBlocked/baseReadinessBlocked (engine.js) solo miraban si el
-   canal que HOY resulta ser el peor (floorChId/baseChId) tenia un dato
-   pendiente. Eso es insuficiente: un canal que HOY no fija el numero (ej.
-   Directo, con una comision bancaria sin confirmar) puede pasar a fijarlo en
-   cuanto se conozca su dato real — mientras siga pendiente, ese riesgo existe
-   y el numero global no se puede tratar como recomendacion confiable, aunque
-   el canal que manda hoy este perfectamente confirmado.
-   Esta es la UNICA regla que decide si un numero GLOBAL (Min Price/Base
-   Price) es confiable — deriva de evaluateRecommendationReadiness() (datos de
-   negocio por canal) + lmBlocked (Last-Minute) + baseBlocked (precio LM fijo
-   en el dia de referencia): basta que UNO de los tres bloquee para que el
-   global quede bloqueado. engine.js, y solo engine.js, computa esta funcion;
-   toda vista (KPIs, Matriz, Alertas, Simulador) consume el resultado ya
-   calculado (model.floorReadinessBlocked/model.baseReadinessBlocked), nunca
-   recalcula sus propios "¿algun canal pendiente?" para el gate GLOBAL (matrix.js/
-   alerts.js SI tienen su propio uso legitimo y distinto de unreadyChannels():
-   deciden el veredicto de UNA VENTANA/alerta puntual, no el numero global). */
-export function globalRecommendationReady({readiness, channels, lmBlocked, baseBlocked}){
+/* evaluateGlobalRecommendationReadiness() — refactor de cierre (revision
+   externa): UNICA fuente de verdad para "¿Min Price/Base Price GLOBALES (un
+   solo valor que se lleva a PriceLabs y rige los 4 canales) se pueden tratar
+   como recomendacion confiable?". Reemplaza a la `globalRecommendationReady()`
+   anterior — esa version existia, tenia tests, pero `engine.js` no la
+   consumia (calculaba `floorReadinessBlocked`/`baseReadinessBlocked` con su
+   propio `unreadyChannels()` inline), asi que la regla vivia duplicada en dos
+   lugares con riesgo real de desalinearse. Ademas la version anterior ataba
+   `baseBlocked` al `ready` GLOBAL (un solo booleano para los dos), lo cual era
+   incorrecto: un precio Last-Minute FIJO en el dia de referencia (`baseBlocked`)
+   vuelve irrelevante a BASE, pero el PISO sigue protegiendo de verdad (busca el
+   peor escenario real, LM incluido, via `worstScenarioFactor()`) — `baseBlocked`
+   nunca debe bloquear el Piso.
+
+   Contrato exacto (no reordenar sin actualizar CLAUDE.md):
+   - `floorReady` es true SOLO SI: todos los canales activos tienen sus datos
+     financieros resueltos (`unreadyChannels(...).length===0`) Y `lmBlocked===false`.
+     Last-Minute sin verificar hace que CUALQUIER numero global (Piso incluido)
+     sea una proyeccion no verificable — bloquea el Piso igual que a Base.
+   - `baseReady` es true SOLO SI `floorReady===true` Y `baseBlocked===false`.
+     `baseBlocked` (precio LM fijo activo en el dia 45) es una condicion
+     ADICIONAL que solo afecta a Base — nunca al Piso.
+   - `unreadyChannels`: la lista de canales (objetos `{id,name,...}`) con al
+     menos un dato pendiente, para que cualquier consumidor explique CUALES
+     canales faltan sin tener que volver a filtrar `readiness.byChannel`.
+   - `reasons`: arreglo plano de frases (datos de negocio pendientes + LM sin
+     verificar + precio fijo activo, las que apliquen) — bloque reusable para
+     construir `floorReason`/`baseReason` sin duplicar texto.
+   - `floorReason`/`baseReason`: texto listo para mostrar (o `null` si
+     ready), armado SOLO a partir de los parametros recibidos — esta funcion
+     no conoce `floorCh`/`baseCh` (que canal fija el numero HOY) a proposito:
+     el riesgo que motiva el bloqueo es que CUALQUIER canal pendiente PODRIA
+     pasar a fijarlo, no solo el que lo fija en este instante.
+
+   `engine.js` es el UNICO caller de produccion — `floorReadinessBlocked`/
+   `floorReadinessBlockedReason`/`baseReadinessBlocked`/`baseReadinessBlockedReason`
+   (los campos que expone `compute()`) se derivan DIRECTAMENTE de
+   `!floorReady`/`floorReason`/`!baseReady`/`baseReason`, sin recalcular nada.
+   Matriz/Alertas usan `unreadyChannels()` (arriba) para sus propios veredictos
+   por VENTANA/alerta puntual — una pregunta legitimamente distinta a "¿el
+   numero GLOBAL es confiable?" — no llaman a esta funcion. */
+export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked}){
   const unready = unreadyChannels(readiness, channels);
-  const ready = unready.length===0 && !lmBlocked && !baseBlocked;
-  return {ready, unready};
+  const dataReason = unready.length
+    ? `${unready.map(c=>c.name).join(', ')} ${unready.length===1?'depende':'dependen'} de datos financieros sin confirmar: ${unready.map(c=>(readiness.byChannel[c.id].missing||[]).map(m=>m.reason).join(' ')).join(' ')}`
+    : null;
+  const lmReason = lmBlocked
+    ? 'Last-Minute todavía no está verificado — mientras tanto, ningún número global (Min Price ni Base Price) es matemáticamente confiable, es siempre una proyección.'
+    : null;
+  const baseFixedReason = baseBlocked
+    ? 'Hay un precio Last-Minute FIJO activo en el día de referencia (45) — PriceLabs publica ese precio tal cual, así que Base Price no controla nada ahí (el Piso sigue protegiendo: evalúa el peor escenario real, LM incluido).'
+    : null;
+
+  const floorReady = unready.length===0 && !lmBlocked;
+  const baseReady = floorReady && !baseBlocked;
+
+  const floorParts = [dataReason, lmReason].filter(Boolean);
+  const baseParts = [dataReason, lmReason, baseFixedReason].filter(Boolean);
+  const buildReason = (label, parts) => `${label} es un número GLOBAL que se usa en PriceLabs para TODOS los canales — no se puede tratar como recomendación confiable todavía. ${parts.join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" / "Last-Minute de PriceLabs" antes de usar este número en PriceLabs.`;
+
+  return {
+    floorReady, baseReady, unreadyChannels: unready, reasons: baseParts,
+    floorReason: floorReady ? null : buildReason('Min Price', floorParts),
+    baseReason: baseReady ? null : buildReason('Base Price', baseParts)
+  };
 }

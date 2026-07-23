@@ -12,7 +12,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
-import {evaluateRecommendationReadiness, unreadyChannels, globalRecommendationReady} from '../src/domain/readiness.js';
+import {evaluateRecommendationReadiness, unreadyChannels, evaluateGlobalRecommendationReadiness} from '../src/domain/readiness.js';
 import {defaultVerification, isVerified} from '../src/domain/verification.js';
 import {buildMatrixVerdict, worstScenariosInWindow} from '../src/domain/matrix.js';
 import {buildAlerts} from '../src/domain/alerts.js';
@@ -189,6 +189,75 @@ test('LOS DOS P1 DE LA RONDA 3 SIGUEN PROTEGIDOS: baseBlocked (precio LM fijo en
   const model = compute({fixedCost:100, varCost:0, margin:50, marketBase:0, channels, discounts, windows: freshWindows(), ceilings: defaultCeilings(), lmConfig, verification});
   assert.equal(model.baseBlocked, true, 'el bloqueo de precio fijo (ronda 3) sigue activo — orthogonal al nuevo gate de datos financieros');
   assert.ok(model.baseBlockedReason.includes('Precio fijo'));
+  // Refactor de cierre: fixed_price activo en el dia 45 (baseBlocked) NUNCA
+  // debe bloquear el Piso global — el Piso sigue protegiendo con el peor
+  // escenario real (worstScenarioFactor, LM incluido). Solo Base se bloquea.
+  assert.equal(model.lmBlocked, false, 'precondicion: LM verificado, no es la causa del bloqueo bajo prueba');
+  assert.equal(model.floorReadinessBlocked, false, 'Min Price global SIGUE disponible — fixed_price solo afecta a Base');
+  assert.equal(model.baseReadinessBlocked, true, 'Base Price global queda bloqueada por el precio fijo activo');
+});
+
+test('compute(): LM sin verificar bloquea Min Price Y Base Price GLOBALES, aunque todos los canales tengan sus datos financieros resueltos', () => {
+  const channels = freshChannels().map(c=>c.id==='direct'?{...c, comm:0, bankFeePct:0, offsetPct:0}:c);
+  const discounts = freshDiscounts().map(d=>({...d, on:false}));
+  const verification = defaultVerification();
+  Object.keys(verification.bankFeePctByChannel).forEach(chId=>{ verification.bankFeePctByChannel[chId].status='no_aplica'; });
+  verification.hospyOffsetIsolated.status = 'no_aplica';
+  verification.bookingGeniusMobileBoth.status = 'no_aplica';
+  verification.expediaVipTierMix.status = 'no_aplica';
+  verification.airbnbNonRefundable.status = 'no_aplica';
+  // lmConfig SIN verificar (default 'ceiling_auto', el modo mas comun de fabrica).
+  const model = compute({fixedCost:100, varCost:0, margin:50, marketBase:0, channels, discounts, windows: freshWindows(), ceilings: defaultCeilings(), verification});
+  assert.equal(model.readiness.ready, true, 'precondicion: todos los canales tienen sus datos financieros resueltos');
+  assert.equal(model.lmBlocked, true, 'precondicion: LM sin verificar es la unica causa de bloqueo bajo prueba');
+  assert.equal(model.baseBlocked, false, 'precondicion: no hay precio fijo activo en el dia de referencia');
+  assert.equal(model.floorReadinessBlocked, true, 'LM sin verificar bloquea el Piso global tambien');
+  assert.equal(model.baseReadinessBlocked, true, 'y Base Price global');
+  assert.match(model.floorReadinessBlockedReason, /Last-Minute/);
+  assert.match(model.baseReadinessBlockedReason, /Last-Minute/);
+});
+
+test('compute(): con todos los canales resueltos, LM verificado y sin fixed_price activo, Min Price y Base Price GLOBALES quedan disponibles', () => {
+  const channels = freshChannels().map(c=>c.id==='direct'?{...c, comm:0, bankFeePct:0, offsetPct:0}:c);
+  const discounts = freshDiscounts().map(d=>({...d, on:false}));
+  const verification = defaultVerification();
+  Object.keys(verification.bankFeePctByChannel).forEach(chId=>{ verification.bankFeePctByChannel[chId].status='no_aplica'; });
+  verification.hospyOffsetIsolated.status = 'no_aplica';
+  verification.bookingGeniusMobileBoth.status = 'no_aplica';
+  verification.expediaVipTierMix.status = 'no_aplica';
+  verification.airbnbNonRefundable.status = 'no_aplica';
+  const lmConfig = {mode:'flat', verified:true, flat:{pct:10, fromDay:0, toDay:3, on:true}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
+  const model = compute({fixedCost:100, varCost:0, margin:50, marketBase:0, channels, discounts, windows: freshWindows(), ceilings: defaultCeilings(), lmConfig, verification});
+  assert.equal(model.readiness.ready, true);
+  assert.equal(model.lmBlocked, false);
+  assert.equal(model.baseBlocked, false);
+  assert.equal(model.floorReadinessBlocked, false);
+  assert.equal(model.baseReadinessBlocked, false);
+  assert.equal(model.floorReadinessBlockedReason, null);
+  assert.equal(model.baseReadinessBlockedReason, null);
+});
+
+/* Refactor de cierre (revision externa): guarda arquitectonica contra volver
+   a duplicar la logica de "¿es el Piso/Base global confiable?" inline en
+   engine.js. Si `compute()` alguna vez deja de derivar
+   floorReadinessBlocked(Reason)/baseReadinessBlocked(Reason) EXACTAMENTE de
+   `evaluateGlobalRecommendationReadiness()` (ya sea porque alguien reimplementa
+   el filtro a mano, cambia el orden de las condiciones, o arma su propio
+   texto de motivo), este test detecta la divergencia: llama a la funcion
+   central por separado, con los mismos insumos que ya devolvio `compute()`
+   (readiness/lmBlocked/baseBlocked), y exige una igualdad EXACTA — booleans Y
+   texto — con lo que expuso el motor. */
+test('engine.js consume evaluateGlobalRecommendationReadiness() como UNICA fuente — el resultado de compute() es idéntico, campo por campo, al de la función central con los mismos insumos', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
+  const model = compute(config({discounts, verification}));
+  const readinessDirect = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  const direct = evaluateGlobalRecommendationReadiness({
+    readiness: readinessDirect, channels: freshChannels(), lmBlocked: model.lmBlocked, baseBlocked: model.baseBlocked
+  });
+  assert.equal(model.floorReadinessBlocked, !direct.floorReady);
+  assert.equal(model.baseReadinessBlocked, !direct.baseReady);
+  assert.equal(model.floorReadinessBlockedReason, direct.floorReason);
+  assert.equal(model.baseReadinessBlockedReason, direct.baseReason);
 });
 
 /* Config generosa (sin nativos, comision baja) tomada del mismo patron que ya
@@ -317,17 +386,54 @@ test('P1: unreadyChannels() es la fuente central — devuelve el canal pendiente
   assert.deepEqual(unreadyChannels(readiness2, freshChannels()), []);
 });
 
-test('P1: globalRecommendationReady() combina readiness + lmBlocked + baseBlocked en una sola regla — cualquiera de los tres bloquea el global', () => {
+/* Refactor de cierre (revision externa): evaluateGlobalRecommendationReadiness()
+   reemplaza a la globalRecommendationReady() anterior (existia, tenia tests,
+   pero engine.js no la consumia). Contrato exacto:
+   - floorReady: true SOLO SI todos los canales activos resolvieron sus datos
+     financieros Y lmBlocked===false.
+   - baseReady: true SOLO SI floorReady===true Y baseBlocked===false.
+   - baseBlocked (precio fijo en el dia 45) NUNCA debe bloquear floorReady —
+     el Piso sigue protegiendo con el peor escenario real (LM incluido). */
+test('evaluateGlobalRecommendationReadiness(): floorReady exige canales resueltos + LM verificado; baseReady exige ADEMAS que no haya precio fijo activo', () => {
   const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
   const readiness = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
-  // Solo el dato de negocio pendiente:
-  assert.equal(globalRecommendationReady({readiness, channels: freshChannels(), lmBlocked:false, baseBlocked:false}).ready, false);
+  // Solo el dato de negocio pendiente (Directo):
+  let r = evaluateGlobalRecommendationReadiness({readiness, channels: freshChannels(), lmBlocked:false, baseBlocked:false});
+  assert.equal(r.floorReady, false, 'un canal pendiente bloquea el Piso global');
+  assert.equal(r.baseReady, false, 'y tambien Base (baseReady exige floorReady primero)');
+  assert.equal(r.unreadyChannels.length, 1);
+  assert.equal(r.unreadyChannels[0].id, 'direct');
+
   // Todo resuelto salvo LM:
   verification.bankFeePctByChannel.direct.status = 'verificado';
   const readinessAllDone = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
-  assert.equal(globalRecommendationReady({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:true, baseBlocked:false}).ready, false, 'LM sin verificar tambien debe bloquear el global');
-  assert.equal(globalRecommendationReady({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:false, baseBlocked:true}).ready, false, 'precio fijo activo tambien debe bloquear el global');
-  assert.equal(globalRecommendationReady({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:false, baseBlocked:false}).ready, true, 'con los tres gates resueltos, el global queda listo');
+  r = evaluateGlobalRecommendationReadiness({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:true, baseBlocked:false});
+  assert.equal(r.floorReady, false, 'LM sin verificar tambien debe bloquear el Piso global');
+  assert.equal(r.baseReady, false);
+  assert.match(r.floorReason, /GLOBAL/);
+
+  // Todo resuelto + LM verificado, pero precio LM fijo activo (baseBlocked):
+  // el Piso NO debe bloquearse por esto — solo Base.
+  r = evaluateGlobalRecommendationReadiness({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:false, baseBlocked:true});
+  assert.equal(r.floorReady, true, 'baseBlocked (precio fijo) NUNCA debe bloquear el Piso global — el Piso sigue protegiendo con el peor escenario real');
+  assert.equal(r.baseReady, false, 'pero SI bloquea Base');
+  assert.equal(r.floorReason, null);
+  assert.ok(r.baseReason && r.baseReason.length>0);
+
+  // Los tres gates resueltos: todo listo.
+  r = evaluateGlobalRecommendationReadiness({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:false, baseBlocked:false});
+  assert.equal(r.floorReady, true);
+  assert.equal(r.baseReady, true);
+  assert.equal(r.floorReason, null);
+  assert.equal(r.baseReason, null);
+});
+
+test('evaluateGlobalRecommendationReadiness(): baseReady es false si floorReady ya es false, incluso sin baseBlocked (baseReady depende de floorReady)', () => {
+  const {discounts, verification} = readyCatalogExcept('direct-bank-fee'); // Directo pendiente
+  const readiness = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  const r = evaluateGlobalRecommendationReadiness({readiness, channels: freshChannels(), lmBlocked:false, baseBlocked:false});
+  assert.equal(r.floorReady, false);
+  assert.equal(r.baseReady, false, 'baseReady no puede ser true si floorReady es false, sin importar baseBlocked');
 });
 
 test('P1: Matriz — "RENTABLE EN TODOS" sigue bloqueado si un canal AJENO a la ventana peor caso tiene un dato pendiente (regresion del refactor a unreadyChannels compartido)', () => {

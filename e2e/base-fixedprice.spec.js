@@ -78,6 +78,21 @@ test('caso obligatorio: LM fixed_price en 40-50 (cubre día 45) bloquea Base Pri
   await expect(banner).toContainText('por debajo de tu objetivo');
 });
 
+/* Refactor de cierre (revision externa): baseBlocked (precio LM fijo activo en
+   el día 45) NUNCA debe bloquear Min Price — el Piso sigue protegiendo
+   evaluando el peor escenario real (LM incluido, ver worstScenarioFactor()).
+   Solo Base Price, que evalúa un único día de referencia (45), queda
+   bloqueado. Contrato exacto de evaluateGlobalRecommendationReadiness()
+   (src/domain/readiness.js): baseReady exige floorReady Y !baseBlocked —
+   baseBlocked nunca entra en el cálculo de floorReady. */
+test('caso obligatorio: fixed_price activo en el día 45 deja el Piso (Min Price) DISPONIBLE — solo Base Price queda bloqueada', async ({page}) => {
+  await setupFixedPriceScenario(page);
+  await resolveAllFinancialFacts(page); // aisla el mecanismo bajo prueba del gate de datos financieros (P1)
+  await expect(page.locator('#kBase')).toHaveText('—', {timeout: 3000}); // precondicion: Base sigue bloqueada
+  await expect(page.locator('#kFloor')).not.toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('lo fija');
+});
+
 test('el Offset sugerido SÍ se recalcula sobre el precio fijo real (no se bloquea, no queda en 0%)', async ({page}) => {
   await setupFixedPriceScenario(page);
   await page.locator('[data-tabbtn="ch-direct"]').click();
