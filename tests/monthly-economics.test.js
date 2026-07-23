@@ -278,6 +278,67 @@ test('ESCENARIO DE MEZCLA: el neto ponderado es el promedio ponderado exacto de 
   assert.ok(Math.abs(r.incomeSource.netPerNight - expectedWeighted) < 1e-9);
 });
 
+/* Contrato de moneda (revision externa): un canal con `settlementCurrency`
+   distinta de la moneda de la unidad no puede consolidarse en el ingreso
+   mensual sin una conversión EXPLICITA y VERIFICADA — mismo chequeo que usa
+   reconciliation.js (currency.js), aquí aplicado a los escenarios 'channel'/
+   'mix' de planificación mensual. */
+test('MONEDA — escenario de canal con settlementCurrency distinta y SIN tipo de cambio verificado: bloqueado, nunca mezcla monedas en silencio', () => {
+  const channels = freshChannels().map(c=>c.id==='direct' ? {...c, settlementCurrency:'COP'} : c);
+  const quoteConfig = quoteConfigFor({channels});
+  const scenario = {chId:'direct', days:45, nights:3, price:150};
+  const r = computeMonthlyEconomics({
+    costBreakdown: cb(), avgNights:3,
+    incomeScenario: {type:'channel', channel: scenario},
+    quoteConfig, currency:'USD', fxRates:{}
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /COP/);
+  assert.match(r.reason, /VERIFICADO/);
+});
+
+test('MONEDA — escenario de canal con settlementCurrency distinta y CON tipo de cambio verificado: calcula el neto convertido exacto', () => {
+  const channels = freshChannels().map(c=>c.id==='direct' ? {...c, settlementCurrency:'COP'} : c);
+  const quoteConfig = quoteConfigFor({channels});
+  const scenario = {chId:'direct', days:45, nights:3, price:150};
+  const expected = quoteScenario(scenario, quoteConfig); // payout en COP (moneda de liquidacion de Directo)
+  const fxRates = {COP: {rate: 1/4000, source:'TRM manual', date:'2026-07-01', status:'verificado'}}; // 1 COP = 1/4000 USD
+  const r = computeMonthlyEconomics({
+    costBreakdown: cb(), avgNights:3,
+    incomeScenario: {type:'channel', channel: scenario},
+    quoteConfig, currency:'USD', fxRates
+  });
+  assert.equal(r.ok, true);
+  assert.ok(Math.abs(r.incomeSource.netPerNight - expected.payout/4000) < 1e-9);
+});
+
+test('MONEDA — escenario de canal SIN settlementCurrency (default, misma moneda que la unidad): funciona exactamente igual que antes, sin exigir fxRates', () => {
+  const quoteConfig = quoteConfigFor(); // catalogo de fabrica: settlementCurrency null en todos
+  const scenario = {chId:'direct', days:45, nights:3, price:150};
+  const expected = quoteScenario(scenario, quoteConfig);
+  const r = computeMonthlyEconomics({
+    costBreakdown: cb(), avgNights:3,
+    incomeScenario: {type:'channel', channel: scenario},
+    quoteConfig, currency:'USD' // fxRates ni se pasa
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.incomeSource.netPerNight, expected.payout);
+});
+
+test('MONEDA — escenario de MEZCLA con un canal en moneda distinta sin fx verificado: bloquea TODA la mezcla, no solo ese canal', () => {
+  const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
+  const quoteConfig = quoteConfigFor({channels});
+  const rowA = {chId:'direct', days:45, nights:3, price:150, weightPct:60};
+  const rowB = {chId:'airbnb', days:45, nights:3, price:150, weightPct:40}; // liquida en COP
+  const r = computeMonthlyEconomics({
+    costBreakdown: cb(), avgNights:3,
+    incomeScenario: {type:'mix', mix:[rowA, rowB]},
+    quoteConfig, currency:'USD', fxRates:{}
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /Airbnb/);
+});
+
 test('mezcla de canales cuyos % de peso NO suman 100%: no calculable, no se asume una normalización silenciosa', () => {
   const quoteConfig = quoteConfigFor();
   const r = computeMonthlyEconomics({

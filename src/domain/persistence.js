@@ -13,6 +13,7 @@
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
 import {defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './monthly-economics.js';
+import {defaultFxEntry} from './currency.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
 
@@ -106,6 +107,14 @@ function normalizeChannel(raw, def, warnings){
     out.cleanFeeShort = nonNegField(raw||{}, 'cleanFeeShort', def.cleanFeeShort||0, warnings, `channels.${def.id}`, {min:0});
     out.cleanFeeLong = nonNegField(raw||{}, 'cleanFeeLong', def.cleanFeeLong||0, warnings, `channels.${def.id}`, {min:0});
   }
+  /* Contrato de moneda (revision externa): null = "misma moneda que la
+     unidad" (el default seguro) — solo 'USD'/'COP' son valores validos
+     (unica whitelist que soporta la app, ver currency.js). Cualquier otra
+     cosa (string invalido, numero, objeto) cae a null, nunca se inventa. */
+  const rawSettlement = raw && raw.settlementCurrency;
+  if(rawSettlement===null || rawSettlement===undefined) out.settlementCurrency = null;
+  else if(rawSettlement==='USD' || rawSettlement==='COP') out.settlementCurrency = rawSettlement;
+  else { warnings.push(`channels.${def.id}.settlementCurrency: "${String(rawSettlement).slice(0,40)}" no es una moneda soportada — se uso null (misma moneda que la unidad).`); out.settlementCurrency = null; }
   return out;
 }
 
@@ -271,6 +280,90 @@ function normalizeMonthlyDistribution(raw, warnings){
   };
 }
 
+const FX_CURRENCIES = ['USD', 'COP'];
+
+/* fxRates: {[currencyCode]: {rate, source, date, status}} — solo se preservan
+   claves de moneda CONOCIDAS (whitelist FX_CURRENCIES, ver currency.js). Un
+   `rate` invalido/negativo/cero NO se descarta a favor de un default numerico
+   (no hay un "tipo de cambio por defecto" seguro que inventar) — se preserva
+   como null y status cae a 'no_verificado', para que resolveConversion() lo
+   bloquee explicitamente en vez de que normalizeUnit() decida un numero por
+   su cuenta. */
+function normalizeFxEntry(raw, warnings, path){
+  if(!raw || typeof raw!=='object') return defaultFxEntry();
+  const status = VERIFICATION_STATUSES.includes(raw.status) ? raw.status : 'no_verificado';
+  if(raw.status!==undefined && status!==raw.status) warnings.push(`${path}.status: "${String(raw.status).slice(0,40)}" no es un estado reconocido — se uso 'no_verificado'.`);
+  let rate = null;
+  if(raw.rate!==undefined && raw.rate!==null){
+    const n = safeNum(raw.rate, null);
+    if(n && n.invalid){ warnings.push(`${path}.rate: valor no numerico ("${String(raw.rate).slice(0,60)}") — se uso null (sin tipo de cambio).`); }
+    else if(typeof n==='number' && n>0) rate = n;
+    else warnings.push(`${path}.rate: ${n} no es un tipo de cambio valido (debe ser > 0) — se uso null.`);
+  }
+  const source = strField(raw, 'source', '', warnings, path, 200);
+  const date = strField(raw, 'date', '', warnings, path, 20);
+  return {rate, source, date, status: rate===null ? 'no_verificado' : status};
+}
+function normalizeFxRates(raw, warnings){
+  const out = {};
+  if(!raw || typeof raw!=='object') return out;
+  FX_CURRENCIES.forEach(code=>{
+    if(raw[code]!==undefined) out[code] = normalizeFxEntry(raw[code], warnings, `fxRates.${code}`);
+  });
+  Object.keys(raw).forEach(code=>{
+    if(!FX_CURRENCIES.includes(code)) warnings.push(`fxRates: moneda desconocida "${String(code).slice(0,20)}" descartada.`);
+  });
+  return out;
+}
+
+/* reconciliations: datos LOCALES de auditoria que Dani ingresa a mano para
+   comparar una reserva real contra el estimado del motor (ver
+   src/domain/reconciliation.js) — nunca datos sensibles de huesped (nombre/
+   email/telefono), solo numeros financieros + referencia de reserva libre
+   (opcional). Un elemento malformado se descarta entero (no se intenta
+   reparar campo por campo) — es un registro de auditoria, no una
+   configuracion que deba sobrevivir a toda costa; preservar una entrada a
+   medias podria mostrar una reconciliacion enganosa. */
+function normalizeReconciliation(raw, warnings, idx){
+  if(!raw || typeof raw!=='object'){ warnings.push(`reconciliations[${idx}]: no es un objeto — descartado.`); return null; }
+  const path = `reconciliations[${idx}]`;
+  if(!CHANNEL_IDS.includes(raw.chId)){ warnings.push(`${path}.chId: "${String(raw.chId).slice(0,40)}" no es un canal conocido — entrada descartada.`); return null; }
+  const price = safeNum(raw.price, null);
+  const nights = safeNum(raw.nights, null);
+  const payoutReceived = safeNum(raw.payoutReceived, null);
+  if(typeof price!=='number' || price<=0){ warnings.push(`${path}.price: falta un precio real (> 0) — entrada descartada.`); return null; }
+  if(typeof nights!=='number' || nights<1){ warnings.push(`${path}.nights: faltan noches reales (>= 1) — entrada descartada.`); return null; }
+  if(typeof payoutReceived!=='number' || !Number.isFinite(payoutReceived)){ warnings.push(`${path}.payoutReceived: falta el payout real recibido — entrada descartada.`); return null; }
+  const daysN = safeNum(raw.days, 0);
+  const days = typeof daysN==='number' ? Math.max(0, Math.round(daysN)) : 0;
+  const currency = (raw.currency==='COP' || raw.currency==='USD') ? raw.currency : null;
+  const optionalPct = (key)=>{
+    if(raw[key]===undefined || raw[key]===null || raw[key]==='') return null;
+    const n = safeNum(raw[key], null);
+    return (typeof n==='number' && Number.isFinite(n)) ? n : null;
+  };
+  return {
+    id: (typeof raw.id==='string' && raw.id) ? raw.id.slice(0,80) : `rec${idx}_${Date.now()}`,
+    savedAt: (typeof raw.savedAt==='string') ? raw.savedAt.slice(0,40) : new Date().toISOString(),
+    chId: raw.chId,
+    price, nights: Math.round(nights), days,
+    currency,
+    otaCommissionPct: optionalPct('otaCommissionPct'),
+    bankFeePct: optionalPct('bankFeePct'),
+    cleaningFeeCharged: optionalPct('cleaningFeeCharged'),
+    nativeDiscountPct: optionalPct('nativeDiscountPct'),
+    payoutReceived,
+    reference: strField(raw, 'reference', '', warnings, path, 120)
+  };
+}
+function normalizeReconciliations(raw, warnings){
+  if(!Array.isArray(raw)){
+    if(raw!==undefined) warnings.push('reconciliations: no es un arreglo — se uso una lista vacia.');
+    return [];
+  }
+  return raw.map((r,i)=>normalizeReconciliation(r, warnings, i)).filter(Boolean).slice(0, 200);
+}
+
 function normalizeCostBreakdown(raw, warnings){
   const def = defaultCostBreakdown();
   const out = {...def};
@@ -331,6 +424,8 @@ export function normalizeUnit(raw){
   const verification = normalizeVerification(raw.verification, warnings);
   const monthlyIncomeScenario = normalizeMonthlyIncomeScenario(raw.monthlyIncomeScenario, warnings);
   const monthlyDistribution = normalizeMonthlyDistribution(raw.monthlyDistribution, warnings);
+  const fxRates = normalizeFxRates(raw.fxRates, warnings);
+  const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
 
   const state = {
     name,
@@ -343,7 +438,7 @@ export function normalizeUnit(raw){
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
     costBreakdown, channels, discounts, ceilings, lmConfig, verification,
-    monthlyIncomeScenario, monthlyDistribution,
+    monthlyIncomeScenario, monthlyDistribution, fxRates, reconciliations,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
   return {state, warnings};

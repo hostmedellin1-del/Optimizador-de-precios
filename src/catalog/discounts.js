@@ -3,11 +3,17 @@
    para poder importarlo desde tests reales y desde la UI sin duplicar el codigo.
    CHANNELS es una plantilla: quien lo use debe clonar (c=>({...c})) antes de mutar,
    igual que hacia el index.html original al construir `state.channels`. */
+/* settlementCurrency: null (default) = "el canal liquida en la misma moneda
+   base de la unidad, sin conversion" — el caso normal. Si Dani confirma que
+   un canal liquida en una moneda DISTINTA (ej. Airbnb via Supra en USD
+   mientras la unidad esta en COP), lo cambia explicitamente a 'USD'|'COP' —
+   ver src/domain/currency.js: eso activa el chequeo de conversion, nunca se
+   asume ni se detecta solo. */
 export const CHANNELS = [
-  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0},
-  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6},
-  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0},
-  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6}
+  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0, settlementCurrency:null},
+  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6, settlementCurrency:null},
+  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0, settlementCurrency:null},
+  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6, settlementCurrency:null}
 ];
 
 /* Discount catalog. kind: constant | window (booking-window days) | los (min nights)
