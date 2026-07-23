@@ -321,10 +321,10 @@ import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
 import {worstScenariosInWindow} from './src/domain/matrix.js';
-import {defaultVerification, mergeVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
+import {defaultVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
 import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
-import {newUnitId, buildV3Record, v3Key, validateImportFile, SCHEMA_VERSION} from './src/domain/persistence.js';
+import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -472,16 +472,21 @@ function discountRowHTML(d){
      Larga estadía=28, "X meses"=30/60/90) — si el número fuera editable, se podría
      desincronizar del nombre (ej. "Semanal (≥7 noches)" pero con un 10 puesto). Se
      muestra el umbral como texto fijo, no como input. */
+  /* Bloqueante 4 (revision externa): escapeHtml() tambien en campos NUMERICOS —
+     defensa en profundidad ademas de normalizeUnit() (que ya garantiza que
+     estos son numeros JS reales, no strings). Un `number` nunca puede romper
+     un atributo, pero escapar aqui igual cuesta cero y cubre cualquier ruta
+     futura que escriba en `state` sin pasar por el normalizador. */
   const win = d.lockN
-    ? `<span class="d-win">${d.kind==='los' ? '≥'+d.minN+'n' : '≥'+d.from+'d'}</span>`
+    ? `<span class="d-win">${d.kind==='los' ? '≥'+escapeHtml(d.minN)+'n' : '≥'+escapeHtml(d.from)+'d'}</span>`
     : d.kind==='window'
-      ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${d.from}">–<input type="number" data-did="${d.id}" data-f="to" value="${d.to>=9999?'':d.to}" placeholder="∞">d</span>`
-      : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${d.minN}">n</span>` : '';
+      ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${escapeHtml(d.from)}">–<input type="number" data-did="${d.id}" data-f="to" value="${escapeHtml(d.to>=9999?'':d.to)}" placeholder="∞">d</span>`
+      : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${escapeHtml(d.minN)}">n</span>` : '';
   return `<div class="d-item ${d.on?'on':''}">
     <input type="checkbox" data-did="${d.id}" data-f="on" ${d.on?'checked':''}>
     <span class="d-name">${escapeHtml(d.name)}${d.note?`<span class="d-meta">${escapeHtml(d.note)}</span>`:''}</span>
     ${win}
-    <input type="number" data-did="${d.id}" data-f="pct" value="${d.pct}"><span class="hint">%</span>
+    <input type="number" data-did="${d.id}" data-f="pct" value="${escapeHtml(d.pct)}"><span class="hint">%</span>
   </div>`;
 }
 const CH_TAB = {airbnb:'ch-airbnb', booking:'ch-booking', expedia:'ch-expedia', direct:'ch-direct'};
@@ -503,12 +508,12 @@ function renderChannelPages(model){
     panel.innerHTML = `
       <section class="card">
         <div class="chpage-head">
-          <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
-          <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${c.bankFeePct||0}"></div>
-          <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
+          <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${escapeHtml(c.comm)}"></div>
+          <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${escapeHtml(c.bankFeePct||0)}"></div>
+          <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${escapeHtml(c.offsetPct||0)}"></div>
           ${c.id==='airbnb' ? `
-          <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${c.cleanFeeShort||0}"></div>
-          <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${c.cleanFeeLong||0}"></div>` : ''}
+          <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
+          <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
           <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
@@ -581,7 +586,7 @@ function renderMatrix(model){
     }).join('');
     return `<tr>
       <td>${w.label}</td>
-      <td><input type="number" data-ceil="${w.id}" value="${state.ceilings[w.id]}" style="width:58px"></td>
+      <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
       <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
@@ -706,24 +711,24 @@ function renderLmConfig(){
     const f=cfg.flat;
     box.innerHTML = `
       <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="flat.on" ${f.on?'checked':''}><span>Activo</span></label></div>
-      <div class="field"><span>% de descuento</span><input type="number" data-lmf="flat.pct" value="${f.pct}" step="1"></div>
-      <div class="field"><span>Desde día</span><input type="number" data-lmf="flat.fromDay" value="${f.fromDay}" step="1" min="0"></div>
-      <div class="field"><span>Hasta día</span><input type="number" data-lmf="flat.toDay" value="${f.toDay}" step="1" min="0"></div>`;
+      <div class="field"><span>% de descuento</span><input type="number" data-lmf="flat.pct" value="${escapeHtml(f.pct)}" step="1"></div>
+      <div class="field"><span>Desde día</span><input type="number" data-lmf="flat.fromDay" value="${escapeHtml(f.fromDay)}" step="1" min="0"></div>
+      <div class="field"><span>Hasta día</span><input type="number" data-lmf="flat.toDay" value="${escapeHtml(f.toDay)}" step="1" min="0"></div>`;
   } else if(cfg.mode==='gradual'){
     const g=cfg.gradual;
     const curve = gradualCurve(g);
     box.innerHTML = `
       <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="gradual.on" ${g.on?'checked':''}><span>Activo</span></label></div>
-      <div class="field"><span>% máximo (día 0)</span><input type="number" data-lmf="gradual.maxPct" value="${g.maxPct}" step="1"></div>
-      <div class="field"><span>Días hasta llegar a 0%</span><input type="number" data-lmf="gradual.days" value="${g.days}" step="1" min="1"></div>
+      <div class="field"><span>% máximo (día 0)</span><input type="number" data-lmf="gradual.maxPct" value="${escapeHtml(g.maxPct)}" step="1"></div>
+      <div class="field"><span>Días hasta llegar a 0%</span><input type="number" data-lmf="gradual.days" value="${escapeHtml(g.days)}" step="1" min="1"></div>
       ${curve.length ? `<p class="hint" style="margin-top:8px;">Curva día a día: ${curve.map(p=>`día ${p.day}: ${fP(p.pct)}`).join(' · ')}</p>` : ''}`;
   } else if(cfg.mode==='fixed_price'){
     const fp=cfg.fixedPrice;
     box.innerHTML = `
       <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="fixedPrice.on" ${fp.on?'checked':''}><span>Activo</span></label></div>
-      <div class="field"><span>Precio fijo</span><input type="number" data-lmf="fixedPrice.price" value="${fp.price}" step="1"></div>
-      <div class="field"><span>Desde día</span><input type="number" data-lmf="fixedPrice.fromDay" value="${fp.fromDay}" step="1" min="0"></div>
-      <div class="field"><span>Hasta día</span><input type="number" data-lmf="fixedPrice.toDay" value="${fp.toDay}" step="1" min="0"></div>`;
+      <div class="field"><span>Precio fijo</span><input type="number" data-lmf="fixedPrice.price" value="${escapeHtml(fp.price)}" step="1"></div>
+      <div class="field"><span>Desde día</span><input type="number" data-lmf="fixedPrice.fromDay" value="${escapeHtml(fp.fromDay)}" step="1" min="0"></div>
+      <div class="field"><span>Hasta día</span><input type="number" data-lmf="fixedPrice.toDay" value="${escapeHtml(fp.toDay)}" step="1" min="0"></div>`;
   } else if(cfg.mode==='tiers'){
     box.innerHTML = `
       <p class="hint" style="margin-bottom:6px;">Se resuelven POR ORDEN: si un día cae en varios tramos, gana el PRIMERO de la lista (no se suman). Usa ↑/↓ para reordenar.</p>
@@ -731,8 +736,8 @@ function renderLmConfig(){
         <div class="d-item ${t.on?'on':''}" style="flex-wrap:wrap;">
           <input type="checkbox" data-tier="on" data-tier-idx="${i}" ${t.on?'checked':''} aria-label="Activar tramo ${i+1}">
           <input type="text" data-tier="label" data-tier-idx="${i}" value="${escapeHtml(t.label||'')}" placeholder="nombre" style="width:110px;" aria-label="Nombre del tramo ${i+1}">
-          <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${t.fromDay}" style="width:50px;" aria-label="Tramo ${i+1}: desde día">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${t.toDay}" style="width:50px;" aria-label="Tramo ${i+1}: hasta día"></span>
-          <input type="number" data-tier="pct" data-tier-idx="${i}" value="${t.pct}" style="width:60px;" aria-label="Tramo ${i+1}: porcentaje de descuento"><span class="hint">%</span>
+          <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${escapeHtml(t.fromDay)}" style="width:50px;" aria-label="Tramo ${i+1}: desde día">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${escapeHtml(t.toDay)}" style="width:50px;" aria-label="Tramo ${i+1}: hasta día"></span>
+          <input type="number" data-tier="pct" data-tier-idx="${i}" value="${escapeHtml(t.pct)}" style="width:60px;" aria-label="Tramo ${i+1}: porcentaje de descuento"><span class="hint">%</span>
           <button type="button" class="ghost" data-tier-up="${i}" ${i===0?'disabled':''} aria-label="Mover tramo ${i+1} hacia arriba">↑</button>
           <button type="button" class="ghost" data-tier-down="${i}" ${i===cfg.tiers.length-1?'disabled':''} aria-label="Mover tramo ${i+1} hacia abajo">↓</button>
           <button type="button" class="ghost" data-tier-del="${i}" aria-label="Eliminar tramo ${i+1}">✕</button>
@@ -869,7 +874,12 @@ saveUnit.addEventListener('click',async()=>{
       }
       if(nameCollision && !confirm(`Ya existe una unidad guardada con el nombre "${n}". ¿Guardar esta de todas formas como una unidad NUEVA (no reemplaza la existente)?`)) return;
     }
-    const record = buildV3Record({...state, name:n});
+    /* Normalizar tambien al guardar (no solo al importar/migrar): defensa en
+       profundidad — si algo en memoria llego a tener una forma inesperada
+       (ej. un bug futuro en un handler), lo que se persiste sigue siendo
+       siempre la version segura y completa, nunca datos a medio normalizar. */
+    const {state: normalized} = normalizeUnit({...state, name:n, id: state.id});
+    const record = buildV3Record(normalized);
     state.id = record.id;
     const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
     if(r){status('Guardado ✓');refreshList();}else status('Error');
@@ -896,61 +906,48 @@ migrateV2Btn.addEventListener('click', async()=>{
     const pending = v2Keys.filter(k=>!alreadyMigrated.has(k));
     if(!pending.length){ alert('Todas las unidades v2 ya tienen su copia v3. No se creó nada nuevo.'); return; }
     if(!confirm(`Se copiarán ${pending.length} unidad(es) del formato antiguo a identificadores nuevos (v3). Las originales (v2) NO se tocan ni se borran. ¿Continuar?`)) return;
-    let done=0;
+    let done=0, skipped=0;
     for(const k of pending){
       const v = await window.storage.get(k, false);
       if(!v || !v.value) continue;
-      let d; try{ d=JSON.parse(v.value); }catch(e){ continue; }
-      const record = buildV3Record(d, {migratedFromV2Key:k});
+      let d; try{ d=JSON.parse(v.value); }catch(e){ skipped++; continue; }
+      /* Bloqueante 5: normalizar SIEMPRE al migrar — un v2 viejo puede traer
+         campos con forma inesperada; la migracion nunca debe propagar eso a v3. */
+      const {state: normalized, warnings} = normalizeUnit(d);
+      if(!normalized){ skipped++; continue; }
+      if(warnings.length) console.warn(`Migración ${k} — campos ajustados:`, warnings);
+      const record = buildV3Record(normalized, {migratedFromV2Key:k});
       await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
       done++;
     }
     refreshList();
-    status(`${done} unidad(es) migradas a v3 ✓`);
+    status(`${done} unidad(es) migradas a v3 ✓${skipped?` (${skipped} omitida(s), ver consola)`:''}`);
   }catch(e){console.error(e); status('Error al migrar');}
 });
+/* Bloqueante 5 (revision externa): un solo camino de carga, normalizeUnit()
+   (src/domain/persistence.js) — reemplaza toda la logica de merge ad hoc que
+   vivia aqui (que asumia que discounts/channels/costBreakdown/lmConfig
+   siempre eran arreglos/objetos bien formados). Un registro v2/v3 con
+   discounts ausente, channels no-array, lmConfig a medias o tramos
+   malformados ya NO rompe render/map/find — normalizeUnit() produce un estado
+   completo y seguro basado en defaults, y reporta en `warnings` que se
+   descarto. Si el archivo no se puede normalizar en absoluto (no es un
+   objeto), se avisa y no se toca `state`. */
 unitList.addEventListener('change',async e=>{
   const k=e.target.value; if(!k)return;
-  try{const r=await window.storage.get(k,false);
-    if(r&&r.value){const d=JSON.parse(r.value);
-      state={...state,...d};
-      /* Fase 6: `id` NUNCA debe sobrevivir de la unidad cargada anteriormente —
-         si esto es un registro v2 (sin id todavia), state.id debe quedar
-         undefined explicitamente, o el proximo Guardar reescribiria el v3 de
-         OTRA unidad por error (spread no toca una key ausente en `d`). */
-      state.id = d.id || undefined;
-      /* merge new catalog entries added after save */
-      const defaults=defaultDiscounts();
-      const defById=Object.fromEntries(defaults.map(x=>[x.id,x]));
-      const have=new Set(state.discounts.map(x=>x.id));
-      defaults.forEach(x=>{if(!have.has(x.id))state.discounts.push(x);});
-      /* re-sincroniza el umbral de los descuentos bloqueados (lockN) al valor del catálogo:
-         si se guardaron antes de que existiera el candado, podían traer un minN/from viejo
-         que ya no es editable en la UI y se quedaría mostrando un número incorrecto para siempre */
-      state.discounts.forEach(x=>{
-        const def=defById[x.id];
-        if(def && def.lockN){
-          if(def.kind==='los') x.minN=def.minN;
-          else if(def.kind==='window'){ x.from=def.from; x.to=def.to; }
-        }
-      });
-      /* merge new channel fields (offsetPct, bankFeePct) added after save */
-      state.channels = CHANNELS.map(def=>{
-        const saved = (d.channels||[]).find(x=>x.id===def.id);
-        return saved ? {...def, ...saved} : {...def};
-      });
-      /* garantizar techos por ventana */
-      if(!state.ceilings) state.ceilings={};
-      WINDOWS.forEach(w=>{ if(state.ceilings[w.id]===undefined) state.ceilings[w.id]=w.ceil; });
-      /* merge campo por campo contra defaults — unidades guardadas antes de la calculadora no la traen */
-      state.costBreakdown = {...defaultCostBreakdown(), ...(d.costBreakdown||{})};
-      /* Fase 4: unidades guardadas antes de lmConfig/verification no las traen —
-         se completan con el default (ceiling_auto / todo no_verificado), nunca se
-         asume un modo o una verificacion que Dani no confirmo. */
-      state.lmConfig = {...defaultLmConfig(), ...(d.lmConfig||{})};
-      state.verification = mergeVerification(d.verification);
-      unitName.value=d.name||''; hydrate(); renderAll(); status('Cargado ✓');}
-  }catch(e){console.error(e);status('No encontrado');}
+  try{
+    const r=await window.storage.get(k,false);
+    if(!r||!r.value){ status('No encontrado'); return; }
+    let raw;
+    try{ raw = JSON.parse(r.value); }catch(err){ status('Registro dañado (JSON inválido)'); return; }
+    const {state: normalized, warnings} = normalizeUnit(raw);
+    if(!normalized){ status('Registro dañado'); return; }
+    state = normalized;
+    unitName.value = state.name||'';
+    hydrate(); renderAll();
+    if(warnings.length){ console.warn('normalizeUnit — campos descartados al cargar:', warnings); status(`Cargado ✓ (${warnings.length} campo(s) invalido(s) ignorados, ver consola)`); }
+    else status('Cargado ✓');
+  }catch(e){console.error(e);status('Error al cargar');}
 });
 /* Respaldo real: localStorage vive solo en este navegador/computador — no hay nube,
    no hay sync entre dispositivos, se pierde si se borra caché o se reinstala el
@@ -975,11 +972,16 @@ exportUnits.addEventListener('click', async()=>{
   }catch(e){console.error(e); status('Error al exportar');}
 });
 importUnitsBtn.addEventListener('click', ()=>{ importUnitsFile.value=''; importUnitsFile.click(); });
-/* Fase 6 — importacion SEGURA: valida la FORMA del archivo antes de escribir
-   nada a storage (validateImportFile, src/domain/persistence.js) — un archivo
-   malformado o con estructura inesperada se rechaza entero, no se escribe
-   parcialmente. El contenido de cada unidad se sigue tratando como NO
-   confiable al renderizarse (escapeHtml en todos los puntos de innerHTML). */
+/* Bloqueante 4/5 (revision externa) — importacion SEGURA en DOS capas:
+   1) validateImportFile() valida la FORMA del archivo completo (arreglo
+      units[], key/value string, JSON parseable, "name" presente) — un
+      archivo malformado se rechaza entero.
+   2) CADA unidad que pasa esa forma se re-normaliza con normalizeUnit() y se
+      RE-SERIALIZA — lo que se escribe a storage es la version SANITIZADA
+      (tipos correctos, ids conocidos, rangos validos), nunca el JSON crudo
+      del archivo importado. Esto es lo que realmente cierra el vector XSS:
+      un payload como pct:'"onmouseover="alert(1)' nunca llega a storage como
+      string, sale de normalizeUnit() convertido a un numero (o al default). */
 importUnitsFile.addEventListener('change', async e=>{
   const file = e.target.files[0]; if(!file) return;
   try{
@@ -989,11 +991,21 @@ importUnitsFile.addEventListener('change', async e=>{
       alert('El archivo no se pudo importar:\n' + errors.slice(0,5).join('\n') + (errors.length>5?`\n...y ${errors.length-5} más`:''));
       return;
     }
-    if(errors.length) console.warn('Importación parcial — elementos descartados:', errors);
-    if(!confirm(`Vas a restaurar ${items.length} unidad(es)${errors.length?` (se descartaron ${errors.length} elemento(s) invalido(s), ver consola)`:''}. Las que ya existan con la MISMA clave se van a SOBRESCRIBIR. ¿Continuar?`)) return;
-    for(const it of items){ await window.storage.set(it.key, it.value, false); }
+    const sanitized = [];
+    let normWarnings = 0;
+    items.forEach(it=>{
+      const parsed = JSON.parse(it.value); // ya validado como JSON parseable en validateImportFile
+      const {state: normalized, warnings} = normalizeUnit(parsed);
+      if(!normalized) return;
+      if(warnings.length){ normWarnings += warnings.length; console.warn(`Import ${it.key} — campos ajustados:`, warnings); }
+      sanitized.push({key: it.key, value: JSON.stringify(normalized)});
+    });
+    if(errors.length || normWarnings) console.warn('Importación — elementos/campos descartados:', errors);
+    if(!sanitized.length){ alert('Ninguna unidad del archivo se pudo normalizar a una forma valida.'); return; }
+    if(!confirm(`Vas a restaurar ${sanitized.length} unidad(es)${errors.length?` (${errors.length} elemento(s) del archivo descartados)`:''}${normWarnings?`, con ${normWarnings} campo(s) invalido(s) corregidos a su default (ver consola)`:''}. Las que ya existan con la MISMA clave se van a SOBRESCRIBIR. ¿Continuar?`)) return;
+    for(const it of sanitized){ await window.storage.set(it.key, it.value, false); }
     refreshList();
-    status(items.length + ' unidad(es) importadas ✓');
+    status(sanitized.length + ' unidad(es) importadas ✓');
   }catch(e){console.error(e); status('Archivo inválido');}
 });
 async function refreshList(){

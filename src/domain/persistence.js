@@ -10,7 +10,235 @@
                               escribiendo tal cual, nunca se borra automatico.
      v3:<uuid>             — formato nuevo: mismo contenido de unidad + {id,
                               schemaVersion, savedAt, migratedFromV2Key?}. */
+import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
+import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
+
 export const SCHEMA_VERSION = 3;
+
+/* --- helpers de coercion ESTRICTA (Bloqueante 6: nunca `parseFloat(x)||0`
+   silencioso para datos ingresados/importados — un valor invalido se
+   DESCARTA a favor del default y se REPORTA, nunca se convierte en 0 sin
+   decirlo). --- */
+function safeNum(v, fallback){
+  if(typeof v==='number' && Number.isFinite(v)) return v;
+  if(typeof v==='string' && v.trim()!==''){
+    const n = Number(v);
+    if(Number.isFinite(n)) return n;
+  }
+  return {invalid:true, fallback};
+}
+function numField(raw, key, fallback, warnings, path){
+  if(!(key in raw)) return fallback;
+  const r = safeNum(raw[key], fallback);
+  if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
+  return r;
+}
+function pctField(raw, key, fallback, warnings, path, {min=0, max=100}={}){
+  let v = numField(raw, key, fallback, warnings, path);
+  if(v<min || v>max){
+    warnings.push(`${path}.${key}: ${v} fuera de rango [${min},${max}] — se uso el default (${fallback}).`);
+    v = fallback;
+  }
+  return v;
+}
+/* Bloqueante 6 (revision externa): NUNCA `Math.max(0, valor)` para "limpiar"
+   un negativo — eso lo convierte en 0 en silencio, indistinguible de un 0
+   real que Dani si quiso escribir. Un valor negativo donde no tiene sentido
+   (costos, dias, noches, occNights) se RECHAZA explicitamente a favor del
+   default, con warning — igual que cualquier otro valor invalido. */
+function nonNegField(raw, key, fallback, warnings, path, {min=1}={}){
+  let v = numField(raw, key, fallback, warnings, path);
+  if(v<min){
+    warnings.push(`${path}.${key}: ${v} no puede ser menor que ${min} — se uso el default (${fallback}).`);
+    v = fallback;
+  }
+  return v;
+}
+function strField(raw, key, fallback, warnings, path, maxLen=200){
+  if(!(key in raw)) return fallback;
+  if(typeof raw[key]!=='string'){ warnings.push(`${path}.${key}: no es texto — se uso el default.`); return fallback; }
+  return raw[key].slice(0, maxLen);
+}
+function boolField(raw, key, fallback){
+  return typeof raw[key]==='boolean' ? raw[key] : fallback;
+}
+
+function normalizeDiscount(raw, def, warnings){
+  if(!raw || typeof raw!=='object') return {...def};
+  const out = {...def};
+  out.on = boolField(raw, 'on', def.on);
+  out.pct = pctField(raw, 'pct', def.pct, warnings, `discounts.${def.id}`, {min:0, max:100});
+  if(def.kind==='window' && !def.lockN){
+    out.from = Math.round(nonNegField(raw, 'from', def.from, warnings, `discounts.${def.id}`, {min:0}));
+    let to = Math.round(numField(raw, 'to', def.to, warnings, `discounts.${def.id}`));
+    if(to<out.from){ warnings.push(`discounts.${def.id}: "to" (${to}) menor que "from" (${out.from}) — se trato como ventana abierta.`); to = 9999; }
+    out.to = to;
+  }
+  if(def.kind==='los' && !def.lockN){
+    out.minN = Math.round(nonNegField(raw, 'minN', def.minN, warnings, `discounts.${def.id}`, {min:1}));
+  }
+  if('verified' in raw) out.verified = boolField(raw, 'verified', def.verified);
+  return out;
+}
+
+function normalizeChannel(raw, def, warnings){
+  const out = {...def};
+  out.comm = pctField(raw||{}, 'comm', def.comm, warnings, `channels.${def.id}`, {min:0, max:100});
+  out.bankFeePct = pctField(raw||{}, 'bankFeePct', def.bankFeePct||0, warnings, `channels.${def.id}`, {min:0, max:100});
+  out.offsetPct = numField(raw||{}, 'offsetPct', def.offsetPct||0, warnings, `channels.${def.id}`);
+  if(out.offsetPct<=-100){ warnings.push(`channels.${def.id}.offsetPct: ${out.offsetPct} <= -100 no es viable — se uso 0.`); out.offsetPct=0; }
+  if(def.id==='airbnb'){
+    out.cleanFeeShort = nonNegField(raw||{}, 'cleanFeeShort', def.cleanFeeShort||0, warnings, `channels.${def.id}`, {min:0});
+    out.cleanFeeLong = nonNegField(raw||{}, 'cleanFeeLong', def.cleanFeeLong||0, warnings, `channels.${def.id}`, {min:0});
+  }
+  return out;
+}
+
+function normalizeLmRange(raw, defaults, warnings, path){
+  const out = {...defaults};
+  if(!raw || typeof raw!=='object') return out;
+  out.on = boolField(raw, 'on', defaults.on);
+  if('pct' in defaults) out.pct = pctField(raw, 'pct', defaults.pct, warnings, path, {min:0, max:100});
+  if('maxPct' in defaults) out.maxPct = pctField(raw, 'maxPct', defaults.maxPct, warnings, path, {min:0, max:100});
+  if('price' in defaults) out.price = nonNegField(raw, 'price', defaults.price, warnings, path, {min:0});
+  if('days' in defaults) out.days = Math.round(nonNegField(raw, 'days', defaults.days, warnings, path, {min:1}));
+  if('fromDay' in defaults) out.fromDay = Math.round(nonNegField(raw, 'fromDay', defaults.fromDay, warnings, path, {min:0}));
+  if('toDay' in defaults){
+    let to = Math.round(numField(raw, 'toDay', defaults.toDay, warnings, path));
+    if(to<out.fromDay){ warnings.push(`${path}: toDay (${to}) < fromDay (${out.fromDay}) — se ajusto a fromDay.`); to = out.fromDay; }
+    out.toDay = to;
+  }
+  return out;
+}
+
+const MAX_TIERS = 50; // limite defensivo — un import malicioso no puede forzar un arreglo gigante
+
+function normalizeTiers(raw, warnings){
+  if(!Array.isArray(raw)) { if(raw!==undefined) warnings.push('lmConfig.tiers: no es un arreglo — se descarto.'); return []; }
+  const out = [];
+  raw.slice(0, MAX_TIERS).forEach((t, i)=>{
+    if(!t || typeof t!=='object'){ warnings.push(`lmConfig.tiers[${i}]: no es un objeto — descartado.`); return; }
+    const fromDay = Math.round(nonNegField(t, 'fromDay', 0, warnings, `lmConfig.tiers[${i}]`, {min:0}));
+    let toDay = Math.round(numField(t, 'toDay', fromDay, warnings, `lmConfig.tiers[${i}]`));
+    if(toDay<fromDay){ warnings.push(`lmConfig.tiers[${i}]: toDay < fromDay — ajustado.`); toDay = fromDay; }
+    out.push({
+      id: strField(t, 'id', 't'+i, warnings, `lmConfig.tiers[${i}]`, 60),
+      label: strField(t, 'label', 'Tramo '+(i+1), warnings, `lmConfig.tiers[${i}]`, 80),
+      fromDay, toDay,
+      pct: pctField(t, 'pct', 0, warnings, `lmConfig.tiers[${i}]`, {min:0, max:100}),
+      on: boolField(t, 'on', false)
+    });
+  });
+  if(Array.isArray(raw) && raw.length>MAX_TIERS) warnings.push(`lmConfig.tiers: ${raw.length} tramos excede el limite (${MAX_TIERS}) — se recortaron los primeros ${MAX_TIERS}.`);
+  return out;
+}
+
+const LM_MODES = ['ceiling_auto','flat','gradual','fixed_price','tiers'];
+
+function normalizeLmConfig(raw, warnings){
+  const def = defaultLmConfig();
+  if(!raw || typeof raw!=='object') return def;
+  const mode = LM_MODES.includes(raw.mode) ? raw.mode : 'ceiling_auto';
+  if(raw.mode!==undefined && mode!==raw.mode) warnings.push(`lmConfig.mode: "${String(raw.mode).slice(0,40)}" no es un modo reconocido — se uso 'ceiling_auto'.`);
+  return {
+    mode,
+    verified: boolField(raw, 'verified', false),
+    flat: normalizeLmRange(raw.flat, def.flat, warnings, 'lmConfig.flat'),
+    gradual: normalizeLmRange(raw.gradual, def.gradual, warnings, 'lmConfig.gradual'),
+    fixedPrice: normalizeLmRange(raw.fixedPrice, def.fixedPrice, warnings, 'lmConfig.fixedPrice'),
+    tiers: normalizeTiers(raw.tiers, warnings)
+  };
+}
+
+function normalizeVerification(raw, warnings){
+  const def = defaultVerification();
+  if(!raw || typeof raw!=='object') return def;
+  const out = {};
+  Object.keys(VERIFICATION_KEYS).forEach(key=>{
+    const entry = raw[key];
+    if(!entry || typeof entry!=='object'){ out[key] = def[key]; return; }
+    out[key] = {
+      status: (entry.status==='verificado') ? 'verificado' : 'no_verificado',
+      note: strField(entry, 'note', '', warnings, `verification.${key}`, 500)
+    };
+  });
+  return out;
+}
+
+function normalizeCostBreakdown(raw, warnings){
+  const def = defaultCostBreakdown();
+  const out = {...def};
+  if(!raw || typeof raw!=='object') return out;
+  Object.keys(def).forEach(key=>{
+    // occNights es un DIVISOR en costs.js/costs-legacy.js — 0 o negativo no es
+    // "cero costo", es un dato invalido (division por cero corriente abajo).
+    out[key] = nonNegField(raw, key, def[key], warnings, 'costBreakdown', {min: key==='occNights' ? 1 : 0});
+  });
+  return out;
+}
+
+/* BLOQUEANTE ALTO/MEDIO corregido (revision externa) — funcion UNICA de
+   normalizacion para CUALQUIER registro v2/v3 (guardado, cargado o
+   importado). Nunca confia en la forma ni el tipo de un campo:
+   - Solo preserva canales/descuentos/ventanas/claves de verificacion
+     CONOCIDOS (whitelist contra el catalogo) — un id desconocido se descarta,
+     nunca se inventa un descuento/canal nuevo desde un import.
+   - Todo campo numerico pasa por coercion ESTRICTA (numField/pctField): un
+     valor no numerico, fuera de rango, o con from>to, se DESCARTA a favor del
+     default y se reporta en `warnings` — nunca se convierte en 0 en silencio
+     (Bloqueante 6) ni queda como string capaz de romper un atributo HTML
+     (Bloqueante 4 — un `number` de JS jamas puede contener comillas/`<`).
+   - Deep merge de lmConfig (mode/flat/gradual/fixedPrice/tiers) y de
+     verification — una unidad vieja sin estas claves recibe los defaults
+     completos, nunca queda con un objeto a medias que rompa `.gradual.on` etc.
+   - Devuelve SIEMPRE un estado completo y renderizable, mas la lista de
+     `warnings` (que se descarto y por que) para que Dani pueda revisarla. */
+export function normalizeUnit(raw){
+  const warnings = [];
+  if(!raw || typeof raw!=='object'){
+    return {state: null, warnings: ['El registro no es un objeto — no se pudo normalizar.']};
+  }
+  const name = strField(raw, 'name', '', warnings, 'unidad', 200);
+  if(!name) warnings.push('unidad.name: falta o esta vacio.');
+
+  const defaultDiscountsById = Object.fromEntries(defaultDiscounts().map(d=>[d.id, d]));
+  const rawDiscountsById = Object.fromEntries((Array.isArray(raw.discounts)?raw.discounts:[]).filter(d=>d&&typeof d.id==='string').map(d=>[d.id, d]));
+  if(!Array.isArray(raw.discounts) && raw.discounts!==undefined) warnings.push('discounts: no es un arreglo — se uso el catalogo completo por defecto.');
+  const discounts = Object.values(defaultDiscountsById).map(def=>normalizeDiscount(rawDiscountsById[def.id], def, warnings));
+  const knownDiscountIds = new Set(discounts.map(d=>d.id));
+  (Array.isArray(raw.discounts)?raw.discounts:[]).forEach(d=>{
+    if(d && typeof d.id==='string' && !knownDiscountIds.has(d.id)) warnings.push(`discounts: id desconocido "${d.id.slice(0,40)}" descartado.`);
+  });
+
+  const rawChannelsById = Object.fromEntries((Array.isArray(raw.channels)?raw.channels:[]).filter(c=>c&&typeof c.id==='string').map(c=>[c.id, c]));
+  if(!Array.isArray(raw.channels) && raw.channels!==undefined) warnings.push('channels: no es un arreglo — se uso el catalogo completo por defecto.');
+  const channels = CHANNELS.map(def=>normalizeChannel(rawChannelsById[def.id], def, warnings));
+
+  const ceilings = {};
+  WINDOWS.forEach(w=>{
+    const rawCeil = raw.ceilings && typeof raw.ceilings==='object' ? raw.ceilings[w.id] : undefined;
+    ceilings[w.id] = rawCeil===undefined ? w.ceil : pctField({v:rawCeil}, 'v', w.ceil, warnings, `ceilings.${w.id}`, {min:0, max:100});
+  });
+
+  const costBreakdown = normalizeCostBreakdown(raw.costBreakdown, warnings);
+  const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
+  const verification = normalizeVerification(raw.verification, warnings);
+
+  const state = {
+    name,
+    currency: (raw.currency==='COP') ? 'COP' : 'USD',
+    fixedCost: nonNegField(raw, 'fixedCost', 32, warnings, 'unidad', {min:0}),
+    varCost: nonNegField(raw, 'varCost', 22, warnings, 'unidad', {min:0}),
+    margin: pctField(raw, 'margin', 45, warnings, 'unidad', {min:0, max:95}),
+    marketWindow: nonNegField(raw, 'marketWindow', 16, warnings, 'unidad', {min:0}),
+    marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
+    avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
+    matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
+    costBreakdown, channels, discounts, ceilings, lmConfig, verification,
+    id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
+  };
+  return {state, warnings};
+}
 
 export function newUnitId(){
   if(typeof crypto!=='undefined' && typeof crypto.randomUUID==='function') return crypto.randomUUID();
