@@ -4,6 +4,45 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.4.0] — Correcciones de revisión externa, ronda 2
+
+Una segunda revisión externa encontró 4 bloqueantes sobre el trabajo de la ronda
+anterior (0.3.0) — "no asumas que los tests verdes significan que el producto es
+seguro". Todos corregidos con evidencia de navegador real y tests nuevos:
+
+- **CRÍTICO** — `compute()` seguía devolviendo `valid:true` y la UI mostraba Min
+  Price/Base Price como recomendaciones usables aunque el LM configurado (por
+  defecto: automático, sin verificar) fuera matemáticamente no verificable.
+  `compute()` ahora expone `lmBlocked`/`lmBlockedReason` (`isLmBlocked()`,
+  `src/domain/pricelabs-lm.js`, fuente única). Con una unidad nueva (sin tocar
+  nada), Min Price, Base Price y el Offset sugerido arrancan en "—" con un aviso
+  que explica exactamente qué falta confirmar y en qué pantalla. La Matriz ya no
+  agrega "⚠ LM SIN VERIFICAR" como advertencia suelta sobre un veredicto que
+  sigue diciendo "RENTABLE EN TODOS" — el veredicto entero cambia
+  (`buildMatrixVerdict()`, nueva, `src/domain/matrix.js`, testeable sin DOM).
+  Tests: `tests/fase-lm-blocking.test.js`; E2E: `e2e/lm-blocking.spec.js`.
+- **ALTO** — Base Price excluía Offset y LM "por diseño", pero eso volvía el
+  texto "netea tu objetivo" falso en cuanto se configuraba un offset real o un
+  LM verificado. `compute().base` ahora los incorpora en su escenario de
+  referencia (día 45) — sigue siendo un punto único, no una búsqueda exhaustiva
+  (eso sigue siendo del Piso). `lmPctAtDay45()` (`engine.js`) es la única
+  fórmula de LM a día 45, compartida por `base` y `suggestedOffset()`. Test:
+  `tests/fase-base-property.test.js`, reescrito con offset negativo/positivo y
+  LM activo sin neutralizar nada.
+- **MEDIO** — la edición manual seguía usando `parseFloat(t.value)||0`: un valor
+  inválido se volvía 0 en silencio. `src/domain/input-parse.js` (nuevo, puro,
+  testeado) es la fuente única para todos los campos numéricos editables a
+  mano; un valor inválido nunca se escribe a `state` — el input conserva el
+  último valor válido y aparece un aviso visible (`#inputErrorToast`, cualquier
+  pestaña) con el motivo exacto. Se agregó advertencia de tramos LM solapados
+  (`validateLmTiersOverlap()`). Tests: `tests/fase-input-validation.test.js`;
+  E2E: `e2e/manual-input-validation.spec.js`.
+- **BAJO** — la Matriz mostraba "día undefined" en el detalle de cada fila
+  (`worstPayoutRow.d`/`.n` nunca existieron; el campo real es `.day`/`.night`).
+  Corregido; test: `e2e/matrix-detail.spec.js`.
+
+npm test: 90/90 · npm run test:e2e: 18/18 · lint limpio.
+
 ## [0.3.0] — Correcciones de revisión externa (post Fase 7)
 
 Una revisión independiente encontró bloqueantes reales sobre el trabajo de

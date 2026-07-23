@@ -12,10 +12,15 @@ test.beforeEach(async ({page}) => {
   page.__errors = errors;
 });
 
-test('carga limpia: cero errores de consola, KPIs render, alertas render', async ({page}) => {
+test('carga limpia: cero errores de consola, alertas render — Min Price/Base Price arrancan bloqueados por LM sin verificar (bloqueante CRITICO ronda 2, ver e2e/lm-blocking.spec.js)', async ({page}) => {
   await page.goto('/index.html');
-  await expect(page.locator('#kFloor')).not.toHaveText('—');
-  await expect(page.locator('#kBase')).not.toHaveText('—');
+  // Bloqueante CRITICO (revision externa, ronda 2): la config por defecto usa
+  // LM modo automatico SIN verificar — Min Price/Base Price ya NO se muestran
+  // como si fueran confiables. Antes esta prueba exigia lo contrario (KPIs con
+  // numero real en carga limpia); ese era exactamente el bug reportado.
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#kBase')).toHaveText('—');
+  await expect(page.locator('#validationBanner')).toContainText('LM SIN VERIFICAR');
   await expect(page.locator('#alertsBox .alert').first()).toBeVisible();
   expect(page.__errors, 'no debe haber errores de consola en carga limpia').toEqual([]);
 });
@@ -31,16 +36,20 @@ test('Simulador: cambiar canal/días/noches recalcula y muestra Margen y Markup 
   expect(page.__errors).toEqual([]);
 });
 
-test('validación bloqueante: comisión inválida (150%) muestra banner y bloquea KPIs con "—"', async ({page}) => {
+test('edición manual inválida: comisión fuera de rango (150%) NUNCA llega a escribirse — el input la rechaza, no el banner de resultado (bloqueante MEDIO ronda 2, ver e2e/manual-input-validation.spec.js)', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="ch-booking"]').click();
-  await page.locator('[data-chid="booking"][data-chf="comm"]').fill('150');
-  await page.locator('[data-chid="booking"][data-chf="comm"]').dispatchEvent('change');
-  await expect(page.locator('#validationBanner')).toContainText('BLOQUEADO');
-  await expect(page.locator('#kFloor')).toHaveText('—');
-  // revertir para no dejar el navegador de la sesion en estado invalido
-  await page.locator('[data-chid="booking"][data-chf="comm"]').fill('18');
-  await page.locator('[data-chid="booking"][data-chf="comm"]').dispatchEvent('change');
+  const comm = page.locator('[data-chid="booking"][data-chf="comm"]');
+  await expect(comm).toHaveValue('18');
+  await comm.fill('150');
+  await comm.dispatchEvent('change');
+  // Antes (bug reportado): un valor invalido se escribia a `state` en silencio
+  // (o pasaba tal cual) y solo se detectaba DESPUES, en el banner de resultado
+  // de compute(). Ahora se rechaza en el input mismo — nunca llega a corromper
+  // el estado, y el aviso es inmediato y especifico de ESTE campo.
+  await expect(page.locator('#inputErrorToast')).toBeVisible();
+  await expect(page.locator('#inputErrorToast')).toContainText('no puede ser mayor que 99.999');
+  await expect(comm).toHaveValue('18', {timeout: 2000});
   await expect(page.locator('#validationBanner')).not.toContainText('BLOQUEADO');
 });
 

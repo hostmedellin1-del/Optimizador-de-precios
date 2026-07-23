@@ -62,6 +62,9 @@ button.ghost:hover{color:var(--text);border-color:var(--faint);}
 .alert.warn .tag{background:var(--warn-chip);color:#14151A;}
 .alert.ok .tag{background:var(--safe-chip);color:#14151A;}
 .alert .goto{background:none;border:none;color:inherit;text-decoration:underline;font-weight:600;font-size:inherit;font-family:inherit;cursor:pointer;padding:0;white-space:nowrap;}
+#inputErrorToast{position:fixed;bottom:16px;right:16px;max-width:380px;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.25);}
+#inputErrorToast button{background:none;border:none;color:inherit;cursor:pointer;font-size:14px;padding:0 0 0 8px;opacity:.7;}
+#inputErrorToast button:hover{opacity:1;}
 .matrix-intro{display:flex;gap:24px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px;}
 .matrix-intro .mi-item{font-size:12.5px;line-height:1.5;}
 .matrix-intro .mi-label{display:block;color:var(--dim);}
@@ -153,6 +156,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <body>
 <div class="app">
 
+<div id="inputErrorToast" class="alert bad" style="display:none;" role="alert"></div>
+
 <header>
   <div class="eyebrow">HOST MEDELLÍN · REVENUE OPS · v2</div>
   <h1>Precios y Descuentos por Canal</h1>
@@ -230,9 +235,9 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
       <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
       <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
       <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que puedes aceptar. Ni un peso menos, en ningún canal, ni con el peor descuento activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
-      <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos actuales, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
+      <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos, Offset y Last-Minute configurados HOY en cada canal, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
     </div>
-    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales. Las diferencias de comisión ya no se resuelven inflando este número — se resuelven con el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> % de cada canal (pestaña de cada OTA). Ajusta ahí.</p>
+    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales — YA incorpora el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> y el Last-Minute que tengas configurados hoy en cada canal, así que este número se recalcula solo si cambias cualquiera de los dos. Si un canal necesita más ajuste por su comisión, seguís tocando el Offset % de esa pestaña — Base reacciona automáticamente al valor que pongas ahí.</p>
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
@@ -320,11 +325,12 @@ import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
 import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
-import {worstScenariosInWindow} from './src/domain/matrix.js';
+import {worstScenariosInWindow, buildMatrixVerdict} from './src/domain/matrix.js';
 import {defaultVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
 import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
+import {parseValue, validateRange} from './src/domain/input-parse.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -439,6 +445,18 @@ function renderKpis(model){
     return;
   }
   kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
+  /* Bloqueante CRITICO (revision externa, ronda 2): Costo/Neto objetivo no
+     dependen de LM (son costo + margen objetivo, nada mas) y se siguen
+     mostrando siempre. Min Price y Base Price SI son recomendaciones
+     derivadas del peor escenario con LM incluido — si ese LM no es
+     verificable (model.lmBlocked, ver compute()/pricelabs-lm.js), no se
+     muestran como numero confiable: el aviso completo vive en
+     #validationBanner (renderValidation), aqui solo se bloquea el KPI. */
+  if(model.lmBlocked){
+    kFloor.textContent='—'; kBase.textContent='—';
+    kFloorWhy.textContent='LM sin verificar — ver aviso arriba'; kBaseWhy.textContent='LM sin verificar — ver aviso arriba';
+    return;
+  }
   kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
   kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
 }
@@ -447,9 +465,11 @@ function renderValidation(model){
   if(!box) return;
   const errs = (model.errors||[]).filter(e=>e.level==='error');
   const warns = (model.errors||[]).filter(e=>e.level==='warning');
-  if(!errs.length && !warns.length){ box.innerHTML=''; return; }
+  const lmBlock = model.lmBlocked ? [model.lmBlockedReason] : [];
+  if(!errs.length && !warns.length && !lmBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
+    ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
 }
@@ -514,7 +534,9 @@ function renderChannelPages(model){
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
-          <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>
+          <div class="offset-hint">${model.lmBlocked
+            ? '⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).'
+            : `Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`}</div>
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
         <div class="chpage-discounts">${activeD}</div>
@@ -523,9 +545,12 @@ function renderChannelPages(model){
   });
 }
 function renderMatrix(model){
+  /* Bloqueante CRITICO (revision externa, ronda 2): Min Price/Base Price se
+     bloquean aqui tambien (no solo en renderKpis) — matrixIntro es un resumen
+     que Dani puede leer sin haber visto el KPI de Resumen. */
   matrixIntro.innerHTML = `
-    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${f$(model.floor)}</span></div>
-    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos de hoy</span></span><span class="mi-val">${f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
      dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
@@ -537,44 +562,24 @@ function renderMatrix(model){
      que realmente da el PEOR NETO, no el que solo tiene mas descuento nativo.
      `matrixNights` (el input de "noches a evaluar") ya no filtra el peor caso —
      se mantiene solo como referencia manual de Dani, el veredicto siempre usa
-     el peor caso real encontrado. */
+     el peor caso real encontrado.
+     El veredicto (vLvl/vTag/vMsg) ya NO se arma inline aqui — vive en
+     buildMatrixVerdict() (src/domain/matrix.js), pura y testeada sin DOM, para
+     que Min Price/Base/Offset/Matriz nunca puedan desalinearse en como tratan
+     un LM no verificable (bloqueante CRITICO ronda 2: antes esta funcion
+     agregaba "⚠ LM SIN VERIFICAR" como texto suelto sin cambiar vLvl='ok' ni
+     el tag "RENTABLE EN TODOS" — una advertencia que nadie lee encima de un
+     veredicto que sigue gritando "estas bien"). */
   const qConfig = quoteConfig();
   matrixBody.innerHTML = WINDOWS.map(w=>{
     const ceil=pct(state.ceilings[w.id]);
     const {worstTecho, worstPayoutRow, perChannel} = worstScenariosInWindow(qConfig, w, model.effBase);
-    const breach=worstTecho.q.breach;
-    const maxN=worstTecho.q.maxNAtScenario;
-    const maxCh=worstTecho.q.worstChannelAtScenario;
     const lm=worstPayoutRow.q.lm;
+    const breach=worstTecho.q.breach;
     /* Cada canal muestra SU PROPIO peor (dia,noche) — igual que la alerta PISO —
        porque el peor caso de un canal no tiene por que coincidir con el de otro. */
     const per = perChannel;
-    const worst = per.reduce((a,b)=>b.q.payout<a.q.payout?b:a, per[0]);
-    const worstAsNet = {c: worst.c, netV: worst.q.payout};
-    /* Veredicto en una frase: primero el techo (bloquea el LM de PriceLabs), luego el
-       piso (vender bajo costo), luego el objetivo de margen — en ese orden de gravedad,
-       para que Dani sepa qué revisar primero sin tener que leer las 4 columnas viejas. */
-    let vLvl, vTag, vMsg;
-    if(breach){
-      vLvl='bad'; vTag='TECHO EXCEDIDO';
-      vMsg=`${maxCh?maxCh.name:'un canal'} ya suma ${fP(maxN)} de descuento propio — más que tu techo de ${fP(ceil)}. PriceLabs se queda en 0% de LM aquí y aun así se pasa: baja el descuento nativo de ${maxCh?maxCh.name:'ese canal'} o sube el techo.`;
-    } else if(worstAsNet.netV<model.cost){
-      vLvl='bad'; vTag='BAJO COSTO';
-      vMsg=`Con ${fP(lm)} de LM, ${worstAsNet.c.name} te dejaría ${f$(worstAsNet.netV)} — menos que tu costo de ${f$(model.cost)}. Súbele el Offset a ${worstAsNet.c.name} en su pestaña, o baja su descuento nativo.`;
-    } else if(worstAsNet.netV<model.net){
-      vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
-      vMsg=`Todos los canales quedan sobre tu costo, pero ${worstAsNet.c.name} solo te deja ${f$(worstAsNet.netV)} — por debajo de tu margen objetivo (${f$(model.net)}). Revisa su Offset si quieres acercarlo.`;
-    } else {
-      vLvl='ok'; vTag='RENTABLE EN TODOS';
-      vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worstAsNet.c.name}, con ${f$(worstAsNet.netV)}.`;
-    }
-    /* BLOQUEANTE ALTO (revision externa): un veredicto "RENTABLE" no puede
-       presentarse como un hecho confirmado si depende de LM automatico
-       (ceiling_auto) sin verificar contra PriceLabs — es una PROYECCION. */
-    if(worst.q.lmMode==='ceiling_auto' && !worst.q.lmVerified){
-      vTag += ' ⚠ LM SIN VERIFICAR';
-      vMsg += ' Este veredicto asume el modo automático de Last-Minute (proyección propia, no confirmada con PriceLabs) — confírmalo en "Last-Minute de PriceLabs" antes de tratarlo como definitivo.';
-    }
+    const {vLvl, vTag, vMsg} = buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, perChannel: per, currency: state.currency});
     const natCol=per.map(p=>`<span class="${p.q.nativoPct>ceil+0.5?'bad':''}">${escapeHtml(p.c.name)}: ${fP(p.q.nativoPct)}${p.q.applied.length?' <span style="color:var(--faint)">('+p.q.applied.map(a=>escapeHtml(a.name.split(' ')[0])).join('+')+')</span>':''}</span>`).join('');
     const totCol=per.map(p=>{
       const t=100*(1-(1-p.q.lm/100)*p.q.nativoFactor); // exacto (factor), no totalPct redondeado; LM del propio peor escenario de este canal
@@ -584,13 +589,17 @@ function renderMatrix(model){
       const cls=p.q.payout<model.cost?'bad':(p.q.payout<model.net?'warn':'ok');
       return `<span class="${cls}">${escapeHtml(p.c.name)}: ${f$(p.q.payout)} <span style="color:var(--faint)">(día ${p.day}, ${p.night}n, LM ${fP(p.q.lm)})</span></span>`;
     }).join('');
+    /* Bloqueante BAJO (revision externa, ronda 2): worstScenariosInWindow()
+       devuelve `day`/`night` (ver matrix.js) — este texto leia `.d`/`.n`, que
+       nunca existieron en ese objeto, asi que siempre mostraba "día undefined".
+       Fix: usar los campos reales que la funcion realmente devuelve. */
     return `<tr>
       <td>${w.label}</td>
       <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
       <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
-          <div class="hint" style="margin:6px 0 2px;">Peor payout real detectado: <strong>día ${worstPayoutRow.d}</strong>, ${worstPayoutRow.n} noche${worstPayoutRow.n===1?'':'s'} (${escapeHtml(worstPayoutRow.c.name)}) · LM en ese escenario: <strong>${fP(lm)}</strong>${breach?' · TECHO tambien excedido en algun escenario de esta ventana':''}</div>
+          <div class="hint" style="margin:6px 0 2px;">Peor payout real detectado: <strong>día ${worstPayoutRow.day}</strong>, ${worstPayoutRow.night} noche${worstPayoutRow.night===1?'':'s'} (${escapeHtml(worstPayoutRow.c.name)}) · LM en ese escenario: <strong>${fP(lm)}</strong>${breach?' · TECHO tambien excedido en algun escenario de esta ventana':''}</div>
           <div class="hint" style="margin:6px 0 2px;">Nativo combinado (sin LM):</div>
           <div class="cell-ch">${natCol}</div>
           <div class="hint" style="margin:6px 0 2px;">Total visto por el huésped (nativo + LM):</div>
@@ -772,25 +781,108 @@ function hydrate(){
 buildTabbar();
 
 /* ================== EVENTS / STORAGE ================== */
+/* Bloqueante MEDIO (revision externa, ronda 2): unico punto de lectura de un
+   input numerico editado a mano en TODA la app (descuentos, canales, techos,
+   costos, LM, tramos). Antes cada handler hacia `parseFloat(t.value)||0` —
+   un valor invalido (texto, vacio, NaN) se convertia SILENCIOSAMENTE en 0. Con
+   esto: un valor invalido NUNCA se escribe a `state` — el input vuelve a
+   mostrar el ultimo valor valido y aparece un aviso explicito (#inputErrorToast,
+   visible en cualquier pestaña) con el motivo exacto. parseValue() (pura,
+   testeada en tests/fase-input-validation.test.js) hace la validacion real;
+   esta funcion solo conecta esa validacion con el DOM. */
+function showInputError(msg){
+  const box = document.getElementById('inputErrorToast');
+  if(!box) return;
+  box.innerHTML = `<span class="tag">VALOR INVÁLIDO</span><span>${escapeHtml(msg)}</span><button type="button" id="inputErrorClose" aria-label="Cerrar aviso">✕</button>`;
+  box.style.display='flex';
+}
+function clearInputError(){
+  const box = document.getElementById('inputErrorToast');
+  if(box) box.style.display='none';
+}
+function readNumField(t, current, opts={}){
+  const r = parseValue(t.value, opts);
+  if(!r.ok){ t.value = current; showInputError(r.reason); return {ok:false, value: current}; }
+  clearInputError();
+  return r;
+}
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset.k!==undefined){state[t.dataset.k]=t.value;renderAll();}
+  if(t.dataset.k!==undefined){
+    const key=t.dataset.k;
+    if(key==='currency'){ state.currency=t.value; renderAll(); return; }
+    const KEY_OPTS = {
+      fixedCost:{min:0,max:1e7,label:'Costo fijo por noche'},
+      varCost:{min:0,max:1e7,label:'Costo variable por noche'},
+      margin:{min:0,max:99.999,label:'Margen objetivo'},
+      marketWindow:{min:0,max:9999,integer:true,label:'Ventana de reserva del mercado'},
+      avgNights:{min:1,max:365,integer:true,label:'Estadía promedio (noches)'},
+      marketBase:{min:0,max:1e7,label:'Base de mercado'},
+      matrixNights:{min:1,max:365,integer:true,label:'Noches a evaluar'}
+    };
+    const r = readNumField(t, state[key], KEY_OPTS[key]||{label:key});
+    if(!r.ok) return;
+    state[key]=r.value;
+    renderAll();
+  }
   else if(t.dataset.did){
     const d=state.discounts.find(x=>x.id===t.dataset.did);
     if(!d)return;
     const f=t.dataset.f;
-    if(f==='on'){d.on=t.checked;}
-    else if(f==='to'){d.to=t.value===''?9999:(parseFloat(t.value)||0);}
-    else d[f]=parseFloat(t.value)||0;
+    if(f==='on'){d.on=t.checked; renderAll(); return;}
+    if(f==='pct'){
+      const r = readNumField(t, d.pct, {min:0, max:99.999, label:`${d.name} — %`});
+      if(!r.ok) return;
+      d.pct=r.value;
+    } else if(f==='from'){
+      const r = readNumField(t, d.from, {min:0, max:9999, integer:true, label:`${d.name} — desde (días)`});
+      if(!r.ok) return;
+      const chk = validateRange(r.value, d.to??9999, `${d.name} — desde/hasta`);
+      if(!chk.ok){ t.value=d.from; showInputError(chk.reason); return; }
+      d.from=r.value;
+    } else if(f==='to'){
+      const current = d.to>=9999 ? '' : d.to;
+      const r = readNumField(t, current, {min:0, max:9999, integer:true, allowEmpty:true, emptyValue:9999, label:`${d.name} — hasta (días)`});
+      if(!r.ok) return;
+      const chk = validateRange(d.from??0, r.value, `${d.name} — desde/hasta`);
+      if(!chk.ok){ t.value=current; showInputError(chk.reason); return; }
+      d.to=r.value;
+    } else if(f==='minN'){
+      const r = readNumField(t, d.minN, {min:0, max:9999, integer:true, label:`${d.name} — noches mínimas`});
+      if(!r.ok) return;
+      d.minN=r.value;
+    }
     renderAll();
   }
   else if(t.dataset.chid){
     const c=state.channels.find(x=>x.id===t.dataset.chid);
-    if(c){ c[t.dataset.chf]=parseFloat(t.value)||0; renderAll(); }
+    if(!c) return;
+    const f=t.dataset.chf;
+    const CH_FIELD_OPTS = {
+      comm:{min:0,max:99.999,label:`${c.name} — comisión`},
+      bankFeePct:{min:0,max:99.999,label:`${c.name} — comisión bancaria`},
+      offsetPct:{min:-99.999,max:1000,label:`${c.name} — Offset`},
+      cleanFeeShort:{min:0,max:1e6,label:`${c.name} — aseo (1–2 noches)`},
+      cleanFeeLong:{min:0,max:1e6,label:`${c.name} — aseo (3+ noches)`}
+    };
+    const r = readNumField(t, c[f]||0, CH_FIELD_OPTS[f]||{min:0,max:1e7,label:`${c.name} — ${f}`});
+    if(!r.ok) return;
+    c[f]=r.value;
+    renderAll();
   }
-  else if(t.dataset.ceil){state.ceilings[t.dataset.ceil]=parseFloat(t.value)||0;renderAll();}
+  else if(t.dataset.ceil){
+    const w=t.dataset.ceil;
+    const r = readNumField(t, state.ceilings[w], {min:0, max:100, label:'Techo de la ventana'});
+    if(!r.ok) return;
+    state.ceilings[w]=r.value;
+    renderAll();
+  }
   else if(t.dataset.cb){
-    state.costBreakdown[t.dataset.cb]=parseFloat(t.value)||0;
+    const key=t.dataset.cb;
+    const opts = key==='occNights' ? {min:1, max:31, integer:true, label:'Noches ocupadas al mes'} : {min:0, max:1e7, label:'Calculadora de costos — '+key};
+    const r = readNumField(t, state.costBreakdown[key], opts);
+    if(!r.ok) return;
+    state.costBreakdown[key]=r.value;
     const tot=costCalcTotals();
     state.fixedCost=Math.round(tot.fixedPerNight);
     state.varCost=Math.round(tot.varPerNight);
@@ -807,21 +899,53 @@ document.addEventListener('change',e=>{
   else if(t.dataset.lmf){
     const [group, field] = t.dataset.lmf.split('.');
     const target = state.lmConfig[group];
-    if(target){
-      if(t.type==='checkbox') target[field]=t.checked;
-      else target[field]=parseFloat(t.value)||0;
+    if(!target) return;
+    if(t.type==='checkbox'){ target[field]=t.checked; renderAll(); return; }
+    const LM_FIELD_OPTS = {
+      'flat.pct':{min:0,max:99.999,label:'LM plano — %'},
+      'flat.fromDay':{min:0,max:9999,integer:true,label:'LM plano — desde día'},
+      'flat.toDay':{min:0,max:9999,integer:true,label:'LM plano — hasta día'},
+      'gradual.maxPct':{min:0,max:99.999,label:'LM gradual — % máximo (día 0)'},
+      'gradual.days':{min:1,max:9999,integer:true,label:'LM gradual — días hasta llegar a 0%'},
+      'fixedPrice.price':{min:0.01,max:1e7,label:'LM precio fijo'},
+      'fixedPrice.fromDay':{min:0,max:9999,integer:true,label:'LM precio fijo — desde día'},
+      'fixedPrice.toDay':{min:0,max:9999,integer:true,label:'LM precio fijo — hasta día'}
+    };
+    const key = `${group}.${field}`;
+    const opts = LM_FIELD_OPTS[key] || {min:0,max:1e9,label:key};
+    const r = readNumField(t, target[field], opts);
+    if(!r.ok) return;
+    if(field==='fromDay' && target.toDay!=null){
+      const chk = validateRange(r.value, target.toDay, opts.label.replace(/ — .*/,'')+' — desde/hasta');
+      if(!chk.ok){ t.value=target[field]; showInputError(chk.reason); return; }
     }
+    if(field==='toDay' && target.fromDay!=null){
+      const chk = validateRange(target.fromDay, r.value, opts.label.replace(/ — .*/,'')+' — desde/hasta');
+      if(!chk.ok){ t.value=target[field]; showInputError(chk.reason); return; }
+    }
+    target[field]=r.value;
     renderAll();
   }
   else if(t.dataset.tierIdx!==undefined){
     const idx=parseInt(t.dataset.tierIdx,10);
     const tier=state.lmConfig.tiers[idx];
-    if(tier){
-      const f=t.dataset.tier;
-      if(f==='on') tier.on=t.checked;
-      else if(f==='label') tier.label=t.value;
-      else tier[f]=parseFloat(t.value)||0;
+    if(!tier) return;
+    const f=t.dataset.tier;
+    if(f==='on'){ tier.on=t.checked; renderAll(); return; }
+    if(f==='label'){ tier.label=t.value; renderAll(); return; }
+    const label = `Tramo "${tier.label||'sin nombre'}"`;
+    const opts = f==='pct' ? {min:0,max:99.999,label:`${label} — %`} : {min:0,max:9999,integer:true,label:`${label} — ${f==='fromDay'?'desde día':'hasta día'}`};
+    const r = readNumField(t, tier[f], opts);
+    if(!r.ok) return;
+    if(f==='fromDay'){
+      const chk = validateRange(r.value, tier.toDay??9999, `${label} — desde/hasta`);
+      if(!chk.ok){ t.value=tier[f]; showInputError(chk.reason); return; }
     }
+    if(f==='toDay'){
+      const chk = validateRange(tier.fromDay??0, r.value, `${label} — desde/hasta`);
+      if(!chk.ok){ t.value=tier[f]; showInputError(chk.reason); return; }
+    }
+    tier[f]=r.value;
     renderAll();
   }
   else if(t.dataset.verifStatus){
@@ -834,6 +958,7 @@ document.addEventListener('change',e=>{
   }
 });
 document.addEventListener('click',e=>{
+  if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
   const goto=e.target.closest('[data-goto]');
   if(goto){ goToTab(goto.dataset.goto); return; }
   if(e.target.id==='goSimBtn'){

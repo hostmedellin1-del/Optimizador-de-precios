@@ -174,7 +174,7 @@ califica, y la tarifa de aseo de Airbnb (fija por reserva) se diluye correctamen
 noche vía `cleanFeePerNight(c, nights)`. Sin `avgNights`, el offset sugerido para Airbnb
 salía más alto de lo necesario (ignoraba que el aseo ya aporta ingreso).
 
-### El Piso SÍ debe incluir el Offset por canal — el Base NO (jul 2026, corregido)
+### El Piso Y el Base incluyen el Offset y el LM por canal (jul 2026; Base corregido en ronda 2 de revisión externa)
 `compute()` calcula el `floor` (Min Price) con el offset de cada canal en el denominador:
 `cost / ((1+offset)*(1-nativoPeor)*payoutFactor)`. Antes NO lo incluía — con offset
 positivo eso solo sobre-protegía (inofensivo), pero con offset **negativo** (bajar precio
@@ -183,11 +183,24 @@ bajo costo estando "sobre el piso" en apariencia. Verificado: Booking con offset
 neteaba 46 contra costo 54 antes del fix; después, el piso sube a 103 y netea exacto 54.
 Offset ≤ −100% da `Infinity` (se muestra "—", no rompe).
 
-El `base` (Base Price) NO debe llevar el offset — es intencional, no un descuido: el Base
-es "el precio uniforme SIN offsets"; `suggestedOffset` es justamente lo que dice cuánto
-offset poner ENCIMA de ese Base. Meter el offset en el Base duplicaría el concepto y
-rompería la separación Base/Offset que es la razón de ser de esta herramienta (ver
-sección 2, "Offset por canal").
+**Decisión revertida en ronda 2 (revisión externa) — el `base` (Base Price) SÍ incluye
+ahora el Offset y el LM REALES de cada canal.** La decisión original ("Base es el precio
+uniforme SIN offsets") quedaba matemáticamente falsa en cuanto Dani configuraba un offset
+real (ej. Booking −15% para competir) o un LM verificado: el texto "netea tu objetivo"
+dejaba de ser cierto para la config real, aunque siguiera siendo cierto para la config
+hipotética de offset=0. Un revisor externo marcó esto como bloqueante ALTO: "no acepto
+mantener el nombre actual con una garantía que el cálculo no cumple". Se eligió la opción
+de incorporar Offset/LM (en vez de renombrar Base a "referencia teórica") porque hace que
+la garantía sea cierta AHORA MISMO, sin perder la separación conceptual: Base sigue siendo
+UN punto de referencia único (día 45, fuera de ventanas tácticas, nativos constantes —
+nunca una búsqueda exhaustiva de peor caso, esa sigue siendo tarea exclusiva del Piso), y
+`suggestedOffset` sigue existiendo para ELEGIR o AJUSTAR el offset de un canal — solo que
+ahora, una vez que Dani pone un offset real (por sugerencia o a mano), Base se recalcula
+solo para reflejarlo, en vez de quedar basado en un offset=0 que ya no es la realidad.
+`lmPctAtDay45()` (`engine.js`) es la única fórmula que resuelve LM a día 45 — la usan
+`compute().base` y `suggestedOffset()`, para no duplicarla (antes cada uno la
+reimplementaba por su cuenta). Tests: `tests/fase-base-property.test.js` (con offset
+negativo/positivo y LM activo, sin neutralizar nada).
 
 ---
 
@@ -576,6 +589,61 @@ tenía su propia fórmula sin LM ni aseo) — cero fórmula financiera duplicada
 corre en CI job `e2e`) cubriendo carga limpia, Simulador, bloqueo de validación,
 guardar/cargar/eliminar con confirmación, importación con payload XSS real
 (confirma que no se ejecuta), y la matriz.
+
+### Actualización (revisión externa, RONDA 2) — LM bloqueante propagado a la UI, Base incorpora Offset/LM real, fin de las coerciones silenciosas en edición manual, fix día/noche en Matriz
+Una segunda revisión encontró cuatro bloqueantes sobre la ronda anterior:
+
+1. **CRÍTICO** — `quoteScenario()` ya calculaba `lmBlocked` por escenario, pero
+   `compute()` seguía devolviendo `valid:true` y la UI mostraba Min Price/Base Price
+   como si fueran confiables, incluso con la CONFIGURACIÓN POR DEFECTO (LM automático,
+   sin verificar). `compute()` ahora devuelve `lmBlocked`/`lmBlockedReason`
+   (`isLmBlocked()`, `src/domain/pricelabs-lm.js` — fuente única, la comparten
+   `compute()`, `quoteScenario()`, `alerts.js` y `matrix.js`). `ceiling_auto` bloquea
+   SIEMPRE, incluso marcado "verificado" (es una proyección matemática, no un hecho
+   confirmable). Con la config por defecto de una unidad nueva, Min Price, Base Price y
+   el Offset sugerido de cada canal arrancan en "—" con un aviso que dice EXACTAMENTE
+   qué falta confirmar y en qué pantalla (`Resumen → "Last-Minute de PriceLabs"`, con
+   botón directo). La Matriz ya no agrega "⚠ LM SIN VERIFICAR" como texto suelto sobre
+   un veredicto que sigue diciendo "RENTABLE EN TODOS" (`vLvl:'ok'`) — ahora
+   `buildMatrixVerdict()` (`src/domain/matrix.js`, extraída de `renderMatrix()` para
+   ser testeable sin DOM) cambia el veredicto ENTERO a un estado propio
+   ("LM SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN") cuando el único motivo por el que
+   la ventana sale bien es un LM no verificable. Los veredictos negativos (TECHO
+   EXCEDIDO/BAJO COSTO/CUBRE COSTO) NO se bloquean — son advertencias, no una
+   afirmación de que todo está bien. La alerta "Sin conflictos" (fallback `OK` cuando
+   `buildAlerts()` no encuentra nada que reportar) tiene el mismo tratamiento.
+2. **ALTO** — el Base Price excluía Offset y LM por diseño ("Base es el precio uniforme
+   SIN offsets"), pero eso volvía el texto "netea tu objetivo" matemáticamente falso en
+   cuanto Dani configuraba un offset real o un LM verificado. Se optó por la opción
+   recomendada por el revisor (en vez de renombrar Base a "referencia teórica"):
+   `compute().base` ahora incorpora el Offset y el LM REALMENTE configurados de cada
+   canal en su escenario de referencia (día 45) — sigue siendo un PUNTO ÚNICO, nunca una
+   búsqueda exhaustiva (eso sigue siendo tarea exclusiva del Piso). `lmPctAtDay45()`
+   (`engine.js`) es la única fórmula que resuelve LM a día 45 — la comparten
+   `compute().base` y `suggestedOffset()` (antes cada uno la reimplementaba). Ver
+   `tests/fase-base-property.test.js`, reescrito para probar offset negativo/positivo y
+   LM activo SIN neutralizar nada (antes el test ponía `offsetPct:0` a propósito, lo que
+   el revisor señaló como una prueba que no prueba el comportamiento real).
+3. **MEDIO** — la edición MANUAL (no solo la importación) seguía usando
+   `parseFloat(t.value)||0` en cada handler de `change` de `index.html`: un valor
+   inválido se volvía 0 en silencio. `src/domain/input-parse.js` (`parseValue`,
+   `parsePct`, `validateRange` — puras, testeadas) es ahora la fuente única que usan
+   TODOS los campos numéricos editables a mano (descuentos, canales, techos, costos,
+   LM, tramos). Un valor inválido NUNCA se escribe a `state`: el input vuelve a mostrar
+   el último valor válido y aparece `#inputErrorToast` (visible en cualquier pestaña,
+   posición fija) con el motivo exacto. Se agregó `validateLmTiersOverlap()`
+   (`src/domain/validate.js`) — advertencia (no bloqueante) cuando dos tramos LM activos
+   se solapan, explicando cuál gana con la política "primero del arreglo" ya existente.
+4. **BAJO** — `worstScenariosInWindow()` devuelve `day`/`night` (`src/domain/matrix.js`),
+   pero `renderMatrix()` leía `worstPayoutRow.d`/`.n` (nunca existieron) — la fila
+   "Peor payout real detectado" siempre mostraba "día undefined". Corregido a
+   `worstPayoutRow.day`/`.night`.
+
+Tests nuevos: `tests/fase-lm-blocking.test.js`, `tests/fase-input-validation.test.js`,
+`tests/fase-base-property.test.js` (reescrito), guardia de nombres de campo en
+`tests/fase-matrix-worstcase.test.js`. E2E nuevos: `e2e/lm-blocking.spec.js`,
+`e2e/manual-input-validation.spec.js`, `e2e/matrix-detail.spec.js`; `e2e/smoke.spec.js`
+actualizado (la carga limpia ahora arranca bloqueada por diseño).
 
 ### Pendiente explícito de esta ronda (no completado, no ocultado)
 - **Accesibilidad**: se corrigieron los controles nuevos sin texto visible (editor de

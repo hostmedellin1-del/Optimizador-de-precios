@@ -31,7 +31,7 @@ import {fP, f$} from './format.js';
 import {combineChannel} from './engine.js';
 import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
-import {lmCriticalDays} from './pricelabs-lm.js';
+import {lmCriticalDays, isLmBlocked} from './pricelabs-lm.js';
 import {worstScenarioFactor} from './worstcase.js';
 
 export function buildAlerts(config, model){
@@ -138,6 +138,18 @@ export function buildAlerts(config, model){
       A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(config.margin))} es ${f$(model.base, config.currency)}, pero el mercado paga ~${f$(mb, config.currency)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso real (${peorCh}, incluye LM y aseo): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
     }
   }
-  if(!A.length) A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
+  /* Bloqueante CRITICO (revision externa, ronda 2): "sin conflictos" es, en
+     espiritu, el mismo tipo de afirmacion confiada que "RENTABLE EN TODOS" en
+     la matriz — si no salio ninguna alerta arriba pero el LM configurado no es
+     verificable, ese "sin problemas" tambien depende de una proyeccion sin
+     confirmar. No se agrega como advertencia sobre el mismo tag 'ok' (mismo
+     error que se corrigio en la matriz): se reemplaza el tag/nivel entero. */
+  if(!A.length){
+    if(isLmBlocked(config.lmConfig)){
+      A.push({lvl:'warn',tag:'LM SIN VERIFICAR',tab:'resumen',msg:'No se detectó ningún conflicto, pero este chequeo depende de Last-Minute que todavía no está verificado (modo automático, proyección no verificable matemáticamente, o un modo configurado sin marcar como confirmado) — confírmalo en Resumen → "Last-Minute de PriceLabs" antes de tratar esto como "sin problemas".'});
+    } else {
+      A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
+    }
+  }
   return A;
 }

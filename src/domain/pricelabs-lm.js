@@ -104,6 +104,23 @@ export function priceLabsLm(lmConfig, {day, ceilingPct, nativePct, floor} = {}){
   return {...result, mode: cfg.mode||'ceiling_auto', verified: !!cfg.verified};
 }
 
+/* Bloqueante CRITICO (revision externa, ronda 2): si el LM no es matematicamente
+   verificable, NINGUNA vista puede presentar un resultado derivado de el (Min
+   Price, Base Price, Offset, veredicto "Rentable" de la matriz) como una
+   recomendacion confiable. `blocked`/`verified` ya se calculaban por escenario
+   dentro de priceLabsLm(), pero son en realidad una propiedad PURA de la config
+   de LM (mode/verified) — no dependen del dia/canal que se este cotizando (ver
+   ceilingAuto(), que siempre bloquea, y las demas funciones de modo, que nunca
+   bloquean por si solas). Se expone aqui como funcion pura de un solo lugar para
+   que compute()/quoteScenario()/alerts.js/matrix.js NUNCA calculen esto cada
+   uno por su cuenta (fuente unica, igual que el resto del motor). */
+export function isLmBlocked(lmConfig){
+  const cfg = lmConfig || {mode:'ceiling_auto', verified:false};
+  const mode = cfg.mode||'ceiling_auto';
+  if(mode==='ceiling_auto') return true; // proyeccion, nunca verificable matematicamente
+  return !cfg.verified;
+}
+
 /* Fase 4 — peor caso: dias criticos adicionales que introduce la config de LM
    (bordes de tramos/flat/gradual/precio fijo), para que la enumeracion de
    worstNative()/alertas/matriz tambien evalue esos bordes exactos y no solo los

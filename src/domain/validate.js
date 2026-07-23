@@ -47,6 +47,30 @@ export function validateScenario({days, nights, price}={}){
   return errors;
 }
 
+/* Bloqueante MEDIO (revision externa, ronda 2) — tramos LM que se solapan no
+   son un error de calculo (la politica "gana el primero del arreglo" ya esta
+   implementada y probada, ver pricelabs-lm.js `tiers()`), pero SI es una
+   fuente real de confusion: si Dani reordena tramos sin darse cuenta de que
+   dos rangos se cruzan, el tramo que "pierde" queda invisible en la practica
+   sin ningun aviso. Advertencia (nivel 'warning', no bloquea) explicando la
+   politica exacta y cual tramo gana en el rango solapado. */
+export function validateLmTiersOverlap(tiers=[]){
+  const errors=[];
+  const active = tiers.filter(t=>t && t.on);
+  for(let i=0;i<active.length;i++){
+    for(let j=i+1;j<active.length;j++){
+      const a=active[i], b=active[j];
+      const from=Math.max(a.fromDay??0, b.fromDay??0);
+      const to=Math.min(a.toDay??0, b.toDay??0);
+      if(from<=to){
+        const winner = tiers.indexOf(a) < tiers.indexOf(b) ? a : b;
+        errors.push({field:'lmConfig.tiers', level:'warning', msg:`Los tramos "${a.label||a.id}" y "${b.label||b.id}" se solapan en el día ${from}${from!==to?'-'+to:''} — gana el primero del orden actual ("${winner.label||winner.id}"), el otro no se aplica ahí. Reordena o ajusta los rangos si no era la intención.`});
+      }
+    }
+  }
+  return errors;
+}
+
 /* Revisa un resultado YA calculado (compute()/quoteScenario()) por campos que
    deberian ser numeros finitos y no lo son — la ultima linea de defensa antes
    de renderizar. */

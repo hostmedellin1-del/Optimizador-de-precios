@@ -37,7 +37,7 @@
 import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
-import {priceLabsLm} from './pricelabs-lm.js';
+import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
 import {isVerified} from './verification.js';
 
 export function quoteScenario(scenario, config){
@@ -83,7 +83,12 @@ export function quoteScenario(scenario, config){
      confirmado con PriceLabs) O si es otro modo pero no fue marcado verificado. */
   const lmMode = lmResult.mode;
   const lmVerifiedFlag = !!lmResult.verified;
-  const lmBlocked = !!lmResult.blocked || !lmVerifiedFlag;
+  /* isLmBlocked() (pricelabs-lm.js) es la MISMA funcion pura que usan
+     compute()/matrix.js/alerts.js — no reimplementar este booleano aqui: es
+     exactamente equivalente a `!!lmResult.blocked || !lmVerifiedFlag` (ceilingAuto()
+     siempre bloquea, las demas nunca por si solas), pero calcularlo una sola vez
+     evita que las vistas se desalineen si la regla cambia. */
+  const lmBlocked = isLmBlocked(config.lmConfig);
 
   /* 2. Offset del canal (PriceLabs Pricing Offset), sobre el precio ya con LM. */
   const off = pct2(ch.offsetPct);

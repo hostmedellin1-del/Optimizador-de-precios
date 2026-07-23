@@ -35,10 +35,15 @@ XSS (verifica que no se ejecuta), y la matriz. Para cambios que el E2E no
 cubre todavía, corre esto a mano en un navegador real:
 
 1. **Carga limpia**: abre la app, confirma cero errores en consola.
-2. **KPIs por defecto**: Resumen muestra Min Price y Base Price (no "—" a menos
-   que hayas metido un dato inválido a propósito).
+2. **KPIs por defecto — SÍ deben mostrar "—" (ronda 2)**: una unidad nueva usa LM
+   modo automático sin verificar → Min Price/Base Price arrancan en "—" con un
+   aviso "LM SIN VERIFICAR" que explica qué confirmar y dónde. Esto es
+   correcto, no un bug. Para ver números: en "Last-Minute de PriceLabs" cambia
+   el modo a uno configurable (plano/gradual/precio fijo/tramos) y marca
+   "Confirmé este modo directamente en PriceLabs".
 3. **Alertas**: pestaña Comparación muestra al menos un veredicto por ventana;
-   ninguna alerta rota (texto `undefined`/`NaN`).
+   ninguna alerta rota (texto `undefined`/`NaN`); ninguna fila dice "RENTABLE EN
+   TODOS" mientras el LM siga sin verificar.
 4. **Simulador**: cambia canal/días/noches, confirma que el desglose
    paso-a-paso se actualiza y que Margen/Markup muestran números distintos.
 5. **Editar un descuento**: activa/desactiva un descuento, cambia su %, confirma
@@ -48,10 +53,17 @@ cubre todavía, corre esto a mano en un navegador real:
    confirma que pide confirmación antes de borrar.
 7. **Exportar/Importar**: exporta, borra la unidad de prueba, impórtala de
    vuelta, confirma que los datos coinciden.
-8. **Validación**: mete una comisión de canal en 150% a propósito — confirma
-   que aparece el banner de bloqueo y los KPIs muestran "—", no un número roto.
+8. **Validación de edición manual (ronda 2)**: mete una comisión de canal en
+   150% a propósito — el campo debe RECHAZAR el valor de inmediato (vuelve al
+   número anterior, aparece un aviso flotante con el motivo exacto), nunca
+   escribirlo a `state` ni convertirlo en 0 en silencio. Prueba también un
+   rango invertido (ej. "hasta" antes que "desde" en un descuento) y un campo
+   vacío.
 9. **Bloqueo de datos de ejemplo**: en una unidad nueva (sin tocar Costos),
    confirma que aparece el aviso "EJEMPLO" en Resumen.
+10. **Matriz — detalle por fila**: abre "Ver por canal" en cualquier ventana,
+    confirma que "Peor payout real detectado" muestra un día y noches reales
+    (nunca "undefined").
 
 ## Rollback
 

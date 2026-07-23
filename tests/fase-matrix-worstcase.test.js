@@ -35,6 +35,20 @@ test('worstScenariosInWindow: el peor PAYOUT puede estar en un día donde el LM 
   assert.equal(worstPayoutRow.q.lm, 60, 'el escenario de peor payout debe reflejar el LM de 60%, no solo el nativo OTA de 10%');
 });
 
+test('Bloqueante BAJO (revision externa, ronda 2) — worstPayoutRow expone day/night, NUNCA d/n: index.html leia .d/.n (inexistentes) y siempre mostraba "día undefined"', () => {
+  const channels = freshChannels();
+  const discounts = freshDiscounts().map(d=>({...d, on:false}));
+  const windows = freshWindows();
+  const ceilings = defaultCeilings(windows);
+  const w0 = windows.find(w=>w.id==='w0');
+  const config = {channels, discounts, windows, ceilings, fixedCost:50, varCost:0};
+  const {worstPayoutRow} = worstScenariosInWindow(config, w0, 200);
+  assert.equal(typeof worstPayoutRow.day, 'number', 'worstPayoutRow.day debe ser un numero real, no undefined');
+  assert.equal(typeof worstPayoutRow.night, 'number', 'worstPayoutRow.night debe ser un numero real, no undefined');
+  assert.equal(worstPayoutRow.d, undefined, 'worstPayoutRow.d nunca existió — cualquier lectura de este campo es el bug que se está guardando aquí');
+  assert.equal(worstPayoutRow.n, undefined, 'worstPayoutRow.n nunca existió — cualquier lectura de este campo es el bug que se está guardando aquí');
+});
+
 test('worstScenariosInWindow: enumera noches criticas, no solo una noche fija', () => {
   const channels = freshChannels().filter(c=>c.id==='booking');
   const discounts = freshDiscounts().map(d=>({...d, on:false}));

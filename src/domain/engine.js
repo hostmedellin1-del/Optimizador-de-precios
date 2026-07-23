@@ -22,14 +22,25 @@
    - compute().base evalua siempre a 45 dias / 1 noche como escenario de referencia
      "fuera de ventanas tacticas cortas" — es una decision de negocio documentada,
      no un error de muestreo; no se toca sin que Dani lo pida explicitamente.
+
+   Bloqueante ALTO corregido (revision externa, ronda 2): compute().base SI
+   incorpora ahora el Offset y el Last-Minute REALMENTE configurados de cada
+   canal en ese mismo escenario de referencia (dia 45/1 noche) — antes los
+   excluia por completo, asi que el texto "netea tu objetivo" solo era cierto
+   si TODOS los offsets estaban en 0% y no habia LM, algo que dejaba de ser
+   verdad en cuanto Dani configuraba un offset real (ej. Booking -15% para
+   competir) o un LM verificado. Base sigue siendo un PUNTO DE REFERENCIA
+   UNICO, no una busqueda exhaustiva de peor caso (esa sigue siendo tarea del
+   Piso) — la diferencia es que ahora ese punto de referencia usa los valores
+   REALES de offset/LM en vez de asumir cero. Ver tests/fase-base-property.test.js.
 */
 import {pct, pct2} from './percent.js';
 import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
 import {reservationCostBreakdown} from './costs.js';
-import {validateCostInputs, validateChannelInputs, validateResultFinite} from './validate.js';
+import {validateCostInputs, validateChannelInputs, validateResultFinite, validateLmTiersOverlap} from './validate.js';
 import {worstScenarioFactor} from './worstcase.js';
-import {priceLabsLm} from './pricelabs-lm.js';
+import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -165,6 +176,52 @@ export function cleanFeePerNight(c, nights){
   return feeTotal/n;
 }
 
+/* LM en el escenario de referencia (dia 45, "fuera de ventanas tacticas cortas")
+   — Bloqueante ALTO corregido (revision externa, ronda 2): compute().base y
+   suggestedOffset() reimplementaban la MISMA resolucion de LM a dia 45 cada
+   uno por su cuenta (una formula financiera duplicada, lo que el encargo
+   prohibe explicitamente). Se extrae aqui una unica vez. `nights` es la
+   duracion que el CALLER esta usando en su propio escenario de referencia
+   (Base usa 1 noche; suggestedOffset usa avgNights) — el "nativo compartido"
+   del modo ceiling_auto debe evaluarse a esa MISMA duracion para no quedar
+   inconsistente con el resto del calculo de ese caller. Si el LM en ese dia
+   resulta ser un precio FIJO (modo fixed_price con dia 45 dentro de su rango,
+   caso raro ya que esas ventanas suelen ser cercanas al check-in), no hay un
+   "%" que aplicar sobre Base/Offset — se ignora (0), igual que ya hacia
+   suggestedOffset() antes de esta extraccion.
+
+   IMPORTANTE — sin `lmConfig`, cae al modo 'ceiling_auto' (igual que
+   priceLabsLm()/quoteScenario(), ver pricelabs-lm.js: "Sin lmConfig, cae al
+   modo automatico de siempre — cero regresion"), NUNCA a "sin LM". Esto es a
+   proposito: la propiedad que este archivo debe garantizar es que
+   `quoteScenario({days:45, nights, price:base}, config)` netee >= objetivo, y
+   quoteScenario() SIEMPRE asume ceiling_auto cuando no hay lmConfig — si esta
+   funcion asumiera 0% en ese mismo caso, Base quedaria corto exactamente en
+   el escenario que se supone que garantiza. (compute().floor SI tiene una
+   rama legacy aparte que ignora LM por completo sin lmConfig — es una
+   compatibilidad explicita con callers de ANTES de que LM existiera como
+   config; lmPctAtDay45() es codigo nuevo, no tiene ese contrato viejo que
+   preservar.) En produccion `state.lmConfig` siempre esta presente
+   (defaultLmConfig()), asi que esta rama solo importa para callers de test
+   que omiten `windows` (ahi si se devuelve 0, no hay ventana de referencia
+   que resolver) u omiten `lmConfig` a proposito. */
+export function lmPctAtDay45(lmConfig, {discounts, channels, windows, ceilings, nights}){
+  if(!windows) return 0;
+  const cfg = lmConfig || {mode:'ceiling_auto'};
+  const w45 = windows.find(win=>45>=win.lo && 45<=win.hi) || windows[windows.length-1];
+  const ceil45 = pct((ceilings||{})[w45.id]);
+  let sharedNative45 = 0;
+  if(cfg.mode==='ceiling_auto'){
+    channels.forEach(c2=>{
+      const f2 = combineChannel(discounts, c2.id, 45, nights).factor;
+      const p2 = (1-f2)*100;
+      if(p2>sharedNative45) sharedNative45=p2;
+    });
+  }
+  const lmResult = priceLabsLm(cfg, {day:45, ceilingPct:ceil45, nativePct:sharedNative45});
+  return lmResult.priceOverride==null ? lmResult.lmPct : 0;
+}
+
 /* config = {fixedCost, varCost, margin, marketBase, channels, discounts, windows,
    costBreakdown?} — costBreakdown es OPCIONAL (Fase 3): si esta presente, el costo
    ya no es el flat fixedCost+varCost, es el costo REAL de la reserva mas exigente
@@ -210,14 +267,19 @@ export function compute(config){
       if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     }
   });
-  /* base: pushed price that nets target on every channel using its CONSTANT natives (window natives are tactical) */
+  /* base: pushed price that nets target on every channel using its CONSTANT natives
+     (window natives are tactical), CON el offset y el LM que ese canal tenga
+     REALMENTE configurados hoy (ver comentario arriba — Bloqueante ALTO ronda 2). */
   let base=0, baseCh='';
   channels.forEach(c=>{
     /* Fase 2.1: factor EXACTO, no totalPct/100 (redondeado, ver worstNative arriba). */
     const cn = 1-combineChannel(discounts, c.id, 45, 1).factor; /* 45 días: fuera de ventanas tácticas cortas */
     const pf = payoutFactor(c);
-    const p = net/((1-cn)*pf);
-    if(p>base){base=p;baseCh=c.name;}
+    const off = pct2(c.offsetPct)/100;
+    const lm45 = lmPctAtDay45(config.lmConfig, {discounts, channels, windows, ceilings: config.ceilings, nights:1});
+    const denom = (1+off)*(1-lm45/100)*(1-cn)*pf;
+    const p = denom>0 ? net/denom : Infinity; /* offset <= -100% = imposible netear con un Base finito */
+    if(p>base){base=p;baseCh=c.name+(lm45!==0||off!==0?' (':'')+(lm45!==0?'LM '+fP(lm45):'')+(lm45!==0&&off!==0?' + ':'')+(off!==0?'offset '+fP(off*100):'')+(lm45!==0||off!==0?')':'');}
   });
   const mb=parseFloat(config.marketBase)||0;
   const effBase = mb>0 ? mb : base;   /* evaluar contra el precio que realmente vas a poner */
@@ -233,10 +295,33 @@ export function compute(config){
     ...validateCostInputs({fixedCost: config.fixedCost, varCost: config.varCost, margin: config.margin}),
     ...validateChannelInputs(channels),
     ...validateResultFinite({floor, base, net, cost}, ['floor','base','net','cost']),
-    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${cost}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`}))
+    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${cost}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`})),
+    ...(config.lmConfig && config.lmConfig.mode==='tiers' ? validateLmTiersOverlap(config.lmConfig.tiers) : [])
   ];
   const valid = !errors.some(e=>e.level==='error');
-  return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid};
+  /* Bloqueante CRITICO (revision externa, ronda 2): quoteScenario() ya exponia
+     lmBlocked por escenario, pero compute() seguia devolviendo valid:true y
+     floor/base "usables" aunque el LM configurado (por defecto: automatico, sin
+     verificar) fuera matematicamente no verificable. `valid` sigue significando
+     "los inputs/el resultado numerico no estan rotos" (NaN/Infinity/negativo) —
+     `lmBlocked` es un gate DISTINTO y ortogonal: "este resultado depende de un
+     LM que Dani todavia no confirmo, no lo presentes como recomendacion".
+     Se calcula SIEMPRE con isLmBlocked(config.lmConfig) — nunca condicionado a
+     si config.lmConfig vino o no: `base` (ver lmPctAtDay45 arriba) usa el
+     default ceiling_auto de priceLabsLm() incluso sin lmConfig explicito (para
+     quedar consistente con quoteScenario(), que hace lo mismo), asi que ese
+     caso SI depende de una proyeccion sin verificar y debe bloquearse igual
+     que si Dani hubiera dejado el modo automatico puesto a proposito. Solo el
+     floor tiene una rama legacy que de verdad ignora LM (arriba, "compatibilidad
+     con callers que aun no lo pasan") — eso no cambia aqui. */
+  const lmBlocked = isLmBlocked(config.lmConfig);
+  const lmMode = (config.lmConfig && config.lmConfig.mode) || 'ceiling_auto';
+  const lmBlockedReason = lmBlocked
+    ? `Last-Minute está en modo "${lmMode==='ceiling_auto'?'Automático':lmMode}"${lmMode==='ceiling_auto'
+        ? ' — PriceLabs decide la curva real, así que este número es siempre una PROYECCIÓN, nunca verificable matemáticamente sin el precio diario real de tu cuenta'
+        : ' pero todavía no lo marcaste como verificado'}. Min Price, Base Price, Offset sugerido y el veredicto "Rentable" de la Matriz quedan bloqueados hasta que confirmes esto en Resumen → sección "Last-Minute de PriceLabs": elige el modo real que usa tu cuenta y marca la casilla "Confirmé este modo directamente en PriceLabs" (o, si el modo automático es el real, configúralo explícitamente como plano/gradual/precio fijo/tramos con los valores que sí puedes confirmar).`
+    : null;
+  return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid, lmBlocked, lmBlockedReason};
 }
 
 /* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),
@@ -255,21 +340,10 @@ export function suggestedOffset(config){
   const nat = 1-combineChannel(discounts, chId, 45, avgN).factor; /* nativo a estadía promedio, sin ventanas tácticas cortas */
   const pf = payoutFactor(c);
   const feePN = cleanFeePerNight(c, avgN);
-  let lm = 0;
-  if(config.lmConfig && config.windows){
-    const w45 = config.windows.find(win=>45>=win.lo && 45<=win.hi) || config.windows[config.windows.length-1];
-    const ceil45 = pct((config.ceilings||{})[w45.id]);
-    let sharedNative45 = 0;
-    if(config.lmConfig.mode==='ceiling_auto'){
-      channels.forEach(c2=>{
-        const f2 = combineChannel(discounts, c2.id, 45, avgN).factor;
-        const p2 = (1-f2)*100;
-        if(p2>sharedNative45) sharedNative45=p2;
-      });
-    }
-    const lmResult = priceLabsLm(config.lmConfig, {day:45, ceilingPct:ceil45, nativePct:sharedNative45});
-    if(lmResult.priceOverride==null) lm = lmResult.lmPct; // precio-fijo: el offset no cambia lo que PriceLabs publica, se ignora aqui
-  }
+  /* Bloqueante ALTO (revision externa, ronda 2): reusa lmPctAtDay45() — antes
+     esta resolucion de LM a dia 45 estaba duplicada aqui Y en compute().base
+     (formula financiera repetida, lo que el encargo prohibe). */
+  const lm = lmPctAtDay45(config.lmConfig, {discounts, channels, windows: config.windows, ceilings: config.ceilings, nights: avgN});
   const denom = effBase*(1-lm/100)*(1-nat);
   if(denom<=0 || pf<=0) return 0;
   /* net = [effBase*(1-lm/100)*(1+off)*(1-nat) + feePN]*pf = netObjetivo
