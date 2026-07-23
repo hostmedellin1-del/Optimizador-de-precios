@@ -204,9 +204,19 @@ export function cleanFeePerNight(c, nights){
    preservar.) En produccion `state.lmConfig` siempre esta presente
    (defaultLmConfig()), asi que esta rama solo importa para callers de test
    que omiten `windows` (ahi si se devuelve 0, no hay ventana de referencia
-   que resolver) u omiten `lmConfig` a proposito. */
+   que resolver) u omiten `lmConfig` a proposito.
+
+   Bloqueante P1 (revision externa, ronda 3): esta funcion devolvia un numero
+   plano y, si el modo era 'fixed_price' con el dia 45 dentro de su rango
+   (priceOverride!=null), devolvia 0 EN SILENCIO — como si no hubiera LM. Eso
+   hacia que compute().base y suggestedOffset() calcularan como si PriceLabs
+   fuera a publicar el precio que ellos mismos resuelven, cuando en realidad
+   PriceLabs publica el precio FIJO configurado, sin importar Base. Ahora
+   devuelve `{lmPct, priceOverride}` explicito — el caller DEBE decidir que
+   hacer con el override (Base: marcarse no aplicable; Offset: recalcular
+   sobre el precio fijo real), nunca ignorarlo. */
 export function lmPctAtDay45(lmConfig, {discounts, channels, windows, ceilings, nights}){
-  if(!windows) return 0;
+  if(!windows) return {lmPct:0, priceOverride:null};
   const cfg = lmConfig || {mode:'ceiling_auto'};
   const w45 = windows.find(win=>45>=win.lo && 45<=win.hi) || windows[windows.length-1];
   const ceil45 = pct((ceilings||{})[w45.id]);
@@ -219,7 +229,7 @@ export function lmPctAtDay45(lmConfig, {discounts, channels, windows, ceilings, 
     });
   }
   const lmResult = priceLabsLm(cfg, {day:45, ceilingPct:ceil45, nativePct:sharedNative45});
-  return lmResult.priceOverride==null ? lmResult.lmPct : 0;
+  return {lmPct: lmResult.priceOverride==null ? lmResult.lmPct : 0, priceOverride: lmResult.priceOverride};
 }
 
 /* config = {fixedCost, varCost, margin, marketBase, channels, discounts, windows,
@@ -270,17 +280,48 @@ export function compute(config){
   /* base: pushed price that nets target on every channel using its CONSTANT natives
      (window natives are tactical), CON el offset y el LM que ese canal tenga
      REALMENTE configurados hoy (ver comentario arriba — Bloqueante ALTO ronda 2). */
+  const day45Lm = lmPctAtDay45(config.lmConfig, {discounts, channels, windows, ceilings: config.ceilings, nights:1});
   let base=0, baseCh='';
   channels.forEach(c=>{
     /* Fase 2.1: factor EXACTO, no totalPct/100 (redondeado, ver worstNative arriba). */
     const cn = 1-combineChannel(discounts, c.id, 45, 1).factor; /* 45 días: fuera de ventanas tácticas cortas */
     const pf = payoutFactor(c);
     const off = pct2(c.offsetPct)/100;
-    const lm45 = lmPctAtDay45(config.lmConfig, {discounts, channels, windows, ceilings: config.ceilings, nights:1});
+    /* Si hay un precio LM fijo activo en el dia 45 (day45Lm.priceOverride!=null),
+       este `base` de respaldo se calcula IGNORANDO el override (lm45=0) — es
+       intencional: sirve solo como ancla numerica de `effBase` para el resto de
+       la app (Matriz/Alertas/Simulador evaluan sus propios dias y SI resuelven
+       el override correctamente via quoteScenario). El KPI "Base Price" en si
+       queda marcado `baseBlocked` mas abajo y la UI no debe mostrar este numero
+       como recomendacion — ver bloqueante P1, ronda 3. */
+    const lm45 = day45Lm.priceOverride!=null ? 0 : day45Lm.lmPct;
     const denom = (1+off)*(1-lm45/100)*(1-cn)*pf;
     const p = denom>0 ? net/denom : Infinity; /* offset <= -100% = imposible netear con un Base finito */
     if(p>base){base=p;baseCh=c.name+(lm45!==0||off!==0?' (':'')+(lm45!==0?'LM '+fP(lm45):'')+(lm45!==0&&off!==0?' + ':'')+(off!==0?'offset '+fP(off*100):'')+(lm45!==0||off!==0?')':'');}
   });
+  /* Bloqueante P1 (revision externa, ronda 3): un precio LM FIJO activo en el
+     dia de referencia (45) hace que Base sea irrelevante para ese escenario —
+     PriceLabs publica el precio fijo configurado sin importar que Base pongas.
+     "netea tu objetivo" no puede afirmarse de un numero que no controla nada.
+     Se calcula, por canal, el neto REAL con el precio fijo (offset aplicado
+     DESPUES del precio fijo, mismo orden que quoteScenario) para explicar si
+     ese precio fijo alcanza o no el objetivo — informativo, nunca una
+     recomendacion inventada de Base. */
+  let baseBlocked=false, baseBlockedReason=null;
+  if(day45Lm.priceOverride!=null){
+    let worstOverridePayout=Infinity, worstOverrideCh='';
+    channels.forEach(c=>{
+      const cn = 1-combineChannel(discounts, c.id, 45, 1).factor;
+      const pf = payoutFactor(c);
+      const off = pct2(c.offsetPct)/100;
+      const feePN = cleanFeePerNight(c, 1);
+      const guest = day45Lm.priceOverride*(1+off)*(1-cn);
+      const payout = (guest+feePN)*pf;
+      if(payout<worstOverridePayout){worstOverridePayout=payout; worstOverrideCh=c.name;}
+    });
+    baseBlocked = true;
+    baseBlockedReason = `Last-Minute está en modo "Precio fijo" (${day45Lm.priceOverride}) y ese precio está ACTIVO en el día de referencia (45, el que usa Base) — PriceLabs publicaría ese precio fijo sin importar el Base que configures aquí. Base Price y el Offset sugerido no aplican como recomendación de "precio a publicar" en este rango de días (el Offset sí se recalcula sobre el precio fijo real, ver suggestedOffset()). Con ese precio fijo, el canal más ajustado (${worstOverrideCh}) netea ${worstOverridePayout.toFixed(2)}${worstOverridePayout<net ? ` — por debajo de tu objetivo (${net.toFixed(2)}); ningún Base puede arreglar esto, PriceLabs va a publicar ese precio tal cual` : `, que ya cubre tu objetivo (${net.toFixed(2)})`}.`;
+  }
   const mb=parseFloat(config.marketBase)||0;
   const effBase = mb>0 ? mb : base;   /* evaluar contra el precio que realmente vas a poner */
   /* Fase 5: validar ANTES (inputs) y DESPUES (resultado) — el motor sigue
@@ -321,7 +362,7 @@ export function compute(config){
         ? ' — PriceLabs decide la curva real, así que este número es siempre una PROYECCIÓN, nunca verificable matemáticamente sin el precio diario real de tu cuenta'
         : ' pero todavía no lo marcaste como verificado'}. Min Price, Base Price, Offset sugerido y el veredicto "Rentable" de la Matriz quedan bloqueados hasta que confirmes esto en Resumen → sección "Last-Minute de PriceLabs": elige el modo real que usa tu cuenta y marca la casilla "Confirmé este modo directamente en PriceLabs" (o, si el modo automático es el real, configúralo explícitamente como plano/gradual/precio fijo/tramos con los valores que sí puedes confirmar).`
     : null;
-  return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid, lmBlocked, lmBlockedReason};
+  return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid, lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason};
 }
 
 /* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),
@@ -343,10 +384,18 @@ export function suggestedOffset(config){
   /* Bloqueante ALTO (revision externa, ronda 2): reusa lmPctAtDay45() — antes
      esta resolucion de LM a dia 45 estaba duplicada aqui Y en compute().base
      (formula financiera repetida, lo que el encargo prohibe). */
-  const lm = lmPctAtDay45(config.lmConfig, {discounts, channels, windows: config.windows, ceilings: config.ceilings, nights: avgN});
-  const denom = effBase*(1-lm/100)*(1-nat);
+  const day45Lm = lmPctAtDay45(config.lmConfig, {discounts, channels, windows: config.windows, ceilings: config.ceilings, nights: avgN});
+  /* Bloqueante P1 (revision externa, ronda 3): si hay un precio LM FIJO activo
+     en el dia de referencia, el precio que de verdad publica PriceLabs ahi NO
+     es `effBase*(1-lm/100)` (eso asumia, erroneamente, que no habia override)
+     — es el precio fijo real. El Offset se sigue aplicando DESPUES de ese
+     precio (mismo orden que quoteScenario: priceAfterOffset =
+     priceAfterLm*(1+off)), asi que hay que resolver el offset SOBRE el precio
+     fijo real para que "sugerido para netear el objetivo" siga siendo cierto. */
+  const effPrice = day45Lm.priceOverride!=null ? day45Lm.priceOverride : effBase*(1-day45Lm.lmPct/100);
+  const denom = effPrice*(1-nat);
   if(denom<=0 || pf<=0) return 0;
-  /* net = [effBase*(1-lm/100)*(1+off)*(1-nat) + feePN]*pf = netObjetivo
-     => off = (netObjetivo/pf - feePN)/(effBase*(1-lm/100)*(1-nat)) - 1 */
+  /* net = [effPrice*(1+off)*(1-nat) + feePN]*pf = netObjetivo
+     => off = (netObjetivo/pf - feePN)/(effPrice*(1-nat)) - 1 */
   return ((netObjetivo/pf - feePN)/denom - 1)*100;
 }

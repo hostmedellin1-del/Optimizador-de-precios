@@ -64,6 +64,12 @@ cubre todavía, corre esto a mano en un navegador real:
 10. **Matriz — detalle por fila**: abre "Ver por canal" en cualquier ventana,
     confirma que "Peor payout real detectado" muestra un día y noches reales
     (nunca "undefined").
+11. **LM precio fijo (ronda 3)**: configura Last-Minute en "Precio fijo" con un
+    rango que incluya el día 45 (ej. 40-50) — Base Price debe mostrar "—" con
+    el aviso "PRECIO FIJO ACTIVO — BASE NO APLICA", y el Offset sugerido de
+    cada canal debe seguir mostrando un número (no bloqueado), con la nota de
+    que se calculó sobre el precio fijo real. El botón "Ver el paso a paso" NO
+    debe precargar ningún precio mientras esto esté bloqueado.
 
 ## Rollback
 

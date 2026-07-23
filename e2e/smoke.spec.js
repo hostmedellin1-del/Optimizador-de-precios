@@ -28,6 +28,13 @@ test('carga limpia: cero errores de consola, alertas render — Min Price/Base P
 test('Simulador: cambiar canal/días/noches recalcula y muestra Margen y Markup distintos', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="simulador"]').click();
+  // Bloqueante P2 (revision externa, ronda 3): con la config por defecto
+  // (LM sin verificar), el Simulador ya no rellena un precio bloqueado solo —
+  // hay que escribir uno a mano para simular (ver e2e/sim-blocked-bypass.spec.js).
+  const simPrice = page.locator('#simPrice');
+  await simPrice.click();
+  await simPrice.fill('200');
+  await simPrice.dispatchEvent('change');
   await page.locator('#simDays').fill('10');
   await page.locator('#simDays').dispatchEvent('change');
   const text = await page.locator('#simResult').innerText();

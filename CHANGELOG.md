@@ -4,6 +4,35 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.5.0] — Correcciones de revisión externa, ronda 3 (2 P1)
+
+- **P1 — Base Price/Offset rotos con LM `fixed_price` cubriendo el día de referencia
+  (45)**. Caso: Directo, costo 100/0, margen 50% (objetivo 200), LM verificado
+  fixed_price=150 en días 40-50 → antes Base≈219.78 y Offset sugerido 0%, pero
+  `quoteScenario({days:45,price:base})` daba payout=136.50 (muy bajo el objetivo).
+  Causa: `lmPctAtDay45()` colapsaba el `priceOverride` a 0% en silencio. Ahora
+  devuelve `{lmPct, priceOverride}` explícito; `compute()` expone
+  `baseBlocked`/`baseBlockedReason` (Base no aplica, se explica por qué);
+  `suggestedOffset()` se recalcula sobre el precio fijo real (offset corregido:
+  +46.5%, verificado end-to-end contra `quoteScenario()`). Probado en los bordes
+  del rango (inicio, fin, justo fuera por ambos lados) y con una propiedad sobre
+  varios costos/márgenes/precios fijos. Tests: `tests/fase-base-fixedprice.test.js`;
+  E2E: `e2e/base-fixedprice.spec.js`.
+- **P1 — bypass del bloqueo LM desde "Ver el paso a paso" (Simulador)**. El botón
+  precargaba `Math.round(model.base||model.effBase||0)` sin condición, revelando
+  el Base bloqueado. `renderSim()` ahora también rechaza caer en `model.effBase`
+  cuando el precio está vacío y el modelo está bloqueado — muestra la explicación
+  en vez de un waterfall inventado. La simulación manual (escribir un precio a
+  mano) nunca se bloquea. Tests: `e2e/sim-blocked-bypass.spec.js`.
+- Nota de infraestructura de test: se detectó y corrigió una fuente real de falsos
+  positivos en Playwright — `.fill()` inmediatamente después de un evento que
+  dispara un re-render completo (`renderLmConfig()`) puede escribir sobre el foco
+  anterior en vez del campo nuevo. Reproducido de forma determinística (5/5) y
+  corregido añadiendo `.click()` explícito antes de cada `.fill()` en los specs
+  que tocan campos de LM/tramos — no es un bug de la aplicación.
+
+npm test: 98/98 · npm run test:e2e: 25/25 · lint limpio.
+
 ## [0.4.0] — Correcciones de revisión externa, ronda 2
 
 Una segunda revisión externa encontró 4 bloqueantes sobre el trabajo de la ronda

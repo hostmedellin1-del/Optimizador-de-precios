@@ -202,6 +202,42 @@ solo para reflejarlo, en vez de quedar basado en un offset=0 que ya no es la rea
 reimplementaba por su cuenta). Tests: `tests/fase-base-property.test.js` (con offset
 negativo/positivo y LM activo, sin neutralizar nada).
 
+### Contrato definitivo — Base Price, Offset y `fixed_price` (ronda 3, revisión externa)
+Una tercera revisión encontró que el fix de la ronda 2 (arriba) tenía un hueco: cuando
+`lmConfig.mode==='fixed_price'` y el rango activo cubre el día 45, `lmPctAtDay45()`
+devolvía `priceOverride` pero `compute().base`/`suggestedOffset()` lo IGNORABAN (trataban
+el override como 0% de LM) — Base seguía calculando un número (`≈219.78` en el caso
+reportado: Directo, costo 100, margen 50%) que no tenía ningún efecto real, porque
+PriceLabs iba a publicar el precio fijo (150) sin importar Base. `suggestedOffset()`
+daba 0% cuando el offset REAL necesario era +46.5%.
+
+**El contrato quedó así, explícito y con tests (`tests/fase-base-fixedprice.test.js`,
+`e2e/base-fixedprice.spec.js`):**
+- `lmPctAtDay45()` devuelve `{lmPct, priceOverride}` — nunca colapsa el override a un
+  número silencioso.
+- **Base Price**: si `priceOverride!=null` en el día 45, Base es irrelevante para ese
+  escenario (PriceLabs no lo va a usar) → `compute()` devuelve `baseBlocked:true` +
+  `baseBlockedReason` (explica, por canal, si el precio fijo alcanza o no el objetivo).
+  La UI oculta el KPI ("—"), la Matriz oculta el número, y `#validationBanner` muestra
+  el motivo exacto con el mismo patrón que `lmBlocked`. El campo `base` interno se sigue
+  calculando (ignorando el override) solo como ancla numérica de `effBase` para el resto
+  de la app — nunca se presenta como recomendación cuando `baseBlocked` es true.
+- **Offset**: a diferencia de Base, el Offset SÍ puede seguir controlando el resultado —
+  se aplica DESPUÉS del precio (fijo o no), mismo orden que `quoteScenario()`
+  (`priceAfterOffset = priceAfterLm*(1+off)`). `suggestedOffset()` ahora resuelve sobre
+  `priceOverride` cuando existe, en vez de `effBase*(1-lm/100)` — nunca se bloquea, se
+  RECALCULA correctamente. La UI muestra el número corregido con una nota explícita
+  ("se recalculó sobre ese precio fijo real") en vez de fingir que viene de Base.
+- **Bordes probados**: día 45 exactamente en `fromDay`, exactamente en `toDay`, y justo
+  fuera del rango por ambos lados — solo bloquea cuando el día 45 realmente cae dentro.
+- **Bloqueante P2 (bypass del Simulador)**: el botón "Ver el paso a paso" (`goSimBtn`)
+  precargaba `Math.round(model.base||model.effBase||0)` sin condición — revelaba el
+  Base bloqueado por la puerta de atrás. `renderSim()` ahora también se niega a caer en
+  `model.effBase` cuando el campo de precio está vacío Y el modelo está bloqueado
+  (`lmBlocked`/`baseBlocked`): muestra la explicación en vez de un waterfall con un
+  número inventado. Escribir un precio a mano sigue funcionando siempre — la simulación
+  manual nunca se bloquea, solo el atajo automático. Tests: `e2e/sim-blocked-bypass.spec.js`.
+
 ---
 
 ## 3. Por qué está armado como está (decisiones de arquitectura, para no revertirlas sin querer)

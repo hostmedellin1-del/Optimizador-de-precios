@@ -458,6 +458,17 @@ function renderKpis(model){
     return;
   }
   kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
+  /* Bloqueante P1 (revision externa, ronda 3): un precio LM FIJO activo en el
+     dia de referencia (45) hace que Base sea irrelevante ahi — PriceLabs
+     publica ese precio fijo sin importar Base. El Piso (floor) NO se bloquea
+     por esto: su busqueda exhaustiva (worstcase.js) ya resuelve el precio
+     fijo correctamente en CUALQUIER dia critico, incluido si no alcanza el
+     costo (lmInfeasible, error bloqueante aparte). Solo Base/Offset, que SI
+     evaluaban un unico dia (45) ignorando el override, quedan bloqueados aqui. */
+  if(model.baseBlocked){
+    kBase.textContent='—'; kBaseWhy.textContent='Precio LM fijo activo — ver aviso arriba';
+    return;
+  }
   kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
 }
 function renderValidation(model){
@@ -466,10 +477,17 @@ function renderValidation(model){
   const errs = (model.errors||[]).filter(e=>e.level==='error');
   const warns = (model.errors||[]).filter(e=>e.level==='warning');
   const lmBlock = model.lmBlocked ? [model.lmBlockedReason] : [];
-  if(!errs.length && !warns.length && !lmBlock.length){ box.innerHTML=''; return; }
+  /* Bloqueante P1 (revision externa, ronda 3): aviso separado de lmBlock —
+     este puede estar activo AUNQUE el LM este verificado (el problema no es
+     "no confirmaste el modo", es "el modo fijo hace que Base no controle
+     nada en el dia de referencia"). Mismo componente visual (#validationBanner),
+     tag distinto para no confundir los dos motivos. */
+  const baseBlock = model.baseBlocked ? [model.baseBlockedReason] : [];
+  if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
     ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
 }
@@ -536,7 +554,15 @@ function renderChannelPages(model){
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
           <div class="offset-hint">${model.lmBlocked
             ? '⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).'
-            : `Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`}</div>
+            : model.baseBlocked
+              /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
+                 (precio LM fijo activo en el dia de referencia), pero el
+                 Offset SI puede seguir controlando el resultado — se aplica
+                 DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
+                 Se muestra el numero corregido, con nota explicita de que ya
+                 NO se calcula sobre Base. */
+              ? `⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`
+              : `Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`}</div>
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
         <div class="chpage-discounts">${activeD}</div>
@@ -550,7 +576,7 @@ function renderMatrix(model){
      que Dani puede leer sin haber visto el KPI de Resumen. */
   matrixIntro.innerHTML = `
     <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':f$(model.floor)}</span></div>
-    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
      dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
@@ -623,7 +649,22 @@ function renderAlerts(model){
    src/domain/simulate-legacy.js se deja intacto como registro historico del bug
    — ya no lo usa index.html. */
 function renderSim(model){
-  const price=parseFloat(simPrice.value)||model.effBase||0;
+  /* Bloqueante P2 (revision externa, ronda 3): antes, si el campo de precio
+     quedaba vacio, este fallback usaba `model.effBase` — que es EXACTAMENTE
+     el Base bloqueado (`model.base`) cuando no hay marketBase configurado.
+     Eso revivia silenciosamente la recomendacion bloqueada apenas se entraba
+     al Simulador (por el boton "Ver el paso a paso", por click directo en la
+     pestaña, o al escribir en cualquier otro campo — renderSim() se llama en
+     CADA renderAll()). Ahora: si el campo esta vacio Y el modelo esta
+     bloqueado (LM sin verificar o precio LM fijo activo), no se simula nada
+     con un numero inventado — se explica el motivo y se pide un precio manual. */
+  const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
+  if((typedPrice==null || !Number.isFinite(typedPrice)) && (model.lmBlocked || model.baseBlocked)){
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${model.lmBlocked ? 'Last-Minute sin verificar' : 'precio LM fijo de PriceLabs activo en el día de referencia'}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero el LM en <button type="button" class="goto" data-goto="resumen">Resumen → "Last-Minute de PriceLabs" →</button>.</div>`;
+    simIgnored.innerHTML = '';
+    return;
+  }
+  const price = (typedPrice!=null && Number.isFinite(typedPrice)) ? typedPrice : (model.effBase||0);
   const chId=simChannel.value||'airbnb';
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
@@ -963,7 +1004,20 @@ document.addEventListener('click',e=>{
   if(goto){ goToTab(goto.dataset.goto); return; }
   if(e.target.id==='goSimBtn'){
     const model=compute();
-    simPrice.value=Math.round(model.base||model.effBase||0);
+    /* Bloqueante P2 (revision externa, ronda 3): este boton precargaba
+       Math.round(model.base||model.effBase||0) sin condicion — si Base
+       estaba bloqueado (LM sin verificar, o precio LM fijo activo en el dia
+       de referencia), igual escribia ese numero bloqueado en el Simulador,
+       revelandolo como si fuera una recomendacion valida. Ahora, si esta
+       bloqueado, NO se precarga nada (el campo queda vacio — renderSim()
+       explica el motivo en vez de simular con un numero inventado) y se
+       muestra el mismo aviso en el toast global. */
+    if(model.lmBlocked || model.baseBlocked){
+      simPrice.value='';
+      showInputError('Base Price está bloqueado (' + (model.lmBlocked ? 'Last-Minute sin verificar' : 'precio LM fijo de PriceLabs activo en el día de referencia') + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confirma el LM en "Last-Minute de PriceLabs" primero.');
+    } else {
+      simPrice.value=Math.round(model.base||model.effBase||0);
+    }
     goToTab('simulador');
     renderSim(model);
   }
