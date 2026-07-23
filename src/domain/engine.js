@@ -41,6 +41,7 @@ import {reservationCostBreakdown} from './costs.js';
 import {validateCostInputs, validateChannelInputs, validateResultFinite, validateLmTiersOverlap} from './validate.js';
 import {worstScenarioFactor} from './worstcase.js';
 import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
+import {evaluateRecommendationReadiness} from './readiness.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -252,7 +253,7 @@ export function compute(config){
      la garantía de no vender bajo costo. Con offset positivo el piso baja para ese canal
      (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
      baja de verdad si TODOS tienen offset positivo. */
-  let floor=0, floorCh='';
+  let floor=0, floorCh='', floorChId=null;
   const lmInfeasible = [];
   channels.forEach(c=>{
     const pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
@@ -267,21 +268,21 @@ export function compute(config){
       lmInfeasible.push(...infeasible);
       const denom = worstFactor*pf;
       const p = denom>0 ? cost/denom : Infinity;
-      if(p>floor){floor=p;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(off!==0?' + offset '+fP(off*100):'')+')';}
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(off!==0?' + offset '+fP(off*100):'')+')';}
     } else {
       /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
          de siempre, solo nativo OTA — no incluye LM. */
       const wn = worstNative(discounts, c.id, windows)/100;
       const denom = (1+off)*(1-wn)*pf;
       const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
-      if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     }
   });
   /* base: pushed price that nets target on every channel using its CONSTANT natives
      (window natives are tactical), CON el offset y el LM que ese canal tenga
      REALMENTE configurados hoy (ver comentario arriba — Bloqueante ALTO ronda 2). */
   const day45Lm = lmPctAtDay45(config.lmConfig, {discounts, channels, windows, ceilings: config.ceilings, nights:1});
-  let base=0, baseCh='';
+  let base=0, baseCh='', baseChId=null;
   channels.forEach(c=>{
     /* Fase 2.1: factor EXACTO, no totalPct/100 (redondeado, ver worstNative arriba). */
     const cn = 1-combineChannel(discounts, c.id, 45, 1).factor; /* 45 días: fuera de ventanas tácticas cortas */
@@ -297,7 +298,7 @@ export function compute(config){
     const lm45 = day45Lm.priceOverride!=null ? 0 : day45Lm.lmPct;
     const denom = (1+off)*(1-lm45/100)*(1-cn)*pf;
     const p = denom>0 ? net/denom : Infinity; /* offset <= -100% = imposible netear con un Base finito */
-    if(p>base){base=p;baseCh=c.name+(lm45!==0||off!==0?' (':'')+(lm45!==0?'LM '+fP(lm45):'')+(lm45!==0&&off!==0?' + ':'')+(off!==0?'offset '+fP(off*100):'')+(lm45!==0||off!==0?')':'');}
+    if(p>base){base=p;baseChId=c.id;baseCh=c.name+(lm45!==0||off!==0?' (':'')+(lm45!==0?'LM '+fP(lm45):'')+(lm45!==0&&off!==0?' + ':'')+(off!==0?'offset '+fP(off*100):'')+(lm45!==0||off!==0?')':'');}
   });
   /* Bloqueante P1 (revision externa, ronda 3): un precio LM FIJO activo en el
      dia de referencia (45) hace que Base sea irrelevante para ese escenario —
@@ -362,7 +363,37 @@ export function compute(config){
         ? ' — PriceLabs decide la curva real, así que este número es siempre una PROYECCIÓN, nunca verificable matemáticamente sin el precio diario real de tu cuenta'
         : ' pero todavía no lo marcaste como verificado'}. Min Price, Base Price, Offset sugerido y el veredicto "Rentable" de la Matriz quedan bloqueados hasta que confirmes esto en Resumen → sección "Last-Minute de PriceLabs": elige el modo real que usa tu cuenta y marca la casilla "Confirmé este modo directamente en PriceLabs" (o, si el modo automático es el real, configúralo explícitamente como plano/gradual/precio fijo/tramos con los valores que sí puedes confirmar).`
     : null;
-  return {cost, net, floor, floorCh, base, baseCh, effBase, errors, valid, lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason};
+  /* Fase 5 (revision externa — "datos financieros verificados"):
+     evaluateRecommendationReadiness() (src/domain/readiness.js) es la fuente
+     UNICA que decide, por canal, si falta un dato financiero de NEGOCIO
+     (comision bancaria real, si Hospy aisla el Offset por canal, mezcla VIP
+     de Expedia, Genius+Mobile de Booking, no-reembolsable de Airbnb) para
+     tratar Piso/Base como recomendacion confiable. Es ORTOGONAL a
+     lmBlocked/baseBlocked (arriba): esos cubren Last-Minute; esto cubre
+     datos de negocio que no tienen nada que ver con LM. Solo se activa si
+     config.verification vino explicito — mismo patron ya establecido arriba
+     para lmConfig/floor: callers de test que no pasan verification no ven un
+     bloqueo nuevo que no pidieron. En produccion state.verification SIEMPRE
+     esta presente (defaultVerification()), asi que este gate esta activo en
+     la app real desde el primer render. */
+  const readiness = config.verification
+    ? evaluateRecommendationReadiness({channels, discounts, verification: config.verification})
+    : null;
+  const channelReady = chId => !readiness || !readiness.byChannel[chId] || readiness.byChannel[chId].ready;
+  const missingFor = chId => (readiness && readiness.byChannel[chId] && readiness.byChannel[chId].missing) || [];
+  const floorReadinessBlocked = !!(floorChId && !channelReady(floorChId));
+  const floorReadinessBlockedReason = floorReadinessBlocked
+    ? `Min Price hoy lo fija ${floorCh} — pero ese canal depende de un dato financiero sin confirmar: ${missingFor(floorChId).map(m=>m.reason).join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" antes de tratar este número como definitivo.`
+    : null;
+  const baseReadinessBlocked = !!(baseChId && !channelReady(baseChId));
+  const baseReadinessBlockedReason = baseReadinessBlocked
+    ? `Base Price hoy lo fija ${baseCh} — pero ese canal depende de un dato financiero sin confirmar: ${missingFor(baseChId).map(m=>m.reason).join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" antes de tratar este número como definitivo.`
+    : null;
+  return {
+    cost, net, floor, floorCh, floorChId, base, baseCh, baseChId, effBase, errors, valid,
+    lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason,
+    readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason
+  };
 }
 
 /* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),

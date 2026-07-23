@@ -38,7 +38,7 @@ import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
 import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
-import {isVerified} from './verification.js';
+import {isResolved} from './verification.js';
 
 export function quoteScenario(scenario, config){
   const {channels, discounts, windows, ceilings} = config;
@@ -93,9 +93,9 @@ export function quoteScenario(scenario, config){
   /* 2. Offset del canal (PriceLabs Pricing Offset), sobre el precio ya con LM. */
   const off = pct2(ch.offsetPct);
   const priceAfterOffset = priceAfterLm*(1+off/100);
-  const offsetVerified = config.verification ? isVerified(config.verification, 'hospyOffsetIsolated') : false;
-  assumptions.push(offsetVerified
-    ? 'Offset por canal confirmado en Hospy como aislado (verification.hospyOffsetIsolated).'
+  const offsetResolved = config.verification ? isResolved(config.verification, 'hospyOffsetIsolated') : false;
+  assumptions.push(offsetResolved
+    ? 'Offset por canal confirmado/resuelto en Hospy (verification.hospyOffsetIsolated).'
     : 'Offset se asume especifico por canal (Pricing Offset de PriceLabs) — NO CONFIRMADO en Hospy si realmente se aisla por canal o se distribuye a todos los conectados (ver src/domain/verification.js, clave hospyOffsetIsolated). No trates el Offset como garantia hasta confirmarlo.');
 
   /* 3. Descuentos nativos del canal, a los dias/noches REALES del escenario. */

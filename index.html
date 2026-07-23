@@ -257,8 +257,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div id="lmModeFields"></div>
 </section>
 <section class="card">
-  <h2>Estado de verificación <span class="hint">datos que esta unidad todavía no confirmó contigo</span></h2>
-  <p class="hint">Estos supuestos aparecen marcados como "no verificado" en alertas y en el Simulador hasta que los confirmes aquí. Marcar "Verificado" no cambia ningún número — solo deja de mostrar la advertencia.</p>
+  <h2>Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
+  <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y reglas de Hospy/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Hospy — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
   <div id="verificationList"></div>
 </section>
 </div>
@@ -406,7 +406,7 @@ function compute(){
   return computeBase({
     fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
-    lmConfig: state.lmConfig,
+    lmConfig: state.lmConfig, verification: state.verification,
     costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined
   });
 }
@@ -457,7 +457,16 @@ function renderKpis(model){
     kFloorWhy.textContent='LM sin verificar — ver aviso arriba'; kBaseWhy.textContent='LM sin verificar — ver aviso arriba';
     return;
   }
-  kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
+  /* Fase 5 (revision externa — "datos financieros verificados"): floorReadinessBlocked
+     es ORTOGONAL a lmBlocked (arriba) — bloquea el Piso si el canal que lo
+     determina (model.floorChId) depende de un dato de negocio (comision
+     bancaria real, Offset aislado en Hospy, etc.) que Dani todavia no
+     confirmo (ver src/domain/readiness.js). */
+  if(model.floorReadinessBlocked){
+    kFloor.textContent='—'; kFloorWhy.textContent='dato financiero sin verificar — ver aviso arriba';
+  } else {
+    kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
+  }
   /* Bloqueante P1 (revision externa, ronda 3): un precio LM FIJO activo en el
      dia de referencia (45) hace que Base sea irrelevante ahi — PriceLabs
      publica ese precio fijo sin importar Base. El Piso (floor) NO se bloquea
@@ -467,6 +476,10 @@ function renderKpis(model){
      evaluaban un unico dia (45) ignorando el override, quedan bloqueados aqui. */
   if(model.baseBlocked){
     kBase.textContent='—'; kBaseWhy.textContent='Precio LM fijo activo — ver aviso arriba';
+    return;
+  }
+  if(model.baseReadinessBlocked){
+    kBase.textContent='—'; kBaseWhy.textContent='dato financiero sin verificar — ver aviso arriba';
     return;
   }
   kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
@@ -483,11 +496,20 @@ function renderValidation(model){
      nada en el dia de referencia"). Mismo componente visual (#validationBanner),
      tag distinto para no confundir los dos motivos. */
   const baseBlock = model.baseBlocked ? [model.baseBlockedReason] : [];
-  if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length){ box.innerHTML=''; return; }
+  /* Fase 5 (revision externa — "datos financieros verificados"): avisos
+     separados de lmBlock/baseBlock — un dato de NEGOCIO (comision bancaria,
+     Offset en Hospy, VIP de Expedia, Genius+Mobile de Booking, no-reembolsable
+     de Airbnb) sin confirmar es un motivo de bloqueo DISTINTO a Last-Minute,
+     aunque el LM ya este verificado. */
+  const floorReadinessBlock = model.floorReadinessBlocked ? [model.floorReadinessBlockedReason] : [];
+  const baseReadinessBlock = model.baseReadinessBlocked ? [model.baseReadinessBlockedReason] : [];
+  if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
     ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
     ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Verificación de datos financieros →</button></div>` : ''}
+    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Verificación de datos financieros →</button></div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
 }
@@ -552,17 +574,33 @@ function renderChannelPages(model){
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
           <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
-          <div class="offset-hint">${model.lmBlocked
-            ? '⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).'
-            : model.baseBlocked
-              /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
-                 (precio LM fijo activo en el dia de referencia), pero el
-                 Offset SI puede seguir controlando el resultado — se aplica
-                 DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
-                 Se muestra el numero corregido, con nota explicita de que ya
-                 NO se calcula sobre Base. */
-              ? `⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`
-              : `Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`}</div>
+          ${(()=>{
+            const chReady = !model.readiness || !model.readiness.byChannel[c.id] || model.readiness.byChannel[c.id].ready;
+            /* Fase 5 (revision externa — "datos financieros verificados"): si
+               ESTE canal depende de un dato de negocio sin confirmar (comision
+               bancaria real, Offset aislado en Hospy, VIP de Expedia,
+               Genius+Mobile de Booking, no-reembolsable de Airbnb), su Offset
+               sugerido/neto estimado tampoco es una recomendacion confiable —
+               mismo principio que lmBlocked/baseBlocked, pero para datos que
+               no tienen nada que ver con Last-Minute (ver readiness.js). Esta
+               rama es la UNICA nueva; las tres siguientes (lmBlocked/
+               baseBlocked/normal) no cambian. */
+            if(!model.lmBlocked && chReady===false){
+              const missing = model.readiness.byChannel[c.id].missing;
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos en Resumen → "Verificación de datos financieros".</div>`;
+            }
+            return `<div class="offset-hint">${model.lmBlocked
+              ? '⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).'
+              : model.baseBlocked
+                /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
+                   (precio LM fijo activo en el dia de referencia), pero el
+                   Offset SI puede seguir controlando el resultado — se aplica
+                   DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
+                   Se muestra el numero corregido, con nota explicita de que ya
+                   NO se calcula sobre Base. */
+                ? `⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`
+                : `Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}`}</div>`;
+          })()}
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
         <div class="chpage-discounts">${activeD}</div>
@@ -575,8 +613,8 @@ function renderMatrix(model){
      bloquean aqui tambien (no solo en renderKpis) — matrixIntro es un resumen
      que Dani puede leer sin haber visto el KPI de Resumen. */
   matrixIntro.innerHTML = `
-    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':f$(model.floor)}</span></div>
-    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':model.floorReadinessBlocked?'— (dato financiero sin verificar)':f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':model.baseReadinessBlocked?'— (dato financiero sin verificar)':f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
      dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
@@ -659,8 +697,9 @@ function renderSim(model){
      bloqueado (LM sin verificar o precio LM fijo activo), no se simula nada
      con un numero inventado — se explica el motivo y se pide un precio manual. */
   const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
-  if((typedPrice==null || !Number.isFinite(typedPrice)) && (model.lmBlocked || model.baseBlocked)){
-    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${model.lmBlocked ? 'Last-Minute sin verificar' : 'precio LM fijo de PriceLabs activo en el día de referencia'}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero el LM en <button type="button" class="goto" data-goto="resumen">Resumen → "Last-Minute de PriceLabs" →</button>.</div>`;
+  if((typedPrice==null || !Number.isFinite(typedPrice)) && (model.lmBlocked || model.baseBlocked || model.baseReadinessBlocked)){
+    const why = model.lmBlocked ? 'Last-Minute sin verificar' : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia' : 'un dato financiero del canal que fija Base sigue sin confirmar';
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen">Resumen → "Verificación de datos financieros" →</button>.</div>`;
     simIgnored.innerHTML = '';
     return;
   }
@@ -670,6 +709,21 @@ function renderSim(model){
   const nights=Math.max(1,parseFloat(simNights.value)||1);
   const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
   const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, marginPct, markupPct, totalDisc} = s;
+  /* Fase 5 (revision externa — "datos financieros verificados"): la
+     simulacion manual NUNCA se bloquea (a diferencia del precargado
+     automatico de Base, ver guard arriba y goSimBtn) — pero mientras dependa
+     de un supuesto sin confirmar (LM sin verificar, precio LM fijo activo, o
+     un dato de negocio del canal elegido sin verificar), el resultado debe
+     etiquetarse EXPLICITAMENTE como no confiable, para que no se use como si
+     fuera una recomendacion automatica. */
+  const chReadyForSim = !model.readiness || !model.readiness.byChannel[chId] || model.readiness.byChannel[chId].ready;
+  const simUnverified = [];
+  if(model.lmBlocked) simUnverified.push('Last-Minute sin verificar');
+  if(model.baseBlocked) simUnverified.push('precio LM fijo activo en el día de referencia');
+  if(!chReadyForSim) model.readiness.byChannel[chId].missing.forEach(m=>simUnverified.push(m.label));
+  const simCaveat = simUnverified.length
+    ? `<div class="alert warn" style="margin-bottom:10px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Simulación con supuestos no verificados; no uses este resultado como recomendación automática — depende de: ${escapeHtml(simUnverified.join('; '))}.</span></div>`
+    : '';
   let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
   html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
@@ -700,7 +754,7 @@ function renderSim(model){
   const summary = afterBank>=cost
     ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
     : `⚠ De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
-  simResult.innerHTML=`<div class="sim-summary">${summary}</div>${html}`;
+  simResult.innerHTML=`${simCaveat}<div class="sim-summary">${summary}</div>${html}`;
   simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${escapeHtml(i.name)} — ${escapeHtml(i.reason)}`).join(' · ')):'';
 }
 const TABS = [
@@ -797,20 +851,48 @@ function renderLmConfig(){
     box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Comparación, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
   }
 }
+function verifEntryHTML(key, chId, entry){
+  const chAttr = chId ? ` data-verif-ch="${escapeHtml(chId)}"` : '';
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+    <select data-verif-status="${key}"${chAttr}>
+      <option value="no_verificado" ${entry.status==='no_verificado'?'selected':''}>No verificado</option>
+      <option value="verificado" ${entry.status==='verificado'?'selected':''}>Verificado</option>
+      <option value="no_aplica" ${entry.status==='no_aplica'?'selected':''}>No aplica</option>
+    </select>
+    <input type="text" data-verif-source="${key}"${chAttr} value="${escapeHtml(entry.source||'')}" placeholder="fuente (extranet, factura, soporte...)" style="min-width:170px;">
+    <input type="date" data-verif-date="${key}"${chAttr} value="${escapeHtml(entry.date||'')}">
+    <input type="text" data-verif-note="${key}"${chAttr} value="${escapeHtml(entry.note||'')}" placeholder="nota" style="flex:1;min-width:160px;">
+  </div>`;
+}
+function verifEntryRef(key, chId){
+  const meta = VERIFICATION_KEYS[key];
+  if(!meta) return null;
+  if(meta.scope==='channel'){
+    if(!state.verification[key]) state.verification[key]={};
+    if(!state.verification[key][chId]) state.verification[key][chId]={status:'no_verificado', source:'', date:'', note:''};
+    return state.verification[key][chId];
+  }
+  if(!state.verification[key]) state.verification[key]={status:'no_verificado', source:'', date:'', note:''};
+  return state.verification[key];
+}
 function renderVerification(){
   const box = document.getElementById('verificationList');
   if(!box) return;
-  box.innerHTML = Object.entries(VERIFICATION_KEYS).map(([key,label])=>{
-    const entry = state.verification[key] || {status:'no_verificado', note:''};
+  box.innerHTML = Object.entries(VERIFICATION_KEYS).map(([key,meta])=>{
+    if(meta.scope==='channel'){
+      const rows = state.channels.map(c=>{
+        const entry = (state.verification[key]||{})[c.id] || {status:'no_verificado', source:'', date:'', note:''};
+        return `<div style="margin:8px 0 8px 12px;"><strong>${escapeHtml(c.name)}</strong>${verifEntryHTML(key, c.id, entry)}</div>`;
+      }).join('');
+      return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
+        <span>${escapeHtml(meta.label)}</span>
+        ${rows}
+      </div>`;
+    }
+    const entry = state.verification[key] || {status:'no_verificado', source:'', date:'', note:''};
     return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
-      <span>${label}</span>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <select data-verif-status="${key}">
-          <option value="no_verificado" ${entry.status==='no_verificado'?'selected':''}>No verificado</option>
-          <option value="verificado" ${entry.status==='verificado'?'selected':''}>Verificado</option>
-        </select>
-        <input type="text" data-verif-note="${key}" value="${escapeHtml(entry.note||'')}" placeholder="nota — dónde/cómo lo confirmaste" style="flex:1;min-width:180px;">
-      </div>
+      <span>${escapeHtml(meta.label)}</span>
+      ${verifEntryHTML(key, null, entry)}
     </div>`;
   }).join('');
 }
@@ -990,12 +1072,26 @@ document.addEventListener('change',e=>{
     renderAll();
   }
   else if(t.dataset.verifStatus){
-    state.verification[t.dataset.verifStatus] = {...(state.verification[t.dataset.verifStatus]||{note:''}), status:t.value};
+    /* Fase 5 (revision externa — "datos financieros verificados"): a
+       diferencia de source/date/note (abajo, puramente informativos), el
+       status SI cambia el bloqueo de Piso/Base/Offset/Matriz para el canal
+       afectado (ver src/domain/readiness.js) — necesita renderAll() para que
+       el resto de la app refleje el cambio de inmediato. */
+    const entry = verifEntryRef(t.dataset.verifStatus, t.dataset.verifCh);
+    if(entry) entry.status = t.value;
     renderAll();
   }
+  else if(t.dataset.verifSource!==undefined){
+    const entry = verifEntryRef(t.dataset.verifSource, t.dataset.verifCh);
+    if(entry) entry.source = t.value;
+  }
+  else if(t.dataset.verifDate!==undefined){
+    const entry = verifEntryRef(t.dataset.verifDate, t.dataset.verifCh);
+    if(entry) entry.date = t.value;
+  }
   else if(t.dataset.verifNote!==undefined){
-    const key=t.dataset.verifNote;
-    state.verification[key] = {...(state.verification[key]||{status:'no_verificado'}), note:t.value};
+    const entry = verifEntryRef(t.dataset.verifNote, t.dataset.verifCh);
+    if(entry) entry.note = t.value;
   }
 });
 document.addEventListener('click',e=>{
@@ -1012,9 +1108,12 @@ document.addEventListener('click',e=>{
        bloqueado, NO se precarga nada (el campo queda vacio — renderSim()
        explica el motivo en vez de simular con un numero inventado) y se
        muestra el mismo aviso en el toast global. */
-    if(model.lmBlocked || model.baseBlocked){
+    if(model.lmBlocked || model.baseBlocked || model.baseReadinessBlocked){
       simPrice.value='';
-      showInputError('Base Price está bloqueado (' + (model.lmBlocked ? 'Last-Minute sin verificar' : 'precio LM fijo de PriceLabs activo en el día de referencia') + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confirma el LM en "Last-Minute de PriceLabs" primero.');
+      const why = model.lmBlocked ? 'Last-Minute sin verificar'
+        : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+        : 'un dato financiero del canal que fija Base sigue sin confirmar (ver Verificación de datos financieros)';
+      showInputError('Base Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confírmalo primero.');
     } else {
       simPrice.value=Math.round(model.base||model.effBase||0);
     }

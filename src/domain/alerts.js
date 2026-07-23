@@ -145,8 +145,18 @@ export function buildAlerts(config, model){
      confirmar. No se agrega como advertencia sobre el mismo tag 'ok' (mismo
      error que se corrigio en la matriz): se reemplaza el tag/nivel entero. */
   if(!A.length){
+    const unreadyChannels = model.readiness ? channels.filter(c=>!(model.readiness.byChannel[c.id]||{ready:true}).ready) : [];
     if(isLmBlocked(config.lmConfig)){
       A.push({lvl:'warn',tag:'LM SIN VERIFICAR',tab:'resumen',msg:'No se detectó ningún conflicto, pero este chequeo depende de Last-Minute que todavía no está verificado (modo automático, proyección no verificable matemáticamente, o un modo configurado sin marcar como confirmado) — confírmalo en Resumen → "Last-Minute de PriceLabs" antes de tratar esto como "sin problemas".'});
+    } else if(unreadyChannels.length){
+      /* Fase 5 (revision externa — "datos financieros verificados"): mismo
+         espiritu que el bloqueante CRITICO de LM (arriba) — "sin conflictos"
+         tambien depende de datos de negocio (comision bancaria, Offset
+         aislado en Hospy, mezcla VIP de Expedia, Genius+Mobile de Booking,
+         no-reembolsable de Airbnb) que ningun canal afectado tiene todavia
+         confirmados. model.readiness (src/domain/readiness.js) es la unica
+         fuente que decide esto. */
+      A.push({lvl:'warn',tag:'DATOS SIN VERIFICAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero ${unreadyChannels.map(c=>c.name).join(', ')} depende${unreadyChannels.length===1?'':'n'} de datos financieros sin confirmar (${unreadyChannels.map(c=>model.readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}) — confírmalos en Resumen → "Verificación de datos financieros" antes de tratar esto como "sin problemas".`});
     } else {
       A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
     }

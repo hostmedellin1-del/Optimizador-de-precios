@@ -13,6 +13,8 @@
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
 
+const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
+
 export const SCHEMA_VERSION = 3;
 
 /* --- helpers de coercion ESTRICTA (Bloqueante 6: nunca `parseFloat(x)||0`
@@ -150,17 +152,48 @@ function normalizeLmConfig(raw, warnings){
   };
 }
 
+/* Fase 5 (revision externa — "datos financieros verificados"): un registro de
+   verificacion ahora guarda status/fuente/fecha/nota (antes solo status/nota),
+   y las claves de alcance 'channel' (hoy solo bankFeePctByChannel) guardan UN
+   registro POR CANAL, no uno solo plano. La regla de seguridad de siempre se
+   mantiene y se REFUERZA: cualquier campo con forma o tipo invalido se
+   DESCARTA a favor de 'no_verificado' — un import malformado (o el formato
+   viejo, plano, de antes de esta fase) JAMAS puede terminar marcando algo como
+   'verificado' por accidente. Si `raw[key]` viene en el formato viejo (un
+   objeto plano {status,note} en vez de {canalId: {...}}), sus sub-claves de
+   canal (raw[key][chId]) simplemente no existen — cada canal cae al default
+   'no_verificado', que es exactamente la migracion segura que se pidio. */
+function normalizeVerificationEntry(raw, warnings, path){
+  const def = {status:'no_verificado', source:'', date:'', note:''};
+  if(!raw || typeof raw!=='object') return def;
+  let status = 'no_verificado';
+  if(VERIFICATION_STATUSES.includes(raw.status)) status = raw.status;
+  else if(raw.status!==undefined) warnings.push(`${path}.status: valor desconocido ("${String(raw.status).slice(0,40)}") — se uso 'no_verificado'.`);
+  const date = (typeof raw.date==='string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date)) ? raw.date : '';
+  if(raw.date!==undefined && raw.date!=='' && !date) warnings.push(`${path}.date: "${String(raw.date).slice(0,40)}" no tiene forma AAAA-MM-DD — se descarto.`);
+  return {
+    status,
+    source: strField(raw, 'source', '', warnings, path, 300),
+    date,
+    note: strField(raw, 'note', '', warnings, path, 800)
+  };
+}
+
 function normalizeVerification(raw, warnings){
   const def = defaultVerification();
   if(!raw || typeof raw!=='object') return def;
   const out = {};
   Object.keys(VERIFICATION_KEYS).forEach(key=>{
-    const entry = raw[key];
-    if(!entry || typeof entry!=='object'){ out[key] = def[key]; return; }
-    out[key] = {
-      status: (entry.status==='verificado') ? 'verificado' : 'no_verificado',
-      note: strField(entry, 'note', '', warnings, `verification.${key}`, 500)
-    };
+    const meta = VERIFICATION_KEYS[key];
+    if(meta.scope==='channel'){
+      const rawVal = raw[key] && typeof raw[key]==='object' ? raw[key] : {};
+      out[key] = {};
+      CHANNELS.forEach(c=>{
+        out[key][c.id] = normalizeVerificationEntry(rawVal[c.id], warnings, `verification.${key}.${c.id}`);
+      });
+    } else {
+      out[key] = normalizeVerificationEntry(raw[key], warnings, `verification.${key}`);
+    }
   });
   return out;
 }
