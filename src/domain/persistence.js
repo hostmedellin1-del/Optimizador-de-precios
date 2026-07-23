@@ -12,6 +12,7 @@
                               schemaVersion, savedAt, migratedFromV2Key?}. */
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
+import {defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './monthly-economics.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
 
@@ -198,6 +199,66 @@ function normalizeVerification(raw, warnings){
   return out;
 }
 
+const MONTHLY_INCOME_TYPES = ['manual', 'channel', 'mix'];
+const CHANNEL_IDS = CHANNELS.map(c => c.id);
+
+function normalizeMonthlyChannelScenario(raw, def, warnings, path){
+  const out = {...def};
+  if(!raw || typeof raw!=='object') return out;
+  if(CHANNEL_IDS.includes(raw.chId)) out.chId = raw.chId;
+  else if(raw.chId!==undefined) warnings.push(`${path}.chId: "${String(raw.chId).slice(0,40)}" no es un canal conocido — se uso "${def.chId}".`);
+  out.days = Math.round(nonNegField(raw, 'days', def.days, warnings, path, {min:0}));
+  out.nights = Math.round(nonNegField(raw, 'nights', def.nights, warnings, path, {min:1}));
+  out.price = nonNegField(raw, 'price', def.price, warnings, path, {min:0});
+  return out;
+}
+
+/* Fase "planificación mensual" — igual disciplina que discounts/channels
+   arriba: solo canales CONOCIDOS (whitelist contra CHANNEL_IDS), nunca se
+   inventa una fila de mezcla nueva desde un import; un `type` desconocido cae
+   a 'manual' (el mas seguro — nunca calcula sin que Dani escriba un numero
+   el mismo), nunca se ejecuta ni preserva el valor crudo. */
+function normalizeMonthlyIncomeScenario(raw, warnings){
+  const def = defaultMonthlyIncomeScenario(CHANNEL_IDS);
+  if(!raw || typeof raw!=='object') return def;
+  const type = MONTHLY_INCOME_TYPES.includes(raw.type) ? raw.type : 'manual';
+  if(raw.type!==undefined && type!==raw.type) warnings.push(`monthlyIncomeScenario.type: "${String(raw.type).slice(0,40)}" no es un tipo reconocido — se uso 'manual'.`);
+  const manualNetPerNight = numField(raw, 'manualNetPerNight', def.manualNetPerNight, warnings, 'monthlyIncomeScenario');
+  const channel = normalizeMonthlyChannelScenario(raw.channel, def.channel, warnings, 'monthlyIncomeScenario.channel');
+  const rawMixById = Object.fromEntries((Array.isArray(raw.mix) ? raw.mix : []).filter(m => m && CHANNEL_IDS.includes(m.chId)).map(m => [m.chId, m]));
+  if(!Array.isArray(raw.mix) && raw.mix!==undefined) warnings.push('monthlyIncomeScenario.mix: no es un arreglo — se uso el default (todos apagados).');
+  const mix = def.mix.map(defRow => {
+    const rawRow = rawMixById[defRow.chId];
+    if(!rawRow || typeof rawRow!=='object') return {...defRow};
+    const path = `monthlyIncomeScenario.mix.${defRow.chId}`;
+    return {
+      chId: defRow.chId,
+      on: boolField(rawRow, 'on', defRow.on),
+      weightPct: pctField(rawRow, 'weightPct', defRow.weightPct, warnings, path, {min:0, max:100}),
+      days: Math.round(nonNegField(rawRow, 'days', defRow.days, warnings, path, {min:0})),
+      nights: Math.round(nonNegField(rawRow, 'nights', defRow.nights, warnings, path, {min:1})),
+      price: nonNegField(rawRow, 'price', defRow.price, warnings, path, {min:0})
+    };
+  });
+  return {type, manualNetPerNight, channel, mix};
+}
+
+/* reservePct/taxReservePct/ownerTargetPct/managerTargetPct: 0-100 estricto —
+   un valor fuera de rango se descarta a favor de 0 (nunca inventa un reparto).
+   `configured` migra a `false` para cualquier unidad que no lo tenga — jamas
+   `true` por defecto (ver CLAUDE.md: nunca repartir el margin viejo solo). */
+function normalizeMonthlyDistribution(raw, warnings){
+  const def = defaultMonthlyDistribution();
+  if(!raw || typeof raw!=='object') return def;
+  return {
+    configured: boolField(raw, 'configured', def.configured),
+    ownerTargetPct: pctField(raw, 'ownerTargetPct', def.ownerTargetPct, warnings, 'monthlyDistribution', {min:0, max:100}),
+    managerTargetPct: pctField(raw, 'managerTargetPct', def.managerTargetPct, warnings, 'monthlyDistribution', {min:0, max:100}),
+    reservePct: pctField(raw, 'reservePct', def.reservePct, warnings, 'monthlyDistribution', {min:0, max:100}),
+    taxReservePct: pctField(raw, 'taxReservePct', def.taxReservePct, warnings, 'monthlyDistribution', {min:0, max:100})
+  };
+}
+
 function normalizeCostBreakdown(raw, warnings){
   const def = defaultCostBreakdown();
   const out = {...def};
@@ -256,6 +317,8 @@ export function normalizeUnit(raw){
   const costBreakdown = normalizeCostBreakdown(raw.costBreakdown, warnings);
   const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
   const verification = normalizeVerification(raw.verification, warnings);
+  const monthlyIncomeScenario = normalizeMonthlyIncomeScenario(raw.monthlyIncomeScenario, warnings);
+  const monthlyDistribution = normalizeMonthlyDistribution(raw.monthlyDistribution, warnings);
 
   const state = {
     name,
@@ -268,6 +331,7 @@ export function normalizeUnit(raw){
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
     costBreakdown, channels, discounts, ceilings, lmConfig, verification,
+    monthlyIncomeScenario, monthlyDistribution,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
   return {state, warnings};

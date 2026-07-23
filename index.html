@@ -261,6 +261,26 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y reglas de Hospy/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Hospy — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
   <div id="verificationList"></div>
 </section>
+<section class="card">
+  <h2>Rentabilidad mensual y punto de equilibrio <span class="hint">proyección de planificación — no es el costo/ingreso exacto de una reserva individual</span></h2>
+  <p class="hint">Usa los costos fijos MENSUALES y "Noches ocupadas al mes" de la calculadora de costos detallada (arriba) más la Estadía promedio (Resumen) para proyectar si la unidad cierra el mes en positivo, y cuántas noches necesitas vender para no perder plata. Reservas estimadas = noches ocupadas planeadas ÷ estadía promedio — es una PROYECCIÓN de planificación, no el número exacto de reservas reales del mes.</p>
+
+  <h3 style="margin-top:16px;">Escenario de ingreso</h3>
+  <div class="field"><span>Método</span>
+    <select data-mon="incomeType">
+      <option value="manual">Manual — neto/noche que tú escribes</option>
+      <option value="channel">Canal específico cotizado (usa quoteScenario)</option>
+      <option value="mix">Mezcla de canales configurada</option>
+    </select>
+  </div>
+  <div id="monthlyIncomeFields"></div>
+
+  <h3 style="margin-top:16px;">Reparto Propietario / Administrador (PM) <span class="hint">apagado por defecto — no reemplaza el Margen objetivo existente</span></h3>
+  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-mon="distConfigured"><span>Activar reparto detallado (si no, la utilidad mensual se muestra sin dividir)</span></label></div>
+  <div id="monthlyDistFields"></div>
+
+  <div id="monthlyResult"></div>
+</section>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -331,6 +351,7 @@ import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
+import {computeMonthlyEconomics, defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './src/domain/monthly-economics.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -373,7 +394,9 @@ let state = {
   discounts: defaultDiscounts(),
   ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
   lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
-  verification: defaultVerification() // Fase 4 — registro Verificado/No verificado por unidad
+  verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
+  monthlyIncomeScenario: defaultMonthlyIncomeScenario(CHANNELS.map(c=>c.id)), // PLANIFICACIÓN MENSUAL — escenario de ingreso para planificación mensual
+  monthlyDistribution: defaultMonthlyDistribution() // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
 };
 
 /* ================== ENGINE ================== */
@@ -422,6 +445,21 @@ function quoteConfig(){
     costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined,
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
   };
+}
+/* PLANIFICACIÓN MENSUAL — punto de equilibrio. Wrapper delgado sobre
+   src/domain/monthly-economics.js (computeMonthlyEconomics) — cero fórmula
+   financiera aquí, solo arma el config con `state`/quoteConfig()/model.readiness
+   (misma fuente que ya usan Piso/Base/Matriz/Alertas, ver Fase 5). */
+function computeMonthly(model){
+  return computeMonthlyEconomics({
+    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined,
+    avgNights: state.avgNights,
+    incomeScenario: {...state.monthlyIncomeScenario, mix: state.monthlyIncomeScenario.mix.filter(m=>m.on)},
+    quoteConfig: quoteConfig(),
+    distribution: state.monthlyDistribution,
+    currency: state.currency,
+    readiness: model.readiness
+  });
 }
 
 /* ================== ALERTS ================== */
@@ -791,7 +829,7 @@ function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
-  renderLmConfig(); renderVerification();
+  renderLmConfig(); renderVerification(); renderMonthlyIncomeFields(); renderMonthlyDistFields(); renderMonthlyResult(model);
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -904,6 +942,93 @@ function renderVerification(){
       ${verifEntryHTML(key, null, entry)}
     </div>`;
   }).join('');
+}
+/* PLANIFICACIÓN MENSUAL — punto de equilibrio. Estas tres funciones
+   SOLO arman HTML/leen-escriben `state.monthlyIncomeScenario`/
+   `state.monthlyDistribution` — el cálculo real vive en
+   src/domain/monthly-economics.js (computeMonthlyEconomics), consumido via
+   computeMonthly() arriba. Cero fórmula financiera aquí. */
+function renderMonthlyIncomeFields(){
+  const box = document.getElementById('monthlyIncomeFields');
+  const sel = document.querySelector('[data-mon="incomeType"]');
+  if(!box || !sel) return;
+  const sc = state.monthlyIncomeScenario;
+  sel.value = sc.type;
+  if(sc.type==='manual'){
+    box.innerHTML = `<div class="field"><span>Neto por noche (después de comisiones — dato directo, tú lo defines)</span><input type="number" data-mon="manualNetPerNight" value="${escapeHtml(sc.manualNetPerNight)}"></div>`;
+  } else if(sc.type==='channel'){
+    const ch = sc.channel;
+    box.innerHTML = `<div class="row">
+      <div class="field"><span>Canal</span><select data-mon="channelChId">${state.channels.map(c=>`<option value="${c.id}" ${c.id===ch.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><span>Días de anticipación</span><input type="number" data-mon="channelDays" value="${escapeHtml(ch.days)}"></div>
+      <div class="field"><span>Noches</span><input type="number" data-mon="channelNights" value="${escapeHtml(ch.nights)}" min="1"></div>
+      <div class="field"><span>Precio PriceLabs (antes de LM/Offset/descuentos)</span><input type="number" data-mon="channelPrice" value="${escapeHtml(ch.price)}"></div>
+    </div>`;
+  } else if(sc.type==='mix'){
+    box.innerHTML = `<p class="hint">Marca los canales que quieres mezclar y su % de peso — deben sumar 100%.</p>` +
+      sc.mix.map(m=>{
+        const c = state.channels.find(x=>x.id===m.chId);
+        return `<div class="row" style="align-items:center;">
+          <label style="display:flex;gap:6px;align-items:center;min-width:110px;"><input type="checkbox" data-mon-mix="on" data-mon-ch="${m.chId}" ${m.on?'checked':''}><span>${escapeHtml(c?c.name:m.chId)}</span></label>
+          <div class="field"><span>% peso</span><input type="number" data-mon-mix="weightPct" data-mon-ch="${m.chId}" value="${escapeHtml(m.weightPct)}"></div>
+          <div class="field"><span>Días</span><input type="number" data-mon-mix="days" data-mon-ch="${m.chId}" value="${escapeHtml(m.days)}"></div>
+          <div class="field"><span>Noches</span><input type="number" data-mon-mix="nights" data-mon-ch="${m.chId}" value="${escapeHtml(m.nights)}" min="1"></div>
+          <div class="field"><span>Precio</span><input type="number" data-mon-mix="price" data-mon-ch="${m.chId}" value="${escapeHtml(m.price)}"></div>
+        </div>`;
+      }).join('');
+  }
+}
+function renderMonthlyDistFields(){
+  const box = document.getElementById('monthlyDistFields');
+  const chk = document.querySelector('[data-mon="distConfigured"]');
+  if(!box || !chk) return;
+  const d = state.monthlyDistribution;
+  chk.checked = !!d.configured;
+  if(!d.configured){ box.innerHTML=''; return; }
+  box.innerHTML = `<div class="row">
+    <div class="field"><span>Propietario % <span class="hint">de la utilidad distribuible</span></span><input type="number" data-mon="ownerTargetPct" value="${escapeHtml(d.ownerTargetPct)}"></div>
+    <div class="field"><span>Administrador/PM % <span class="hint">de la utilidad distribuible</span></span><input type="number" data-mon="managerTargetPct" value="${escapeHtml(d.managerTargetPct)}"></div>
+    <div class="field"><span>Reserva % <span class="hint">del ingreso neto mensual</span></span><input type="number" data-mon="reservePct" value="${escapeHtml(d.reservePct)}"></div>
+    <div class="field"><span>Impuestos % <span class="hint">del ingreso neto mensual</span></span><input type="number" data-mon="taxReservePct" value="${escapeHtml(d.taxReservePct)}"></div>
+  </div>`;
+}
+function renderMonthlyResult(model){
+  const box = document.getElementById('monthlyResult');
+  if(!box) return;
+  const m = computeMonthly(model);
+  if(!m.ok){
+    box.innerHTML = `<div class="alert warn" style="margin-top:12px;"><span class="tag">NO CALCULABLE</span><span>${escapeHtml(m.reason)}</span></div>`;
+    return;
+  }
+  const distBlock = m.distribution.configured
+    ? `<div class="kpi"><span class="l">Propietario</span><span class="v">${f$(m.distribution.ownerAmt)}</span></div>
+       <div class="kpi"><span class="l">Administrador/PM</span><span class="v">${f$(m.distribution.managerAmt)}</span></div>
+       ${Math.abs(m.distribution.undistributedAmt)>0.005 ? `<div class="kpi"><span class="l">Utilidad no distribuida</span><span class="v">${f$(m.distribution.undistributedAmt)}</span></div>` : ''}`
+    : '';
+  const sensRows = m.sensitivity.map(s=>`<tr>
+      <td>${s.nights}</td><td class="out">${s.estimatedReservations.toFixed(1)}</td><td class="out">${f$(s.netIncomeMonthly)}</td>
+      <td class="out">${f$(s.variableCostsMonthly)}</td><td class="out" style="${s.profitMonthly<0?'color:var(--accent);font-weight:600;':''}">${f$(s.profitMonthly)}</td>
+    </tr>`).join('');
+  box.innerHTML = `
+    ${m.incomeSource.unverified ? `<div class="alert warn" style="margin-top:12px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Este resultado mensual depende de datos sin confirmar: ${escapeHtml(m.incomeSource.unverifiedReasons.join('; '))}. No lo trates como una recomendación automática hasta confirmarlos.</span></div>` : ''}
+    <div class="kpis" style="margin-top:12px;">
+      <div class="kpi"><span class="l">Reservas estimadas/mes</span><span class="v">${m.estimatedReservations.toFixed(1)}</span></div>
+      <div class="kpi"><span class="l">Ingreso neto mensual</span><span class="v">${f$(m.netIncomeMonthly)}</span></div>
+      <div class="kpi"><span class="l">Costos fijos mensuales</span><span class="v">${f$(m.fixedCostsMonthly)}</span></div>
+      <div class="kpi"><span class="l">Costos variables mensuales</span><span class="v">${f$(m.variableCostsMonthly)}</span></div>
+      ${m.reserveAmt>0 ? `<div class="kpi"><span class="l">Reserva</span><span class="v">${f$(m.reserveAmt)}</span></div>` : ''}
+      ${m.taxAmt>0 ? `<div class="kpi"><span class="l">Impuestos</span><span class="v">${f$(m.taxAmt)}</span></div>` : ''}
+      <div class="kpi accent"><span class="l">Utilidad distribuible</span><span class="v">${f$(m.profitMonthly)}</span><span class="s">${m.marginMonthlyPct!=null?'margen '+fP(m.marginMonthlyPct):'ingreso neto = 0'}</span></div>
+      <div class="kpi accent"><span class="l">Noches de equilibrio</span><span class="v">${m.breakeven.reachable ? m.breakeven.nightsCeil : '—'}</span><span class="s">${m.breakeven.reachable ? 'exacto '+m.breakeven.nightsExact.toFixed(1) : 'no alcanzable'}</span></div>
+      ${distBlock}
+    </div>
+    ${!m.breakeven.reachable ? `<div class="alert bad" style="margin-top:8px;"><span class="tag">EQUILIBRIO NO ALCANZABLE</span><span>${escapeHtml(m.breakeven.reason)}</span></div>` : ''}
+    <h3 style="margin-top:16px;">Sensibilidad por ocupación</h3>
+    <div class="table-wrap"><table><thead><tr><th>Noches ocupadas</th><th>Reservas est.</th><th>Ingreso neto</th><th>Costos variables</th><th>Utilidad</th></tr></thead>
+    <tbody>${sensRows}</tbody></table></div>
+    ${m.assumptions.length ? `<p class="hint" style="margin-top:10px;">${m.assumptions.map(a=>escapeHtml(a)).join('<br>')}</p>` : ''}
+    <p class="hint" style="margin-top:6px;">${escapeHtml(m.incomeSource.description)}</p>
+  `;
 }
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
@@ -1101,6 +1226,70 @@ document.addEventListener('change',e=>{
   else if(t.dataset.verifNote!==undefined){
     const entry = verifEntryRef(t.dataset.verifNote, t.dataset.verifCh);
     if(entry) entry.note = t.value;
+  }
+  /* PLANIFICACIÓN MENSUAL: mismo patrón que todo lo demás (Bloqueante
+     MEDIO ronda 2) — cero `parseFloat(t.value)||0` silencioso, siempre
+     readNumField()/parseValue() con rango y motivo explícito. */
+  else if(t.dataset.mon){
+    const key = t.dataset.mon;
+    const sc = state.monthlyIncomeScenario;
+    if(key==='incomeType'){ sc.type = t.value; renderAll(); return; }
+    if(key==='manualNetPerNight'){
+      const r = readNumField(t, sc.manualNetPerNight, {min:-1e7, max:1e7, label:'Neto por noche (planificación mensual)'});
+      if(!r.ok) return;
+      sc.manualNetPerNight = r.value; renderAll();
+    }
+    else if(key==='channelChId'){ sc.channel.chId = t.value; renderAll(); }
+    else if(key==='channelDays'){
+      const r = readNumField(t, sc.channel.days, {min:0, max:9999, integer:true, label:'Días de anticipación (planificación mensual)'});
+      if(!r.ok) return;
+      sc.channel.days = r.value; renderAll();
+    }
+    else if(key==='channelNights'){
+      const r = readNumField(t, sc.channel.nights, {min:1, max:365, integer:true, label:'Noches del escenario (planificación mensual)'});
+      if(!r.ok) return;
+      sc.channel.nights = r.value; renderAll();
+    }
+    else if(key==='channelPrice'){
+      const r = readNumField(t, sc.channel.price, {min:0, max:1e7, label:'Precio PriceLabs del escenario (planificación mensual)'});
+      if(!r.ok) return;
+      sc.channel.price = r.value; renderAll();
+    }
+    else if(key==='distConfigured'){ state.monthlyDistribution.configured = t.checked; renderAll(); }
+    else if(['ownerTargetPct','managerTargetPct','reservePct','taxReservePct'].includes(key)){
+      const LABELS = {ownerTargetPct:'Propietario %', managerTargetPct:'Administrador/PM %', reservePct:'Reserva %', taxReservePct:'Impuestos %'};
+      const r = readNumField(t, state.monthlyDistribution[key], {min:0, max:100, label:LABELS[key]+' (reparto mensual)'});
+      if(!r.ok) return;
+      state.monthlyDistribution[key] = r.value; renderAll();
+    }
+  }
+  else if(t.dataset.monMix){
+    const chId = t.dataset.monCh;
+    const row = state.monthlyIncomeScenario.mix.find(m=>m.chId===chId);
+    if(!row) return;
+    const f = t.dataset.monMix;
+    const chName = (state.channels.find(c=>c.id===chId)||{}).name || chId;
+    if(f==='on'){ row.on = t.checked; renderAll(); }
+    else if(f==='weightPct'){
+      const r = readNumField(t, row.weightPct, {min:0, max:100, label:`${chName} — % peso (mezcla mensual)`});
+      if(!r.ok) return;
+      row.weightPct = r.value; renderAll();
+    }
+    else if(f==='days'){
+      const r = readNumField(t, row.days, {min:0, max:9999, integer:true, label:`${chName} — días (mezcla mensual)`});
+      if(!r.ok) return;
+      row.days = r.value; renderAll();
+    }
+    else if(f==='nights'){
+      const r = readNumField(t, row.nights, {min:1, max:365, integer:true, label:`${chName} — noches (mezcla mensual)`});
+      if(!r.ok) return;
+      row.nights = r.value; renderAll();
+    }
+    else if(f==='price'){
+      const r = readNumField(t, row.price, {min:0, max:1e7, label:`${chName} — precio (mezcla mensual)`});
+      if(!r.ok) return;
+      row.price = r.value; renderAll();
+    }
   }
 });
 document.addEventListener('click',e=>{

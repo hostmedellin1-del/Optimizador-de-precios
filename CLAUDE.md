@@ -387,6 +387,13 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 
 ## 5. Pendiente real — son decisiones de negocio de Dani, no técnicas. NO inventar valores.
 
+**FASE 5: los puntos 2, 3, 6 y 7 de abajo ya NO son solo "pendientes documentados" — desde
+`src/domain/readiness.js`, mientras sigan sin confirmarse en Resumen → "Verificación de
+datos financieros", BLOQUEAN activamente Piso/Base/Offset/"Rentable" de los canales que
+afectan (ver tabla en sección 9). Confirmarlos ahí (marcar "Verificado" con fuente/fecha,
+o "No aplica" si Dani confirma que no corresponde a esta unidad) es lo único que los
+desbloquea — nunca se infieren ni se asumen.**
+
 1. Costos reales de la unidad 902 (Alcázar de Oviedo). Hoy el modelo usa el ejemplo
    genérico del webinar de Kunas ($54 costo/noche, $98 neto objetivo, margen 45%) — son
    ilustrativos, NO son los costos reales de Dani. Todo lo demás depende de esto.
@@ -396,8 +403,11 @@ daba 0% cuando el offset REAL necesario era +46.5%.
    cargue el dato real de cada unidad.
 2. Confirmar en la extranet real de Booking.com: ¿Genius y Mobile Rate están AMBOS
    activos hoy? Se asumió que sí (10% + 10%) — cambia cuál canal termina fijando el piso.
+   **(clave `bookingGeniusMobileBoth` — bloquea Booking mientras esté pendiente.)**
 3. % real de comisión bancaria por canal. Hoy: Booking 6%, Directo 6%, Airbnb 0%,
    Expedia 0% — son estimados de Dani a falta de revisar facturas, no verificados.
+   **(clave `bankFeePctByChannel`, POR CANAL — bloquea cada canal con comisión > 0%
+   mientras esté pendiente; Airbnb/Expedia en 0% no lo necesitan.)**
 4. Multi-moneda: existe el campo `currency` (USD/COP) pero es solo una etiqueta de
    visualización, no convierte tasas. Varias unidades reales de Dani están en COP
    (Distrito Primavera, Casa Río Adentro, Villa Juliana, El Refugio).
@@ -406,6 +416,8 @@ daba 0% cuando el offset REAL necesario era +46.5%.
    Dani lo pida — es una función nueva, no un arreglo.
 6. Verificar en Hospy si el Offset por canal de PriceLabs realmente se aísla por canal o
    se distribuye a todos los conectados (ver advertencia sección 2).
+   **(clave `hospyOffsetIsolated` — bloquea cualquier canal con Offset ≠ 0% mientras esté
+   pendiente.)**
 8. Revisar los Techos por ventana en Comparación ahora que la Oferta VIP de Expedia es
    real (20%, siempre activa, no editable) — varias ventanas (8-14/15-29/30+ días) tienen
    techo por defecto (8%/0%/15%) más bajo que ese 20%, así que Expedia sale "TECHO
@@ -413,6 +425,14 @@ daba 0% cuando el offset REAL necesario era +46.5%.
    Expedia siempre trae 20% mínimo, o acepta que en esas ventanas Expedia va a estar
    siempre marcado como excedido (y competir menos ahí)? No es un bug, es una decisión de
    negocio que depende de qué tanto peso le da Dani a Expedia en esas ventanas.
+   **(la mezcla VIP real, clave `expediaVipTierMix`, bloquea Expedia por separado —
+   confirmar el % del techo no reemplaza confirmar la mezcla real de huéspedes.)**
+9. % exacto del descuento no reembolsable de Airbnb, si este listing lo tiene activo.
+   Hoy apagado en 0% por defecto (nadie inventó un 10%). **(clave `airbnbNonRefundable` —
+   solo bloquea Airbnb si Dani activa este descuento sin confirmar el % real.)**
+10. Moneda real y tipo de cambio por canal, si una unidad opera con monedas distintas
+    entre OTAs (ver punto 4) — hoy no modelado, no confundir con el punto 4 (ese es
+    "no convierte", este es "no está ni preguntado por canal").
 
 ---
 
@@ -557,13 +577,50 @@ Capa apilable POST-promo en `combineChannel()` — se aplica DESPUÉS de que gan
 del grupo `'promo'`, no compite dentro de ese grupo. Apagado, en 0% y `verified:false`
 por defecto: nadie inventó un 10%, Dani debe confirmar por listing si aplica y el % real.
 
-### Verificado / No-verificado (`src/domain/verification.js`)
+### Verificado / No-verificado (`src/domain/verification.js`) y bloqueo real por canal (`src/domain/readiness.js`, FASE 5)
 Registro por unidad para hechos que la app NUNCA puede confirmar sola (Genius+Mobile
 ambos activos en Booking, aislamiento real del Offset en Hospy, comisión bancaria real
 por canal, mezcla de niveles VIP de Expedia, modo real de Last-Minute, no-reembolsable de
-Airbnb). Todo arranca en `'no_verificado'` — pasar a `'verificado'` es una acción
-explícita de Dani (con nota de dónde lo confirmó), nunca automática ni asumida al cargar
-una unidad vieja que no tenía esta clave.
+Airbnb). Cada clave declara un `scope`: `'global'` (un registro para toda la unidad) o
+`'channel'` (un registro POR CANAL — hoy solo `bankFeePctByChannel`, porque la comisión
+bancaria real puede confirmarse en un canal y no en otro). Cada registro guarda
+`{status, source, date, note}` — no solo `status/note` como antes. `status` puede ser
+`'no_verificado'` (pendiente, bloquea), `'verificado'` (confirmado, no bloquea) o
+`'no_aplica'` (Dani confirmó explícitamente que ese dato no es relevante para esta
+unidad/canal — tampoco bloquea, pero es una resolución explícita, distinta de "pendiente").
+Todo arranca en `'no_verificado'` — pasar a otro estado es una acción explícita de Dani,
+nunca automática ni asumida al cargar una unidad vieja que no tenía esta clave (ni al
+importar un archivo con un `status` desconocido o con forma inválida — se descarta a favor
+de `'no_verificado'`, ver `src/domain/persistence.js`).
+
+**FASE 5 (revisión externa — "datos financieros verificados"): esto dejó de ser una
+etiqueta visual y pasó a ser una regla real de bloqueo.** Antes, el código ya sabía que
+estos datos estaban "no verificados", pero ninguna vista lo usaba para impedir nada —
+Piso/Base/Offset/"Rentable" se mostraban igual de confiados. `evaluateRecommendationReadiness()`
+(`src/domain/readiness.js`, función pura, la única fuente de esta regla) recibe
+`{channels, discounts, verification}` y decide, **por canal**, qué dato pendiente lo
+afecta:
+
+| Dato (`VERIFICATION_KEYS`) | Alcance | Afecta a... | Cuándo aplica |
+|---|---|---|---|
+| `hospyOffsetIsolated` | global | cualquier canal con Offset ≠ 0% | siempre que ese canal tenga Offset configurado |
+| `bankFeePctByChannel` | **por canal** | el canal cuya comisión bancaria/pasarela > 0% | por defecto Booking y Directo (6%); Airbnb/Expedia en 0% no lo necesitan |
+| `bookingGeniusMobileBoth` | global | Booking | solo si Genius Y Mobile Rate están AMBOS activos |
+| `expediaVipTierMix` | global | Expedia | solo si la Oferta VIP (`ex_mod`) está activa |
+| `airbnbNonRefundable` | global | Airbnb | solo si el no-reembolsable (`ab_nonref`) está activo |
+| `priceLabsLmMode` | global | (informativo) | el bloqueo real de LM ya vive en `lmConfig.verified`/`isLmBlocked()` — esta clave es solo para dejar nota/fuente/fecha de esa confirmación, nunca una segunda fuente de verdad |
+
+Es **ortogonal** a `lmBlocked` (ronda 2) y `baseBlocked` (ronda 3) — ninguno de los tres se
+reimplementa en función de los otros. `compute()` expone `readiness` (el resultado
+completo), y `floorReadinessBlocked`/`baseReadinessBlocked` (según qué canal fija Piso/Base
+en ese momento — `floorChId`/`baseChId`). La Matriz (`buildMatrixVerdict()`) nunca dice
+"RENTABLE EN TODOS" si CUALQUIERA de los 4 canales de esa ventana depende de un dato
+pendiente (no solo el más ajustado) — el veredicto cambia a
+"DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN". Igual la alerta "Sin conflictos"
+(`buildAlerts()`) de Resumen. El Simulador NUNCA bloquea la simulación manual, pero la
+etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal elegido dependa de algo pendiente
+(LM incluido). El botón "Ver el paso a paso" tampoco precarga Base cuando
+`baseReadinessBlocked` es true (mismo patrón que `lmBlocked`/`baseBlocked`, ronda 3).
 
 ### Validación y bloqueo (`src/domain/validate.js`)
 El motor nunca lanza (`compute()`/`quoteScenario()` siempre devuelven algo), pero
@@ -681,12 +738,54 @@ Tests nuevos: `tests/fase-lm-blocking.test.js`, `tests/fase-input-validation.tes
 `e2e/manual-input-validation.spec.js`, `e2e/matrix-detail.spec.js`; `e2e/smoke.spec.js`
 actualizado (la carga limpia ahora arranca bloqueada por diseño).
 
+### Actualización (revisión externa, FASE 5) — verificación de datos financieros como regla real, no etiqueta
+La revisión externa señaló que el registro de `verification.js` reconocía datos "no
+verificados" pero ningún cálculo se bloqueaba por eso — el motor podía estar
+matemáticamente correcto y aun así dar una recomendación incorrecta si esos datos no
+representaban la cuenta real. Se agregó `src/domain/readiness.js`
+(`evaluateRecommendationReadiness()`), la única fuente que decide, por canal, qué dato
+pendiente lo afecta (ver tabla en la sección "Verificado / No-verificado" arriba). Cambios:
+
+1. `verification.js`: cada registro guarda `status`/`source`/`date`/`note` (antes solo
+   `status`/`note`); nuevo estado `'no_aplica'` (resuelto, no bloquea, distinto de
+   `'no_verificado'`); `bankFeePctByChannel` pasó de un registro plano a uno POR CANAL.
+2. `engine.js`: `compute()` rastrea `floorChId`/`baseChId` (qué canal fija cada número) y
+   expone `readiness`/`floorReadinessBlocked`/`floorReadinessBlockedReason`/
+   `baseReadinessBlocked`/`baseReadinessBlockedReason` — ortogonales a `lmBlocked`/
+   `baseBlocked`, sin tocarlos. Solo se activa si `config.verification` viene explícito
+   (mismo patrón que `lmConfig` — callers de test que no lo pasan no ven un bloqueo nuevo
+   que no pidieron; en producción `state.verification` siempre está presente).
+3. `matrix.js`/`alerts.js`: "RENTABLE EN TODOS" y "Sin conflictos" ya no se sostienen si
+   CUALQUIER canal de esa ventana depende de un dato pendiente (no solo el más ajustado).
+4. `persistence.js`: `normalizeVerification()` migra unidades viejas (incluido el formato
+   plano pre-Fase-5 de `bankFeePctByChannel`) siempre a `'no_verificado'` por canal —
+   JAMÁS hereda `'verificado'` de un registro que no era por canal. Un payload malformado
+   (status inventado, campos no-string, objetos rotos) nunca se acepta como verificado.
+5. `index.html`: KPIs/pestañas de canal/Matriz bloquean por canal con una explicación
+   específica de qué falta y dónde confirmarlo; el Simulador etiqueta la simulación
+   manual como "SIMULACIÓN NO CONFIABLE" (nunca la bloquea); el formulario de
+   verificación ahora captura fuente/fecha/nota, con sub-filas por canal donde aplica.
+   Prioridad de avisos en la pestaña de cada canal: `lmBlocked` > `baseBlocked` > dato de
+   negocio pendiente > normal (el aviso de datos pendientes se agrega como nota, nunca
+   reemplaza la explicación más específica de LM/precio fijo).
+
+Tests nuevos: `tests/fase5-financial-readiness.test.js` (20),
+`tests/fase5-verification-persistence.test.js` (8), `e2e/financial-readiness.spec.js` (9).
+Tres E2E preexistentes (`e2e/lm-blocking.spec.js` ×2, `e2e/sim-blocked-bypass.spec.js` ×1)
+asumían que verificar LM bastaba para desbloquear con el catálogo de fábrica — ya no es
+cierto (los datos de negocio son un gate ortogonal nuevo); se ajustaron con un helper
+`resolveAllFinancialFacts()` que aísla específicamente el comportamiento de LM que esos
+tests prueban, sin cambiar lo que verifican.
+
 ### Pendiente explícito de esta ronda (no completado, no ocultado)
 - **Accesibilidad**: se corrigieron los controles nuevos sin texto visible (editor de
   tramos). El resto del formulario (pre-existente, antes de esta auditoría) usa `<span>`
   en vez de `<label for>` — auditoría completa queda pendiente si se prioriza.
 - Todo lo de la sección 5 (costos reales, comisión bancaria real, multi-moneda,
   multi-unidad, verificación real en Hospy/Booking/PriceLabs) sigue exactamente igual de
-  pendiente — esta auditoría construyó la INFRAESTRUCTURA para que esos datos entren sin
-  inventar nada (calculadora de costos real, registro de verificación, LM configurable),
-  pero no inventó ni cargó ningún dato de negocio real.
+  pendiente — esta auditoría (y la Fase 5) construyeron la INFRAESTRUCTURA para que esos
+  datos entren sin inventar nada, y AHORA ADEMÁS bloquean la recomendación de los canales
+  afectados mientras sigan pendientes — pero ningún dato de negocio real fue inventado ni
+  cargado; eso solo lo puede hacer Dani desde sus extranets/facturas/reportes reales.
+- **Multi-moneda por canal (COP/USD) sigue sin convertir tasas** — fuera de alcance de
+  esta ronda, no se tocó.
