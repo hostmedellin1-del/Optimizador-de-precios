@@ -25,6 +25,12 @@ header{margin-bottom:20px;}
 h1{font-size:28px;font-weight:700;margin:0 0 6px;letter-spacing:-.01em;}
 .sub{color:var(--dim);font-size:14px;margin:0;max-width:640px;line-height:1.5;}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;}
+/* Resaltado breve de la seccion destino de un boton "Ir a .../Ver en ..."
+   (goToSection() mas abajo) — visual, no reemplaza el foco de teclado que
+   ya mueve goToSection(), solo ayuda a ubicar la seccion con la vista.
+   Respeta prefers-reduced-motion via la regla global de arriba (linea 18),
+   que ya desactiva `transition` por completo en ese caso. */
+.goto-highlight{box-shadow:0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);transition:box-shadow .25s ease;}
 h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin:0 0 12px;display:flex;align-items:baseline;gap:8px;}
 .hint{font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint);}
 p.hint{margin:-4px 0 12px;max-width:720px;line-height:1.55;}
@@ -192,7 +198,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div id="validationBanner"></div>
 <div id="dataProvenanceBanner"></div>
 <div class="row stack">
-  <div class="card">
+  <div class="card" id="costsSection">
     <h2>Costos por noche</h2>
     <div class="field"><span id="currencyLabel">Moneda de esta unidad</span><span id="currencyDisplay" role="status" aria-labelledby="currencyLabel" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
     <p class="hint" id="usdOnlyNotice">Todos los valores deben ingresarse en USD. Esta versión no convierte ni mezcla monedas — la multimoneda se implementará en una fase posterior.</p>
@@ -251,11 +257,11 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
-<section class="card">
-  <h2>Last-Minute de PriceLabs <span class="hint">cómo baja el precio cerca del check-in — configúralo si sabes el modo real de tu cuenta</span></h2>
+<section class="card" id="lmSection">
+  <h2 id="lmSectionHeading" tabindex="-1">Last-Minute de PriceLabs <span class="hint">cómo baja el precio cerca del check-in — configúralo si sabes el modo real de tu cuenta</span></h2>
   <p class="hint">Por defecto usa el modo "Automático" (el techo por ventana de siempre) — cámbialo solo si confirmaste en PriceLabs que tu cuenta usa otro modo. Ninguno de estos modos trae un % de ejemplo activado: los llenas tú.</p>
-  <div class="field"><span>Modo</span>
-    <select data-lm="mode">
+  <div class="field"><label for="lmModeSelect">Modo</label>
+    <select id="lmModeSelect" data-lm="mode">
       <option value="ceiling_auto">Automático (PriceLabs decide, no verificable matemáticamente)</option>
       <option value="flat">Descuento plano (% fijo entre dos días)</option>
       <option value="gradual">Descuento gradual (decae día a día hasta 0)</option>
@@ -266,8 +272,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
   <div id="lmModeFields"></div>
 </section>
-<section class="card">
-  <h2>Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
+<section class="card" id="verificationSection">
+  <h2 id="verificationSectionHeading" tabindex="-1">Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
   <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y reglas de Hospy/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Hospy — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
   <div id="verificationList"></div>
 </section>
@@ -631,10 +637,10 @@ function renderValidation(model){
   if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
-    ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
-    ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
-    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Verificación de datos financieros →</button></div>` : ''}
-    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Verificación de datos financieros →</button></div>` : ''}
+    ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:verificacion">Ir a Verificación de datos financieros →</button></div>` : ''}
+    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:verificacion">Ir a Verificación de datos financieros →</button></div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
 }
@@ -866,7 +872,20 @@ function renderAlerts(model){
     return;
   }
   const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
-  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${escapeHtml(tabLabel(a.tab))} →</button>`:''}</span></div>`).join('');
+  /* Bug de UX corregido: "Ver en Resumen →" tenia el mismo problema que los
+     banners de bloqueo (goToTab('resumen') sin seccion, ver goToSection()
+     mas arriba) — un tag conocido (LM SIN VERIFICAR/COSTOS SIN CONFIRMAR/
+     DATOS SIN VERIFICAR) SI tiene una seccion concreta que lo resuelve; el
+     resto (MODELO/INVIABLE/REALIDAD, sobre el resultado del motor, no sobre
+     un dato pendiente puntual) sigue yendo solo a la pestaña, como siempre.
+     Esto es routing de UI puro sobre el `tag` que alerts.js YA devuelve —
+     no reimplementa ni toca ninguna regla financiera de ese modulo. */
+  const RESUMEN_ALERT_ANCHORS = {'LM SIN VERIFICAR':'lm', 'COSTOS SIN CONFIRMAR':'costos', 'DATOS SIN VERIFICAR':'verificacion'};
+  alertsBox.innerHTML = buildAlerts(model).map(a=>{
+    const anchor = a.tab==='resumen' ? RESUMEN_ALERT_ANCHORS[a.tag] : null;
+    const gotoValue = anchor ? `${a.tab}:${anchor}` : a.tab;
+    return `<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${gotoValue?` <button type="button" class="goto" data-goto="${gotoValue}">Ver en ${escapeHtml(tabLabel(a.tab))} →</button>`:''}</span></div>`;
+  }).join('');
 }
 /* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
    src/domain/simulate.js (import arriba), que a su vez consume quoteScenario()
@@ -898,7 +917,7 @@ function renderSim(model){
       : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
       : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
       : 'un dato financiero del canal que fija Base sigue sin confirmar';
-    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen">Resumen → "Verificación de datos financieros" →</button>.</div>`;
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen:verificacion">Resumen → "Verificación de datos financieros" →</button>.</div>`;
     simIgnored.innerHTML = '';
     return;
   }
@@ -975,6 +994,44 @@ const TABS = [
 function goToTab(tabId){
   document.querySelectorAll('[data-tabbtn]').forEach(b=>b.classList.toggle('active', b.dataset.tabbtn===tabId));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.dataset.tab===tabId));
+}
+/* Bug de UX corregido (revision externa): los botones "Ir a Last-Minute de
+   PriceLabs →"/"Ir a Verificación de datos financieros →" (y el equivalente
+   del Simulador bloqueado) solo llamaban a goToTab('resumen') — si el
+   usuario YA estaba en Resumen, visualmente no pasaba nada y nunca llegaba
+   a la seccion que necesitaba configurar (Resumen es una pestaña larga con
+   varias secciones apiladas). goToSection(tabId, anchorKey) activa la
+   pestaña (igual que siempre) Y, si `anchorKey` viene informado, hace
+   scroll suave hasta la seccion exacta, mueve el foco de teclado a su
+   primer campo/encabezado, y la resalta brevemente (`.goto-highlight`) para
+   que el usuario vea DONDE llego — no solo A QUE pestaña. `anchorKey`
+   ausente/desconocido se degrada exactamente al comportamiento de siempre
+   (solo goToTab), asi que ningun otro boton "Ver en <pestaña> →" (Matriz,
+   canales) cambia de comportamiento. */
+const SECTION_ANCHORS = {
+  lm: {sectionId: 'lmSection', focusId: 'lmModeSelect'},
+  verificacion: {sectionId: 'verificationSection', focusId: 'verificationSectionHeading'},
+  costos: {sectionId: 'costsSection', focusId: 'f-fixedCost'}
+};
+function goToSection(tabId, anchorKey){
+  goToTab(tabId);
+  const anchor = anchorKey && SECTION_ANCHORS[anchorKey];
+  if(!anchor) return;
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* Esperar al siguiente frame: goToTab() acaba de cambiar display de la
+     pestaña (activa/inactiva via clase `.active`) — medir/scrollear un
+     elemento que todavia esta oculto en este mismo tick puede fallar o
+     medir mal en algunos navegadores. */
+  requestAnimationFrame(()=>{
+    const section = document.getElementById(anchor.sectionId);
+    if(section){
+      section.scrollIntoView({behavior: prefersReducedMotion ? 'auto' : 'smooth', block:'start'});
+      section.classList.add('goto-highlight');
+      setTimeout(()=>section.classList.remove('goto-highlight'), 1600);
+    }
+    const focusEl = document.getElementById(anchor.focusId);
+    if(focusEl) focusEl.focus({preventScroll:true});
+  });
 }
 function buildTabbar(){
   tabbarMount.innerHTML = `<div class="tabbar">${TABS.map((t,i)=>`<button class="tabbtn ${i===0?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div>`;
@@ -1672,7 +1729,11 @@ document.addEventListener('change',e=>{
 document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
   const goto=e.target.closest('[data-goto]');
-  if(goto){ goToTab(goto.dataset.goto); return; }
+  if(goto){
+    const [tabId, anchorKey] = goto.dataset.goto.split(':');
+    goToSection(tabId, anchorKey);
+    return;
+  }
   if(e.target.id==='goSimBtn'){
     const model=compute();
     /* Bloqueante P2 (revision externa, ronda 3): este boton precargaba
