@@ -4,6 +4,36 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.13.0] — Servidor local de desarrollo (`npm run dev`)
+
+Cambio operativo, sin tocar fórmulas, gates ni datos de negocio — la auditoría
+financiera (rondas 1-6) quedó aprobada para uso interno supervisado en USD;
+esta versión solo facilita correr la app localmente.
+
+**`npm run dev`** levanta `scripts/dev-server.js`: servidor HTTP estático
+nuevo, escrito con módulos nativos de Node (`node:http`/`node:fs`/`node:path`),
+CERO dependencias de `npm install`. Sirve el repo tal cual (mismo `index.html`
+y `src/**` que despliega GitHub Pages, sin build/transformación), con los
+`Content-Type` correctos para que los `<script type="module">` carguen (por
+eso `file://` con doble-clic no sirve — bloqueado por CORS del navegador).
+Imprime la URL local (`http://127.0.0.1:3000/index.html`) apenas arranca;
+`Ctrl+C` lo detiene; `PORT=3001 npm run dev` cambia el puerto si 3000 está
+ocupado. Bloquea path traversal (`../`) fuera de la raíz del proyecto —
+verificado con `curl --path-as-is`. `playwright.config.js` sigue usando
+`python3 -m http.server` para los tests e2e, sin cambios — ambos sirven
+exactamente los mismos archivos, ninguno transforma nada.
+
+RUNBOOK.md documenta requisitos (solo Node >= 20), comando, URL, cómo
+detenerlo, el contrato USD-only, que los datos viven solo en este navegador
+(`localStorage`), y el recordatorio de exportar respaldo antes de editar
+datos reales.
+
+Verificación manual: `npm run dev` → `http://127.0.0.1:3000/index.html` →
+cero errores/warnings de consola → crear unidad, guardar, recargar la
+página → la unidad persiste y carga correctamente → detener con `Ctrl+C`
+(confirmado: el puerto queda libre de inmediato). **320/320 unitarios,
+75/75 e2e, lint limpio, sin regresión.**
+
 ## [0.12.0] — Cerrado el bypass de copia COP→USD por importación (booleano crudo vs. bitácora)
 
 Auditoría externa (ronda 6) sobre 0.11.0. Hallazgo: una copia USD creada desde COP podía

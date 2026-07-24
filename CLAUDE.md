@@ -537,8 +537,11 @@ y `src/domain/*.js` (funciones puras, sin DOM, todas con parámetros explícitos
 lee un `state` global implícito). `index.html` solo arma wrappers delgados que cierran
 sobre el `state` mutable de la UI y funciones de render. Corolario práctico: **abrir el
 archivo con doble-clic (`file://`) ya no funciona** — Chrome bloquea `import` por CORS
-bajo `file://`. Para probar local: `python3 -m http.server` o `npx serve`. GitHub Pages
-(https) no tiene este problema, el deploy sigue siendo automático sin build.
+bajo `file://`. Para probar local: `npm run dev` (servidor estático propio en
+`scripts/dev-server.js`, cero dependencias, ver RUNBOOK.md "Desarrollo local")
+— `python3 -m http.server`/`npx serve` siguen funcionando igual si los
+prefieres. GitHub Pages (https) no tiene este problema, el deploy sigue
+siendo automático sin build.
 
 `package.json` es nuevo pero **no es un build step**: solo habilita `"type":"module"` y
 los scripts `npm test` (`node --test`, cero dependencias) / `npm run lint`

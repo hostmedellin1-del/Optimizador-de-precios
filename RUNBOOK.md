@@ -1,14 +1,49 @@
 # Runbook — Revenue Ops (Host Medellín)
 
-## Desarrollo local
+## Desarrollo local — cómo correr la app en tu computador
 
+**Requisitos**: Node.js >= 20 (`node --version`). Nada más — el servidor
+local no tiene dependencias externas, y la app en sí (`index.html`) tampoco
+necesita `npm install` para correr (solo `npm test`/`npm run test:e2e` usan
+`node_modules`, y solo para Playwright).
+
+**Comando para iniciar**:
 ```
-python3 -m http.server 8000    # o: npx serve
+npm run dev
 ```
 
-Abre `http://localhost:8000/index.html`. **No abras el archivo con doble-clic**
-(`file://`) — Chrome bloquea los `import` de módulos ES por CORS bajo `file://`.
-GitHub Pages (https) no tiene este problema.
+**URL que se abre**: `http://127.0.0.1:3000/index.html` — el comando la
+imprime en la terminal apenas arranca. Si el puerto 3000 ya está ocupado,
+corre `PORT=3001 npm run dev` (o cualquier otro puerto libre).
+
+**Cómo detenerlo**: `Ctrl+C` en la misma terminal donde corre `npm run dev`.
+
+**Importante — no abras `index.html` con doble-clic** (`file://`): el
+navegador bloquea los `import` de módulos ES por CORS bajo `file://`, así
+que la app se ve en blanco o rota. `npm run dev` levanta
+`scripts/dev-server.js` — un servidor HTTP estático mínimo, escrito con los
+módulos nativos de Node (sin dependencias de `npm install`), que sirve este
+mismo repo con los `Content-Type` correctos para que los módulos carguen.
+No es un build step: no transforma, empaqueta ni minifica nada, solo sirve
+los archivos tal cual están en disco — exactamente el mismo sitio estático
+que se despliega en GitHub Pages. `npx serve` o `python3 -m http.server`
+siguen funcionando igual de bien si los prefieres; `npm run dev` es solo el
+comando recomendado porque no depende de tener Python instalado.
+
+**Esta versión opera exclusivamente en USD.** No hay ningún selector de
+moneda ni conversión automática — todos los valores que cargues (costos,
+comisiones, precios) deben estar ya en USD. Ver "Contrato de moneda" en
+`CLAUDE.md` para el detalle completo.
+
+**Los datos se guardan SOLO en este navegador/computador** (`localStorage`,
+vía el polyfill de `window.storage` — ver CLAUDE.md sección 3). No hay nube,
+no sincroniza entre dispositivos, y se pierde si se borra caché/datos de
+navegación o se usa modo incógnito.
+
+**Exporta una copia de respaldo (botón "Exportar todo") antes de editar
+datos reales** — es la única forma de recuperar tus unidades si el
+navegador borra `localStorage` por cualquier motivo. El botón "Importar"
+junto a él restaura ese mismo archivo `.json`.
 
 ## Tests y lint
 
@@ -23,9 +58,12 @@ Actions, `.github/workflows/ci.yml`, jobs `unit` y `e2e`) corre los tres en
 cada push/PR — el job `e2e` sube el reporte de Playwright como artefacto si
 falla.
 
-`npm run test:e2e` levanta el mismo servidor estático de desarrollo local
-(`python3 -m http.server`) — no es un build step nuevo, Playwright solo
-automatiza un navegador real contra el sitio estático de siempre.
+`npm run test:e2e` levanta su propio servidor estático (`playwright.config.js`
+sigue usando `python3 -m http.server`, independiente de `npm run dev`) — no
+es un build step nuevo, Playwright solo automatiza un navegador real contra
+el sitio estático de siempre. Ambos servidores (el de `npm run dev` y el de
+Playwright) sirven exactamente los mismos archivos sin transformarlos; usan
+comandos distintos solo por historia, no por ninguna diferencia real.
 
 ## Checklist de QA manual (complemento del E2E automatizado)
 
