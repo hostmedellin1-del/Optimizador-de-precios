@@ -37,23 +37,25 @@
    falta un dato esencial, se devuelve `{ok:false, reason}`, nunca un número
    fabricado. */
 import {quoteScenario} from './quote.js';
+import {evaluateUsdOnlyReadiness} from './usd-only.js';
 
-/* Simplificacion a USD unico (revision externa): esta version SOLO consolida
-   valores en USD — nunca convierte, suma ni compara monedas distintas.
-   Antes esta funcion intentaba convertir con currency.js/resolveConversion()
-   si un canal declaraba `settlementCurrency` distinta; ese camino se
-   eliminó del flujo activo (currency.js se conserva para una fase
-   multimoneda futura, pero nada en este archivo lo llama). Si la unidad
-   misma no está en USD, o si algún canal usado en el escenario quedó
-   marcado con una `settlementCurrency` distinta de USD (dato viejo, ya no
+/* Simplificacion a USD unico (revision externa) + BLOQUEANTE 1 corregido
+   (auditoria externa, ronda 4): esta version SOLO consolida valores en USD
+   — nunca convierte, suma ni compara monedas distintas. Antes esta funcion
+   intentaba convertir con currency.js/resolveConversion() si un canal
+   declaraba `settlementCurrency` distinta; ese camino se eliminó del flujo
+   activo (currency.js se conserva para una fase multimoneda futura, pero
+   nada en este archivo lo llama). El chequeo de moneda ya NO se hace canal
+   por canal dentro de `resolveIncomeScenario()` (eso dejaba pasar canales
+   con settlementCurrency distinta de USD que no fueran EL usado en el
+   escenario, aunque estuvieran en el mismo catálogo) — `computeMonthlyEconomics()`
+   llama a `evaluateUsdOnlyReadiness()` (src/domain/usd-only.js, la MISMA
+   función que usan engine.js y reconciliation.js) UNA sola vez, con el
+   catálogo COMPLETO de canales, antes de resolver cualquier escenario. Si la
+   unidad misma no está en USD, o CUALQUIER canal del catálogo quedó marcado
+   con una `settlementCurrency` distinta de USD (dato viejo, ya no
    configurable desde la UI), el escenario se BLOQUEA por completo — nunca
    mezcla montos en silencio. */
-function ensureUsd(chId, quoteConfig){
-  const ch = quoteConfig.channels.find(c=>c.id===chId);
-  if(ch && ch.settlementCurrency && ch.settlementCurrency!=='USD')
-    return {ok:false, reason:`${ch.name} quedó marcado con una moneda de liquidación distinta de USD (${ch.settlementCurrency}, dato de una versión anterior) — esta versión solo admite USD. Corrige ese dato manualmente (o elimina y vuelve a crear el canal) antes de usarlo en la planificación mensual.`};
-  return {ok:true};
-}
 
 /* `mix` trae 4 filas fijas (una por canal del catálogo), todas apagadas
    (`on:false`) por defecto — la UI solo pasa a computeMonthlyEconomics() las
@@ -133,8 +135,6 @@ function resolveIncomeScenario(incomeScenario, quoteConfig, readiness){
       return {ok:false, reason:'Escenario de canal específico: falta un precio de PriceLabs válido (> 0) para cotizar.'};
     const days = Math.max(0, parseFloat(ch.days)||0);
     const nights = Math.max(1, parseFloat(ch.nights)||1);
-    const usd = ensureUsd(ch.chId, quoteConfig);
-    if(!usd.ok) return {ok:false, reason: `Escenario de canal específico: ${usd.reason}`};
     const q = quoteScenario({chId: ch.chId, days, nights, price}, quoteConfig);
     const chReady = !readiness || !readiness.byChannel[ch.chId] || readiness.byChannel[ch.chId].ready;
     const unverifiedReasons = [];
@@ -160,8 +160,6 @@ function resolveIncomeScenario(incomeScenario, quoteConfig, readiness){
       const days = Math.max(0, parseFloat(m.days)||0);
       const nights = Math.max(1, parseFloat(m.nights)||1);
       const w = (parseFloat(m.weightPct)||0)/100;
-      const usd = ensureUsd(m.chId, quoteConfig);
-      if(!usd.ok) return {ok:false, reason: `Escenario de mezcla de canales: ${usd.reason}`};
       const q = quoteScenario({chId: m.chId, days, nights, price}, quoteConfig);
       weightedSum += q.payout*w;
       usedChannels.push(m.chId);
@@ -196,13 +194,18 @@ export function computeMonthlyEconomics(config){
   const sensitivityNights = config.sensitivityNights || [0, 5, 10, 15, 20, 25, 30];
   const assumptions = [];
 
-  /* Simplificacion a USD unico (revision externa): gate MAS FUNDAMENTAL,
-     antes que cualquier otra validacion — una unidad marcada "requiere
-     revision manual" (moneda guardada != USD) no puede proyectar NADA,
-     ni siquiera el escenario manual (el ingreso que Dani escribe podria
-     estar el mismo en otra moneda). Nunca convierte, nunca asume 1:1. */
-  if(currency!=='USD'){
-    return {ok:false, reason:`Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${currency}) no es USD y esta versión solo admite USD. Corrige la moneda de la unidad (o elimínala y créala de nuevo directamente en USD) antes de calcular la planificación mensual.`, currency};
+  /* Simplificacion a USD unico (revision externa) + BLOQUEANTE 1 corregido
+     (auditoria externa, ronda 4): gate MAS FUNDAMENTAL, antes que cualquier
+     otra validacion — una unidad marcada "requiere revision manual" (moneda
+     guardada != USD, O CUALQUIER canal del catálogo con settlementCurrency
+     distinta de USD) no puede proyectar NADA, ni siquiera el escenario
+     manual (el ingreso que Dani escribe podria estar el mismo afectado por
+     un dato historico en otra moneda). evaluateUsdOnlyReadiness() (src/domain/
+     usd-only.js) es la MISMA fuente que usan engine.js/reconciliation.js —
+     nunca convierte, nunca asume 1:1. */
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig && quoteConfig.channels});
+  if(usdGate.blocked){
+    return {ok:false, reason:`Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Esta versión solo admite USD. Corrige el dato (o elimina y recrea la unidad/canal directamente en USD) antes de calcular la planificación mensual.`, currency};
   }
 
   const avgNights = parseFloat(config.avgNights);

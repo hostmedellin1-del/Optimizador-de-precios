@@ -129,12 +129,20 @@ export function quoteScenario(scenario, config){
      diluidos por avgNights (ver src/domain/costs.js, bug P5/P13). Sin
      costBreakdown, cae al modelo simple de siempre (compatibilidad con quien no
      llena la calculadora detallada). */
+  /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): mismo criterio que
+     compute() (engine.js) — un `costBreakdown` presente pero explicitamente
+     SIN confirmar (`config.costBreakdownConfirmed===false`) nunca alimenta el
+     costo real de esta cotizacion, cae al modelo simple. `costBreakdownConfirmed`
+     ausente (callers de test que no participan de este contrato) preserva el
+     comportamiento de siempre. Ver src/domain/cost-mode.js. */
   let cost;
-  if(config.costBreakdown){
+  if(config.costBreakdown && config.costBreakdownConfirmed!==false){
     cost = reservationCostBreakdown(config.costBreakdown, nights).perNight;
   } else {
     cost = (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
-    assumptions.push('Costo modelado como fixedCost+varCost fijo por noche (sin calculadora detallada) — no varia con la duracion real de esta reserva. Completa "Costos por noche -> calculadora detallada" para que limpieza/lavanderia/insumos se carguen una sola vez por reserva, no diluidos por la estadia promedio.');
+    assumptions.push(config.costBreakdown
+      ? 'El desglose detallado de costos todavía no está confirmado — el costo se sigue calculando con el modelo simple (fixedCost+varCost) hasta que confirmes el desglose en Resumen → "Costos por noche".'
+      : 'Costo modelado como fixedCost+varCost fijo por noche (sin calculadora detallada) — no varia con la duracion real de esta reserva. Completa "Costos por noche -> calculadora detallada" para que limpieza/lavanderia/insumos se carguen una sola vez por reserva, no diluidos por la estadia promedio.');
   }
   const margin = payout - cost;
   const marginPct = payout>0 ? (margin/payout)*100 : 0; // margen: fraccion de LA VENTA (payout) que es ganancia

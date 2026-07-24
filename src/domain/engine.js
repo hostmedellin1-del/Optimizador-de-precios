@@ -42,6 +42,8 @@ import {validateCostInputs, validateChannelInputs, validateResultFinite, validat
 import {worstScenarioFactor} from './worstcase.js';
 import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
 import {evaluateRecommendationReadiness, evaluateGlobalRecommendationReadiness} from './readiness.js';
+import {evaluateUsdOnlyReadiness} from './usd-only.js';
+import {evaluateCostReadiness} from './cost-mode.js';
 
 export function windowApplies(d, daysOut){
   if(d.kind==='constant') return true;
@@ -242,7 +244,20 @@ export function lmPctAtDay45(lmConfig, {discounts, channels, windows, ceilings, 
    Sin costBreakdown, cae al modelo simple de siempre (compatibilidad). */
 export function compute(config){
   const {channels, discounts, windows} = config;
-  const cost = config.costBreakdown
+  /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): un `costBreakdown`
+     presente pero explicitamente NO confirmado (`config.costBreakdownConfirmed
+     ===false`, lo que manda index.html en cuanto el usuario edita cualquier
+     campo del desglose) NUNCA alimenta el costo real — cae al modelo simple
+     (fixedCost/varCost), exactamente como si `costBreakdown` no existiera.
+     `costBreakdownConfirmed` ausente/undefined (todos los callers de test
+     existentes, que no participan de este contrato) preserva el
+     comportamiento de siempre: costBreakdown se usa tal cual si esta
+     presente. Ver src/domain/cost-mode.js. */
+  const costGate = evaluateCostReadiness({
+    costBreakdown: config.costBreakdown, costBreakdownConfirmed: config.costBreakdownConfirmed,
+    usingExampleCosts: config.usingExampleCosts
+  });
+  const cost = costGate.useDetailed
     ? reservationCostBreakdown(config.costBreakdown, 1).perNight
     : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
   const m = Math.min(parseFloat(config.margin)||0,90);
@@ -391,19 +406,29 @@ export function compute(config){
      (precio LM fijo en el dia 45) SOLO afecta a `baseReady`, nunca a
      `floorReady` — el Piso sigue protegiendo con el peor escenario real
      (LM incluido) aunque Base no aplique ese dia. */
-  /* Simplificacion a USD unico (revision externa): `config.currencyNeedsReview`
-     lo decide el caller (normalizeUnit()/persistence.js — true si la moneda
-     GUARDADA de la unidad no es exactamente 'USD', preservada tal cual, nunca
-     convertida ni reinterpretada). Es un gate MAS del mismo tipo que
-     lmBlocked — bloquea Piso Y Base, nunca solo uno. Sin `config.currencyNeedsReview`
-     (callers de test que no lo pasan), cae a `false` — regresion cero, mismo
-     patron que el resto de gates opcionales de este archivo. */
-  const currencyBlocked = !!config.currencyNeedsReview;
+  /* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): antes este gate solo
+     miraba `config.currencyNeedsReview` (un booleano ya resuelto por el
+     caller a partir de `state.currency`) — un canal historico con
+     `settlementCurrency` distinta de USD (dato de antes de la simplificacion
+     a USD unico) pasaba completamente desapercibido aqui, aunque
+     monthly-economics.js/audit.js SI lo detectaban. Ahora `evaluateUsdOnlyReadiness()`
+     (src/domain/usd-only.js) es la UNICA fuente que decide esto — mira TANTO
+     la moneda guardada de la unidad COMO la de cada canal, y es la MISMA
+     funcion que usan reconciliation.js y monthly-economics.js: los tres no
+     pueden desalinearse porque no reimplementan el chequeo por su cuenta.
+     `config.currency` ausente (callers de test que no participan) nunca
+     bloquea por si solo — regresion cero. */
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: config.currency, channels});
+  const currencyBlocked = usdGate.blocked;
   const currencyBlockedReason = currencyBlocked
-    ? `Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${config.currency||'desconocida'}) no es USD, y esta versión de la app solo admite USD (la multimoneda queda fuera de esta fase). Corrige la moneda de la unidad, o elimínala y créala de nuevo directamente en USD, antes de usar cualquier recomendación.`
+    ? `Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Esta versión de la app solo admite USD (la multimoneda queda fuera de esta fase). Corrige el dato (moneda de la unidad o del canal), o elimínalo y créalo de nuevo directamente en USD, antes de usar cualquier recomendación.`
     : null;
+  /* BLOQUEANTE 2 (ver arriba, `costGate`): mismo nivel que lmBlocked/
+     currencyBlocked — bloquea Piso Y Base, nunca solo uno. */
+  const costBlocked = costGate.blocked;
+  const costBlockedReason = costGate.reason;
   const {floorReady, baseReady, floorReason, baseReason} = evaluateGlobalRecommendationReadiness({
-    readiness, channels, lmBlocked, baseBlocked, currencyBlocked
+    readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked
   });
   const floorReadinessBlocked = !floorReady;
   const floorReadinessBlockedReason = floorReason;
@@ -413,6 +438,7 @@ export function compute(config){
     cost, net, floor, floorCh, floorChId, base, baseCh, baseChId, effBase, errors, valid,
     lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason,
     currencyBlocked, currencyBlockedReason,
+    costBlocked, costBlockedReason, costMode: costGate.mode,
     readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason
   };
 }

@@ -149,6 +149,12 @@ export function buildAlerts(config, model){
     const unready = unreadyChannels(model.readiness, channels);
     if(isLmBlocked(config.lmConfig)){
       A.push({lvl:'warn',tag:'LM SIN VERIFICAR',tab:'resumen',msg:'No se detectó ningún conflicto, pero este chequeo depende de Last-Minute que todavía no está verificado (modo automático, proyección no verificable matemáticamente, o un modo configurado sin marcar como confirmado) — confírmalo en Resumen → "Last-Minute de PriceLabs" antes de tratar esto como "sin problemas".'});
+    } else if(model.costBlocked){
+      /* BLOQUEANTE 2 (auditoria externa, ronda 4): mismo espiritu que LM sin
+         verificar — "sin conflictos" tambien depende de que el costo contra
+         el que se compara (model.cost) sea un dato real confirmado, no el
+         ejemplo de fabrica ni un desglose detallado sin confirmar. */
+      A.push({lvl:'warn',tag:'COSTOS SIN CONFIRMAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero este chequeo depende de un costo (${f$(model.cost, config.currency)}) que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar esto como "sin problemas".`});
     } else if(unready.length){
       /* Fase 5 (revision externa — "datos financieros verificados"): mismo
          espiritu que el bloqueante CRITICO de LM (arriba) — "sin conflictos"

@@ -426,6 +426,18 @@ export function normalizeUnit(raw){
   });
 
   const costBreakdown = normalizeCostBreakdown(raw.costBreakdown, warnings);
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4) — ver src/domain/cost-mode.js:
+     `costBreakdownConfirmed` es la confirmacion EXPLICITA ("Revisé estos
+     costos reales en USD, incluidos los valores en cero") que decide si el
+     desglose detallado puede alimentar una recomendacion. Una unidad vieja
+     (de antes de este contrato) nunca tuvo este campo — cae a `false`
+     (nunca `true` por defecto: no hay forma de saber si esos datos viejos
+     fueron realmente revisados con esta regla en mente), asi que su
+     desglose (si lo tenia lleno) queda en 'detailed_incomplete' hasta que
+     el usuario lo confirme explicitamente de nuevo. Nunca se borra el
+     desglose en si — solo la confirmacion, que es lo unico que este cambio
+     de contrato invalida. */
+  const costBreakdownConfirmed = boolField(raw, 'costBreakdownConfirmed', false);
   const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
   const verification = normalizeVerification(raw.verification, warnings);
   const monthlyIncomeScenario = normalizeMonthlyIncomeScenario(raw.monthlyIncomeScenario, warnings);
@@ -459,7 +471,7 @@ export function normalizeUnit(raw){
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
-    costBreakdown, channels, discounts, ceilings, lmConfig, verification,
+    costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
     monthlyIncomeScenario, monthlyDistribution, fxRates, reconciliations,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };

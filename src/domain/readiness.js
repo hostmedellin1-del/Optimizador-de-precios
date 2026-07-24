@@ -145,7 +145,11 @@ export function unreadyChannels(readiness, channels){
      externa — simplificacion a USD unico): una unidad marcada "requiere
      revision manual" (su moneda guardada no es USD, ver src/domain/persistence.js)
      no puede mostrar NINGUN numero global — el numero en si podria estar en
-     otra moneda, asi que ni el Piso es seguro.
+     otra moneda, asi que ni el Piso es seguro. Lo mismo aplica a
+     `costBlocked` (auditoria externa, ronda 4 — BLOQUEANTE 2): un costo sin
+     confirmar (ejemplo de fabrica, o desglose detallado editado pero sin
+     confirmar) tampoco puede alimentar NINGUN numero global — ver
+     src/domain/cost-mode.js.
    - `baseReady` es true SOLO SI `floorReady===true` Y `baseBlocked===false`.
      `baseBlocked` (precio LM fijo activo en el dia 45) es una condicion
      ADICIONAL que solo afecta a Base — nunca al Piso.
@@ -168,7 +172,7 @@ export function unreadyChannels(readiness, channels){
    Matriz/Alertas usan `unreadyChannels()` (arriba) para sus propios veredictos
    por VENTANA/alerta puntual — una pregunta legitimamente distinta a "¿el
    numero GLOBAL es confiable?" — no llaman a esta funcion. */
-export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked, currencyBlocked}){
+export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked}){
   const unready = unreadyChannels(readiness, channels);
   const dataReason = unready.length
     ? `${unready.map(c=>c.name).join(', ')} ${unready.length===1?'depende':'dependen'} de datos financieros sin confirmar: ${unready.map(c=>(readiness.byChannel[c.id].missing||[]).map(m=>m.reason).join(' ')).join(' ')}`
@@ -180,18 +184,28 @@ export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBl
     ? 'Hay un precio Last-Minute FIJO activo en el día de referencia (45) — PriceLabs publica ese precio tal cual, así que Base Price no controla nada ahí (el Piso sigue protegiendo: evalúa el peor escenario real, LM incluido).'
     : null;
   /* Simplificacion a USD unico (revision externa): una unidad "requiere
-     revision manual" (moneda guardada distinta de USD) nunca puede mostrar
-     un numero global — no se sabe con certeza en que moneda quedaria
-     expresado. Bloquea igual que lmBlocked (afecta Piso Y Base). */
+     revision manual" (moneda guardada distinta de USD, o CUALQUIER canal con
+     settlementCurrency distinta de USD — ver src/domain/usd-only.js, ronda 4)
+     nunca puede mostrar un numero global — no se sabe con certeza en que
+     moneda quedaria expresado. Bloquea igual que lmBlocked (afecta Piso Y
+     Base). */
   const currencyReason = currencyBlocked
-    ? 'Esta unidad está marcada "requiere revisión manual" — su moneda guardada no es USD y esta versión solo admite USD. Ningún número global es confiable hasta que corrijas la moneda de la unidad (o la elimines y la vuelvas a crear en USD).'
+    ? 'Esta unidad está marcada "requiere revisión manual" — su moneda guardada (o la de algún canal) no es USD y esta versión solo admite USD. Ningún número global es confiable hasta que corrijas la moneda de la unidad/canal (o la elimines y la vuelvas a crear en USD).'
+    : null;
+  /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): un costo real
+     (fijo/variable o desglose detallado) sin confirmar tampoco puede
+     alimentar Piso/Base — ver src/domain/cost-mode.js. Mismo nivel que
+     lmBlocked/currencyBlocked (bloquea Piso Y Base, nunca solo uno): el
+     costo es la base de TODA la formula, no solo de Base. */
+  const costReason = costBlocked
+    ? 'El costo real de esta unidad todavía no está confirmado (sigue en el valor de ejemplo de fábrica, o el desglose detallado está editado pero sin confirmar) — ningún número global es confiable hasta que confirmes tus costos reales en Resumen → "Costos por noche".'
     : null;
 
-  const floorReady = unready.length===0 && !lmBlocked && !currencyBlocked;
+  const floorReady = unready.length===0 && !lmBlocked && !currencyBlocked && !costBlocked;
   const baseReady = floorReady && !baseBlocked;
 
-  const floorParts = [dataReason, lmReason, currencyReason].filter(Boolean);
-  const baseParts = [dataReason, lmReason, currencyReason, baseFixedReason].filter(Boolean);
+  const floorParts = [dataReason, lmReason, currencyReason, costReason].filter(Boolean);
+  const baseParts = [dataReason, lmReason, currencyReason, costReason, baseFixedReason].filter(Boolean);
   const buildReason = (label, parts) => `${label} es un número GLOBAL que se usa en PriceLabs para TODOS los canales — no se puede tratar como recomendación confiable todavía. ${parts.join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" / "Last-Minute de PriceLabs" antes de usar este número en PriceLabs.`;
 
   return {

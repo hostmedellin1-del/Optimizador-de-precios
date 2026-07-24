@@ -98,6 +98,16 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
     vMsg = `Esta ventana solo sale "rentable" asumiendo Last-Minute ${worst.q.lmMode==='ceiling_auto'
       ? 'en modo automático (proyección propia, no verificable matemáticamente sin el precio diario real de PriceLabs)'
       : `en modo "${worst.q.lmMode}" configurado pero sin marcar como verificado`} — confírmalo en Resumen → "Last-Minute de PriceLabs" (modo real + casilla "Confirmé este modo directamente en PriceLabs") antes de tratar este veredicto como definitivo.`;
+  } else if(model.costBlocked){
+    /* BLOQUEANTE 2 (auditoria externa, ronda 4): mismo espiritu que
+       lmBlocked/unready — "rentable en todos" tampoco se puede sostener si
+       el costo contra el que se mide (model.cost) todavia no esta
+       confirmado (ejemplo de fabrica, o desglose detallado sin confirmar).
+       Solo reemplaza el veredicto POSITIVO — TECHO EXCEDIDO/BAJO COSTO/
+       CUBRE COSTO siguen mostrandose igual (son advertencias reales, no una
+       afirmacion de "todo bien"). Ver src/domain/cost-mode.js. */
+    vLvl='warn'; vTag='COSTOS SIN CONFIRMAR — NO USAR COMO RECOMENDACIÓN';
+    vMsg = `Esta ventana solo sale "rentable en todos" con el costo actual (${f$(model.cost,currency)}), que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar este veredicto como definitivo.`;
   } else if(unready.length){
     vLvl='warn'; vTag='DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
     vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unready.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unready.map(c=>c.name).join(', ')}: ${unready.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en Resumen → "Verificación de datos financieros" antes de tratar este veredicto como definitivo.`;
