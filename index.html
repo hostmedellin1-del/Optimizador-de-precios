@@ -194,42 +194,49 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div class="row stack">
   <div class="card">
     <h2>Costos por noche</h2>
-    <div class="field"><span>Moneda de esta unidad</span><span id="currencyDisplay" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
+    <div class="field"><span id="currencyLabel">Moneda de esta unidad</span><span id="currencyDisplay" role="status" aria-labelledby="currencyLabel" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
     <p class="hint" id="usdOnlyNotice">Todos los valores deben ingresarse en USD. Esta versión no convierte ni mezcla monedas — la multimoneda se implementará en una fase posterior.</p>
-    <div class="field"><span>Fijos (arriendo, admin, servicios, seguros, tech)</span><input type="number" data-k="fixedCost" step="1"></div>
-    <div class="field"><span>Variables (limpieza, lavandería, consumos, insumos)</span><input type="number" data-k="varCost" step="1"></div>
+    <div class="field"><label for="f-fixedCost">Fijos (arriendo, admin, servicios, seguros, tech)</label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
+    <div class="field"><label for="f-varCost">Variables (limpieza, lavandería, consumos, insumos)</label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
-        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Al escribir aquí, actualiza los campos de Fijos/Variables automáticamente.</p>
+        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Este desglose NO alimenta ninguna recomendación (Piso/Base/Offset/Matriz/Alertas/planificación mensual) hasta que lo confirmes explícitamente abajo — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba).</p>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Fijos mensuales</span>
-          <div class="field"><span>Arriendo/cuota</span><input type="number" data-cb="rent" step="1"></div>
-          <div class="field"><span>Administración</span><input type="number" data-cb="admin" step="1"></div>
-          <div class="field"><span>Servicios fijos (internet, TV, gas fijo…)</span><input type="number" data-cb="utilities" step="1"></div>
-          <div class="field"><span>Seguros</span><input type="number" data-cb="insurance" step="1"></div>
-          <div class="field"><span>Tech (PriceLabs, Hospy…)</span><input type="number" data-cb="tech" step="1"></div>
-          <div class="field"><span>Noches ocupadas al mes</span><input type="number" data-cb="occNights" step="1" min="1"></div>
+          <div class="field"><label for="f-cb-rent">Arriendo/cuota</label><input id="f-cb-rent" type="number" data-cb="rent" step="1"></div>
+          <div class="field"><label for="f-cb-admin">Administración</label><input id="f-cb-admin" type="number" data-cb="admin" step="1"></div>
+          <div class="field"><label for="f-cb-utilities">Servicios fijos (internet, TV, gas fijo…)</label><input id="f-cb-utilities" type="number" data-cb="utilities" step="1"></div>
+          <div class="field"><label for="f-cb-insurance">Seguros</label><input id="f-cb-insurance" type="number" data-cb="insurance" step="1"></div>
+          <div class="field"><label for="f-cb-tech">Tech (PriceLabs, Hospy…)</label><input id="f-cb-tech" type="number" data-cb="tech" step="1"></div>
+          <div class="field"><label for="f-cb-occNights">Noches ocupadas al mes</label><input id="f-cb-occNights" type="number" data-cb="occNights" step="1" min="1"></div>
           <div class="cost-calc-result" id="cbFixedResult"></div>
         </div>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Variables por turno <span class="hint">÷ estadía promedio</span></span>
-          <div class="field"><span>Limpieza</span><input type="number" data-cb="cleaning" step="1"></div>
-          <div class="field"><span>Lavandería</span><input type="number" data-cb="laundry" step="1"></div>
-          <div class="field"><span>Insumos (amenities, papelería…)</span><input type="number" data-cb="supplies" step="1"></div>
+          <div class="field"><label for="f-cb-cleaning">Limpieza</label><input id="f-cb-cleaning" type="number" data-cb="cleaning" step="1"></div>
+          <div class="field"><label for="f-cb-laundry">Lavandería</label><input id="f-cb-laundry" type="number" data-cb="laundry" step="1"></div>
+          <div class="field"><label for="f-cb-supplies">Insumos (amenities, papelería…)</label><input id="f-cb-supplies" type="number" data-cb="supplies" step="1"></div>
           <div class="cost-calc-result" id="cbTurnoResult"></div>
         </div>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Consumos <span class="hint">$/noche directo, no se divide — escala con las noches, no con el turno</span></span>
-          <div class="field"><span>Agua/luz/gas por noche ocupada</span><input type="number" data-cb="consumables" step="1"></div>
+          <div class="field"><label for="f-cb-consumables">Agua/luz/gas por noche ocupada</label><input id="f-cb-consumables" type="number" data-cb="consumables" step="1"></div>
           <div class="cost-calc-result" id="cbVarResult"></div>
         </div>
+        <div class="field" style="align-items:flex-start;gap:8px;">
+          <label for="costBreakdownConfirmedChk" style="flex:1;cursor:pointer;">
+            <input type="checkbox" id="costBreakdownConfirmedChk" data-cb-confirm style="width:auto;">
+            Revisé estos costos reales en USD, incluidos los valores en cero.
+          </label>
+        </div>
+        <p class="hint" id="costBreakdownStatusHint"></p>
       </div>
     </details>
-    <div class="field"><span>Margen objetivo total %</span><input type="number" data-k="margin" step="1"></div>
-    <div class="field"><span>Ventana de reserva del mercado (días, mediana)</span><input type="number" data-k="marketWindow" step="1"></div>
-    <div class="field"><span>Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></span><input type="number" data-k="avgNights" step="1" min="1"></div>
-    <div class="field"><span>Base que recomienda PriceLabs / mercado</span><input type="number" data-k="marketBase" step="1"></div>
+    <div class="field"><label for="f-margin">Margen objetivo total %</label><input id="f-margin" type="number" data-k="margin" step="1"></div>
+    <div class="field"><label for="f-marketWindow">Ventana de reserva del mercado (días, mediana)</label><input id="f-marketWindow" type="number" data-k="marketWindow" step="1"></div>
+    <div class="field"><label for="f-avgNights">Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></label><input id="f-avgNights" type="number" data-k="avgNights" step="1" min="1"></div>
+    <div class="field"><label for="f-marketBase">Base que recomienda PriceLabs / mercado</label><input id="f-marketBase" type="number" data-k="marketBase" step="1"></div>
   </div>
   <div class="card">
     <h2>Resultado del modelo</h2>
@@ -287,20 +294,20 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <h2>Validar contra una reserva real <span class="hint">compara el estimado del motor contra una liquidación real ya cerrada</span></h2>
   <p class="hint">Ingresa los datos reales de UNA reserva/liquidación ya cerrada, <strong>en USD</strong> — el motor cotiza el mismo escenario con quoteScenario() (la misma fuente que usan Piso/Base/Matriz/Simulador) y muestra la diferencia. Esto NUNCA cambia tu configuración (comisiones, descuentos) automáticamente — solo dice qué revisar. No ingreses datos del huésped (nombre, email, teléfono); solo números financieros y, si quieres, una referencia/código de reserva.</p>
   <div class="row">
-    <div class="field"><span>Canal</span><select id="recChId"></select></div>
-    <div class="field"><span>Precio publicado por PriceLabs (USD)</span><input type="number" id="recPrice"></div>
-    <div class="field"><span>Noches</span><input type="number" id="recNights" min="1" step="1"></div>
-    <div class="field"><span>Días de anticipación</span><input type="number" id="recDays" min="0" step="1"></div>
+    <div class="field"><label for="recChId">Canal</label><select id="recChId"></select></div>
+    <div class="field"><label for="recPrice">Precio publicado por PriceLabs (USD)</label><input type="number" id="recPrice"></div>
+    <div class="field"><label for="recNights">Noches</label><input type="number" id="recNights" min="1" step="1"></div>
+    <div class="field"><label for="recDays">Días de anticipación</label><input type="number" id="recDays" min="0" step="1"></div>
   </div>
   <div class="row">
-    <div class="field"><span>Comisión OTA real % <span class="hint">opcional</span></span><input type="number" id="recOtaCommissionPct"></div>
-    <div class="field"><span>Comisión bancaria real % <span class="hint">opcional</span></span><input type="number" id="recBankFeePct"></div>
-    <div class="field"><span>Tarifa de aseo cobrada <span class="hint">opcional</span></span><input type="number" id="recCleaningFeeCharged"></div>
-    <div class="field"><span>Descuento nativo reportado % <span class="hint">opcional</span></span><input type="number" id="recNativeDiscountPct"></div>
+    <div class="field"><label for="recOtaCommissionPct">Comisión OTA real % <span class="hint">opcional</span></label><input type="number" id="recOtaCommissionPct"></div>
+    <div class="field"><label for="recBankFeePct">Comisión bancaria real % <span class="hint">opcional</span></label><input type="number" id="recBankFeePct"></div>
+    <div class="field"><label for="recCleaningFeeCharged">Tarifa de aseo cobrada <span class="hint">opcional</span></label><input type="number" id="recCleaningFeeCharged"></div>
+    <div class="field"><label for="recNativeDiscountPct">Descuento nativo reportado % <span class="hint">opcional</span></label><input type="number" id="recNativeDiscountPct"></div>
   </div>
   <div class="row">
-    <div class="field"><span>Payout/liquidación real recibido (USD)</span><input type="number" id="recPayoutReceived"></div>
-    <div class="field"><span>Referencia de reserva <span class="hint">opcional — código/confirmación, nunca datos del huésped</span></span><input type="text" id="recReference" maxlength="120"></div>
+    <div class="field"><label for="recPayoutReceived">Payout/liquidación real recibido (USD)</label><input type="number" id="recPayoutReceived"></div>
+    <div class="field"><label for="recReference">Referencia de reserva <span class="hint">opcional — código/confirmación, nunca datos del huésped</span></label><input type="text" id="recReference" maxlength="120"></div>
   </div>
   <button type="button" class="ghost" id="recSaveBtn" style="margin-top:8px;">+ Guardar esta conciliación</button>
   <div id="reconcileResult" style="margin-top:12px;"></div>
@@ -339,10 +346,10 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <section class="card">
   <h2>Simulador de reserva <span class="hint">una reserva concreta, paso a paso, con el porqué de cada línea</span></h2>
   <div class="sim-inputs">
-    <div class="fld"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><input type="number" id="simPrice" step="1"></div>
-    <div class="fld"><span>Canal</span><select id="simChannel"></select></div>
-    <div class="fld"><span>Días antes del check-in</span><input type="number" id="simDays" step="1" value="2"></div>
-    <div class="fld"><span>Noches de estadía</span><input type="number" id="simNights" step="1" value="2"></div>
+    <div class="fld"><label for="simPrice">Precio calculado por PriceLabs (antes de LM/offset)</label><input type="number" id="simPrice" step="1"></div>
+    <div class="fld"><label for="simChannel">Canal</label><select id="simChannel"></select></div>
+    <div class="fld"><label for="simDays">Días antes del check-in</label><input type="number" id="simDays" step="1" value="2"></div>
+    <div class="fld"><label for="simNights">Noches de estadía</label><input type="number" id="simNights" step="1" value="2"></div>
   </div>
   <div class="wf" id="simResult"></div>
   <div class="ignored" id="simIgnored"></div>
@@ -382,9 +389,10 @@ import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {computeMonthlyEconomics, defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './src/domain/monthly-economics.js';
-import {defaultFxRates} from './src/domain/currency.js';
 import {reconcileReservation} from './src/domain/reconciliation.js';
 import {buildAuditChecklist} from './src/domain/audit.js';
+import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
+import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -423,6 +431,7 @@ let state = {
   name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
   avgNights:3, matrixNights:1,
   costBreakdown: defaultCostBreakdown(),
+  costBreakdownConfirmed:false, // BLOQUEANTE 2 (auditoria externa, ronda 4) — ver src/domain/cost-mode.js
   channels: CHANNELS.map(c=>({...c})),
   discounts: defaultDiscounts(),
   ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
@@ -430,7 +439,6 @@ let state = {
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   monthlyIncomeScenario: defaultMonthlyIncomeScenario(CHANNELS.map(c=>c.id)), // PLANIFICACIÓN MENSUAL — escenario de ingreso para planificación mensual
   monthlyDistribution: defaultMonthlyDistribution(), // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
-  fxRates: defaultFxRates(), // DATOS REALES — tipo de cambio manual por moneda de liquidación distinta a la de la unidad
   reconciliations: [] // DATOS REALES — reconciliaciones locales guardadas (auditoría, nunca datos sensibles de huésped)
 };
 
@@ -443,18 +451,22 @@ let state = {
    suggestedOffset() siguen siendo wrappers delgados que cierran sobre `state`/WINDOWS
    — la logica real vive en src/domain/engine.js. */
 const f$ = x => f$base(x, state.currency);
-/* Fase 3: la calculadora de costos detallada sigue siendo OPT-IN (ver CLAUDE.md
-   seccion 3) — si Dani nunca la toca, todos sus campos quedan en 0 y el motor debe
-   seguir usando fixedCost/varCost planos (si no, el costo caeria a 0 en vez de
-   respetar esos dos campos). Solo cuando HAY algo cargado ahi se pasa
-   costBreakdown a compute()/quoteScenario(), que entonces calculan el costo REAL
-   por reserva (limpieza/lavanderia/insumos una sola vez, no diluidos por
-   avgNights) en vez del flat de siempre — asi se elimina de raiz el bug de
-   desincronizacion P13 (ya no hay un valor cacheado que se desactualice, se
-   recalcula fresco desde el desglose en cada render). */
-function costBreakdownIsFilled(cb){
-  return ['rent','admin','utilities','insurance','tech','cleaning','laundry','consumables','supplies']
-    .some(k=>(parseFloat(cb[k])||0)>0);
+/* BLOQUEANTE 2 corregido (auditoria externa, ronda 4) — ver src/domain/
+   cost-mode.js: el contrato de costos ya NO se decide con "algun campo del
+   desglose > 0" (`costBreakdownIsFilled()`, todavia se usa para saber si el
+   desglose fue TOCADO, nunca para decidir si alimenta una recomendacion).
+   `costGateNow()` es el UNICO punto que arma ese estado real (simple /
+   simple_example / detailed_incomplete / detailed_confirmed) a partir de
+   `state` — compute()/quoteConfig()/computeMonthly() lo consumen, nunca
+   reimplementan el calculo. */
+function costGateNow(){
+  return evaluateCostReadiness({
+    costBreakdown: state.costBreakdown,
+    costBreakdownConfirmed: state.costBreakdownConfirmed,
+    usingExampleCosts: parseFloat(state.fixedCost)===EXAMPLE_COST_DEFAULTS.fixedCost
+      && parseFloat(state.varCost)===EXAMPLE_COST_DEFAULTS.varCost
+      && !costBreakdownIsFilled(state.costBreakdown)
+  });
 }
 function compute(){
   /* BLOQUEANTE CRITICO corregido: el Piso/Base ahora SI reciben `ceilings` y
@@ -465,13 +477,16 @@ function compute(){
     fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
     lmConfig: state.lmConfig, verification: state.verification,
-    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined,
+    /* Se pasa el desglose SIEMPRE (aunque este vacio o sin confirmar) —
+       engine.js decide internamente si es usable (`costBreakdownConfirmed`),
+       nunca index.html: fuente unica de verdad, ver cost-mode.js. */
+    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
+    usingExampleCosts: costGateNow().usingExampleCosts,
     /* Simplificacion a USD unico (revision externa): `currency` es la moneda
-       GUARDADA de la unidad (normalmente 'USD') — `currencyNeedsReview` es
-       true SOLO si esa moneda no es exactamente 'USD' (unidad vieja, ver
-       persistence.js: nunca se convierte ni se reinterpreta). engine.js usa
-       esto para bloquear Min Price/Base Price globales (ver readiness.js). */
-    currency: state.currency, currencyNeedsReview: state.currency!=='USD'
+       GUARDADA de la unidad (normalmente 'USD') — engine.js deriva el gate
+       real (unidad + canales) el mismo con evaluateUsdOnlyReadiness(), ver
+       src/domain/usd-only.js. */
+    currency: state.currency
   });
 }
 function suggestedOffset(chId, effBase, netObjetivo){
@@ -483,17 +498,25 @@ function quoteConfig(){
   return {
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
     fixedCost: state.fixedCost, varCost: state.varCost,
-    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined,
+    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
   };
 }
 /* PLANIFICACIÓN MENSUAL — punto de equilibrio. Wrapper delgado sobre
    src/domain/monthly-economics.js (computeMonthlyEconomics) — cero fórmula
    financiera aquí, solo arma el config con `state`/quoteConfig()/model.readiness
-   (misma fuente que ya usan Piso/Base/Matriz/Alertas, ver Fase 5). */
+   (misma fuente que ya usan Piso/Base/Matriz/Alertas, ver Fase 5).
+   BLOQUEANTE 2 (auditoria externa, ronda 4): a diferencia de compute()/
+   quoteConfig() (que SIEMPRE pasan `costBreakdown` y dejan que engine.js/
+   quote.js decidan si es usable), computeMonthlyEconomics() exige que
+   `costBreakdown` este REALMENTE lleno y confirmado para calcular algo —
+   sin el (ni siquiera tocado, ni tocado-sin-confirmar), se niega a inventar
+   un total mensual desde fixedCost/varCost por noche (contrato propio de
+   ese modulo, sin cambios). Se pasa `undefined` en cualquier otro caso que
+   no sea 'detailed_confirmed' para no reimplementar esa regla aqui. */
 function computeMonthly(model){
   return computeMonthlyEconomics({
-    costBreakdown: costBreakdownIsFilled(state.costBreakdown) ? state.costBreakdown : undefined,
+    costBreakdown: costGateNow().mode==='detailed_confirmed' ? state.costBreakdown : undefined,
     avgNights: state.avgNights,
     incomeScenario: {...state.monthlyIncomeScenario, mix: state.monthlyIncomeScenario.mix.filter(m=>m.on)},
     quoteConfig: quoteConfig(),
@@ -533,6 +556,14 @@ function renderKpis(model){
     kFloorWhy.textContent='requiere revisión manual — ver aviso arriba'; kBaseWhy.textContent='requiere revisión manual — ver aviso arriba';
     return;
   }
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): Costo/Neto SI se siguen
+     mostrando aunque `model.costBlocked` sea true (ejemplo de fabrica, o
+     desglose sin confirmar) — `model.cost` ya cae de forma segura al modelo
+     simple mientras no este confirmado (nunca al desglose parcial, ver
+     src/domain/cost-mode.js), asi que el numero en si nunca es el que
+     causaba el bug original; lo que SI queda oculto es Piso/Base (mas abajo,
+     via floorReadinessBlocked/baseReadinessBlocked, que ya incorporan
+     costBlocked) — el aviso completo vive en #dataProvenanceBanner. */
   kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
   /* Refactor de cierre (revision externa): `floorReadinessBlocked`/
      `baseReadinessBlocked` (compute(), src/domain/readiness.js —
@@ -600,22 +631,30 @@ function renderValidation(model){
    32/22, el ejemplo ilustrativo del webinar de Kunas (ver CLAUDE.md seccion 5) —
    NO son los costos reales de ninguna unidad de Dani. Mientras el valor siga
    exactamente en ese default sin tocar, se avisa explicitamente para que no se
-   confunda con un dato real ya cargado. */
-const EXAMPLE_DEFAULTS = {fixedCost:32, varCost:22};
-/* Bug real encontrado y corregido (revision externa, preparacion datos
-   reales): `isExample` solo miraba fixedCost/varCost (modo simple) — una
-   unidad que llenó la calculadora detallada con costos reales, pero nunca
-   tocó los campos simples (siguen en 32/22 por no usarse), seguía mostrando
-   "EJEMPLO" como si nada fuera real. Ahora también cuenta como "hay datos
-   reales" si `costBreakdown` está lleno (mismo helper que ya usa compute()
-   para decidir si usar el desglose detallado). */
+   confunda con un dato real ya cargado.
+
+   BLOQUEANTE 2 corregido (auditoria externa, ronda 4): este banner es ahora el
+   lugar UNICO y SIEMPRE VISIBLE (no depende de `hasPendingBusinessData` como
+   #validationBanner) donde se explica el estado real de los costos —
+   `costGateNow()` (mismo gate que ya bloquea Piso/Base/Offset/Matriz/Alertas/
+   planificación mensual, ver src/domain/cost-mode.js) decide el mensaje:
+   - 'simple_example': costo fijo/variable siguen en el valor ilustrativo de
+     fábrica — nunca antes esto bloqueaba una recomendación, ahora SÍ.
+   - 'detailed_incomplete': el desglose detallado fue editado pero todavía no
+     se confirmó (o una edición posterior invalidó una confirmación previa) —
+     este es exactamente el caso del bug reportado (un campo suelto como
+     "Consumos: 5" ya no baja el Piso en silencio). */
 function renderDataProvenance(){
   const box = document.getElementById('dataProvenanceBanner');
   if(!box) return;
-  const isExample = parseFloat(state.fixedCost)===EXAMPLE_DEFAULTS.fixedCost && parseFloat(state.varCost)===EXAMPLE_DEFAULTS.varCost && !costBreakdownIsFilled(state.costBreakdown);
-  box.innerHTML = isExample
-    ? `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (32) y variable (22) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada) antes de confiar en el Min Price/Base Price.</span></div>`
-    : '';
+  const cg = costGateNow();
+  if(cg.mode==='simple_example'){
+    box.innerHTML = `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (${EXAMPLE_COST_DEFAULTS.fixedCost}) y variable (${EXAMPLE_COST_DEFAULTS.varCost}) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada y confírmala) antes de confiar en el Min Price/Base Price/Offset/Matriz/Alertas/planificación mensual: mientras tanto quedan bloqueados, no solo advertidos.</span></div>`;
+  } else if(cg.mode==='detailed_incomplete'){
+    box.innerHTML = `<div class="alert warn"><span class="tag">COSTOS SIN CONFIRMAR</span><span>${escapeHtml(cg.reason)}</span></div>`;
+  } else {
+    box.innerHTML = '';
+  }
 }
 function discountRowHTML(d){
   /* d.lockN: el nombre está atado a un número específico (Semanal=7, Quincenal=14,
@@ -682,6 +721,14 @@ function renderChannelPages(model){
             const readinessNote = (!model.lmBlocked && chReady===false)
               ? ` <span class="hint">(además, sin confirmar: ${model.readiness.byChannel[c.id].missing.map(m=>escapeHtml(m.label)).join('; ')} — ver Resumen → "Verificación de datos financieros")</span>`
               : '';
+            /* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): el Offset
+               sugerido/neto estimado de ESTE canal tampoco es una
+               recomendacion confiable si la unidad esta "requiere revision
+               manual" por moneda (unidad o CUALQUIER canal, ver
+               src/domain/usd-only.js) — maxima prioridad, antes que LM. */
+            if(model.currencyBlocked){
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: esta unidad está marcada "requiere revisión manual" por moneda (ver aviso arriba en Resumen) — ningún número de este canal es confiable hasta corregirlo.</div>`;
+            }
             if(model.lmBlocked){
               return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).</div>`;
             }
@@ -697,6 +744,15 @@ function renderChannelPages(model){
             if(chReady===false){
               const missing = model.readiness.byChannel[c.id].missing;
               return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos en Resumen → "Verificación de datos financieros".</div>`;
+            }
+            /* BLOQUEANTE 2 (auditoria externa, ronda 4): prioridad MAS BAJA
+               (solo se muestra si nada mas arriba ya explico un bloqueo) para
+               no tapar los avisos de LM/precio fijo/datos de negocio que ya
+               tienen sus propios textos verificados — un costo sin confirmar
+               (ejemplo de fabrica, o desglose sin confirmar) tampoco permite
+               tratar el Offset/neto estimado como recomendación. */
+            if(model.costBlocked){
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: el costo real de esta unidad todavía no está confirmado (${escapeHtml(model.costBlockedReason||'')}) — confírmalo en Resumen → "Costos por noche".</div>`;
             }
             return `<div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
           })()}
@@ -826,7 +882,11 @@ function renderSim(model){
      elimina. Solo se lee `model.lmBlocked`/`model.baseBlocked` para elegir el
      texto mas especifico del motivo. */
   if((typedPrice==null || !Number.isFinite(typedPrice)) && model.baseReadinessBlocked){
-    const why = model.lmBlocked ? 'Last-Minute sin verificar' : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia' : 'un dato financiero del canal que fija Base sigue sin confirmar';
+    const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
+      : model.lmBlocked ? 'Last-Minute sin verificar'
+      : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+      : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
+      : 'un dato financiero del canal que fija Base sigue sin confirmar';
     simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen">Resumen → "Verificación de datos financieros" →</button>.</div>`;
     simIgnored.innerHTML = '';
     return;
@@ -846,6 +906,11 @@ function renderSim(model){
      fuera una recomendacion automatica. */
   const chReadyForSim = !model.readiness || !model.readiness.byChannel[chId] || model.readiness.byChannel[chId].ready;
   const simUnverified = [];
+  /* BLOQUEANTE 1 (auditoria externa, ronda 4): la simulacion manual NUNCA se
+     bloquea (mismo principio de siempre), pero si la unidad "requiere
+     revision manual" por moneda, el resultado tampoco es una recomendacion
+     — se etiqueta igual que los demas supuestos sin confirmar. */
+  if(model.currencyBlocked) simUnverified.push('la unidad requiere revisión manual por moneda (ver aviso en Resumen)');
   if(model.lmBlocked) simUnverified.push('Last-Minute sin verificar');
   if(model.baseBlocked) simUnverified.push('precio LM fijo activo en el día de referencia');
   if(!chReadyForSim) model.readiness.byChannel[chId].missing.forEach(m=>simUnverified.push(m.label));
@@ -927,6 +992,24 @@ function renderCostCalc(){
   if(cbFixedResult) cbFixedResult.textContent='= '+f$(t.fixedPerNight)+'/noche';
   if(cbTurnoResult) cbTurnoResult.textContent='= '+f$(t.turnoPerNight)+'/noche';
   if(cbVarResult) cbVarResult.textContent='= '+f$(t.varPerNight)+'/noche (turno + consumos)';
+  /* La casilla de confirmacion no pasa por hydrate() en cada render (solo al
+     cargar/importar una unidad) — sin esto, desmarcar `state.costBreakdownConfirmed`
+     programaticamente (ej. al editar cualquier campo del desglose) dejaba el
+     DOM visualmente marcado aunque el estado real ya fuera `false`. */
+  const confirmChk = document.getElementById('costBreakdownConfirmedChk');
+  if(confirmChk) confirmChk.checked = !!state.costBreakdownConfirmed;
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): estado explicito y visible del
+     contrato de costos (ver src/domain/cost-mode.js) — no solo el banner
+     global (#dataProvenanceBanner), tambien aqui mismo, junto a la casilla. */
+  const hint = document.getElementById('costBreakdownStatusHint');
+  if(hint){
+    const cg = costGateNow();
+    hint.textContent = cg.mode==='detailed_confirmed'
+      ? 'Confirmado — este desglose alimenta Piso/Base/Offset/Matriz/Alertas/planificación mensual.'
+      : cg.mode==='detailed_incomplete'
+        ? 'Sin confirmar todavía — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba), no este desglose.'
+        : '';
+  }
 }
 /* Fase 4 — UI de configuracion de PriceLabs Last-Minute (5 modos). Solo arma el
    HTML segun el modo activo; el calculo real vive en src/domain/pricelabs-lm.js,
@@ -1037,14 +1120,14 @@ function renderMonthlyIncomeFields(){
   const sc = state.monthlyIncomeScenario;
   sel.value = sc.type;
   if(sc.type==='manual'){
-    box.innerHTML = `<div class="field"><span>Neto por noche (después de comisiones — dato directo, tú lo defines)</span><input type="number" data-mon="manualNetPerNight" value="${escapeHtml(sc.manualNetPerNight)}"></div>`;
+    box.innerHTML = `<div class="field"><label for="mon-manualNetPerNight">Neto por noche (después de comisiones — dato directo, tú lo defines)</label><input type="number" id="mon-manualNetPerNight" data-mon="manualNetPerNight" value="${escapeHtml(sc.manualNetPerNight)}"></div>`;
   } else if(sc.type==='channel'){
     const ch = sc.channel;
     box.innerHTML = `<div class="row">
-      <div class="field"><span>Canal</span><select data-mon="channelChId">${state.channels.map(c=>`<option value="${c.id}" ${c.id===ch.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
-      <div class="field"><span>Días de anticipación</span><input type="number" data-mon="channelDays" value="${escapeHtml(ch.days)}"></div>
-      <div class="field"><span>Noches</span><input type="number" data-mon="channelNights" value="${escapeHtml(ch.nights)}" min="1"></div>
-      <div class="field"><span>Precio PriceLabs (antes de LM/Offset/descuentos)</span><input type="number" data-mon="channelPrice" value="${escapeHtml(ch.price)}"></div>
+      <div class="field"><label for="mon-channelChId">Canal</label><select id="mon-channelChId" data-mon="channelChId">${state.channels.map(c=>`<option value="${c.id}" ${c.id===ch.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="mon-channelDays">Días de anticipación</label><input type="number" id="mon-channelDays" data-mon="channelDays" value="${escapeHtml(ch.days)}"></div>
+      <div class="field"><label for="mon-channelNights">Noches</label><input type="number" id="mon-channelNights" data-mon="channelNights" value="${escapeHtml(ch.nights)}" min="1"></div>
+      <div class="field"><label for="mon-channelPrice">Precio PriceLabs (antes de LM/Offset/descuentos)</label><input type="number" id="mon-channelPrice" data-mon="channelPrice" value="${escapeHtml(ch.price)}"></div>
     </div>`;
   } else if(sc.type==='mix'){
     box.innerHTML = `<p class="hint">Marca los canales que quieres mezclar y su % de peso — deben sumar 100%.</p>` +
@@ -1052,10 +1135,10 @@ function renderMonthlyIncomeFields(){
         const c = state.channels.find(x=>x.id===m.chId);
         return `<div class="row" style="align-items:center;">
           <label style="display:flex;gap:6px;align-items:center;min-width:110px;"><input type="checkbox" data-mon-mix="on" data-mon-ch="${m.chId}" ${m.on?'checked':''}><span>${escapeHtml(c?c.name:m.chId)}</span></label>
-          <div class="field"><span>% peso</span><input type="number" data-mon-mix="weightPct" data-mon-ch="${m.chId}" value="${escapeHtml(m.weightPct)}"></div>
-          <div class="field"><span>Días</span><input type="number" data-mon-mix="days" data-mon-ch="${m.chId}" value="${escapeHtml(m.days)}"></div>
-          <div class="field"><span>Noches</span><input type="number" data-mon-mix="nights" data-mon-ch="${m.chId}" value="${escapeHtml(m.nights)}" min="1"></div>
-          <div class="field"><span>Precio</span><input type="number" data-mon-mix="price" data-mon-ch="${m.chId}" value="${escapeHtml(m.price)}"></div>
+          <div class="field"><label for="mon-weightPct-${m.chId}">% peso</label><input type="number" id="mon-weightPct-${m.chId}" data-mon-mix="weightPct" data-mon-ch="${m.chId}" value="${escapeHtml(m.weightPct)}"></div>
+          <div class="field"><label for="mon-days-${m.chId}">Días</label><input type="number" id="mon-days-${m.chId}" data-mon-mix="days" data-mon-ch="${m.chId}" value="${escapeHtml(m.days)}"></div>
+          <div class="field"><label for="mon-nights-${m.chId}">Noches</label><input type="number" id="mon-nights-${m.chId}" data-mon-mix="nights" data-mon-ch="${m.chId}" value="${escapeHtml(m.nights)}" min="1"></div>
+          <div class="field"><label for="mon-price-${m.chId}">Precio</label><input type="number" id="mon-price-${m.chId}" data-mon-mix="price" data-mon-ch="${m.chId}" value="${escapeHtml(m.price)}"></div>
         </div>`;
       }).join('');
   }
@@ -1068,10 +1151,10 @@ function renderMonthlyDistFields(){
   chk.checked = !!d.configured;
   if(!d.configured){ box.innerHTML=''; return; }
   box.innerHTML = `<div class="row">
-    <div class="field"><span>Propietario % <span class="hint">de la utilidad distribuible</span></span><input type="number" data-mon="ownerTargetPct" value="${escapeHtml(d.ownerTargetPct)}"></div>
-    <div class="field"><span>Administrador/PM % <span class="hint">de la utilidad distribuible</span></span><input type="number" data-mon="managerTargetPct" value="${escapeHtml(d.managerTargetPct)}"></div>
-    <div class="field"><span>Reserva % <span class="hint">del ingreso neto mensual</span></span><input type="number" data-mon="reservePct" value="${escapeHtml(d.reservePct)}"></div>
-    <div class="field"><span>Impuestos % <span class="hint">del ingreso neto mensual</span></span><input type="number" data-mon="taxReservePct" value="${escapeHtml(d.taxReservePct)}"></div>
+    <div class="field"><label for="mon-ownerTargetPct">Propietario % <span class="hint">de la utilidad distribuible</span></label><input type="number" id="mon-ownerTargetPct" data-mon="ownerTargetPct" value="${escapeHtml(d.ownerTargetPct)}"></div>
+    <div class="field"><label for="mon-managerTargetPct">Administrador/PM % <span class="hint">de la utilidad distribuible</span></label><input type="number" id="mon-managerTargetPct" data-mon="managerTargetPct" value="${escapeHtml(d.managerTargetPct)}"></div>
+    <div class="field"><label for="mon-reservePct">Reserva % <span class="hint">del ingreso neto mensual</span></label><input type="number" id="mon-reservePct" data-mon="reservePct" value="${escapeHtml(d.reservePct)}"></div>
+    <div class="field"><label for="mon-taxReservePct">Impuestos % <span class="hint">del ingreso neto mensual</span></label><input type="number" id="mon-taxReservePct" data-mon="taxReservePct" value="${escapeHtml(d.taxReservePct)}"></div>
   </div>`;
 }
 function renderMonthlyResult(model){
@@ -1121,17 +1204,35 @@ function renderMonthlyResult(model){
    revirtio) — normalizeUnit() la PRESERVA tal cual (nunca la convierte ni la
    reinterpreta como USD), y esta funcion la muestra como "requiere revision
    manual", excluida de toda recomendacion global (ver engine.js: `currencyBlocked`). */
+/* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): este banner ya no
+   mira solo `state.currency` — usa evaluateUsdOnlyReadiness() (src/domain/
+   usd-only.js, la MISMA fuente que engine.js/reconciliation.js/
+   monthly-economics.js) para detectar TAMBIEN un canal historico con
+   settlementCurrency distinta de USD, no solo la moneda de la unidad. */
 function renderCurrencyReviewBanner(model){
   const display = document.getElementById('currencyDisplay');
   const notice = document.getElementById('usdOnlyNotice');
   const box = document.getElementById('currencyReviewBanner');
-  const needsReview = state.currency !== 'USD';
-  if(display) display.textContent = needsReview ? `${state.currency} (requiere revisión manual)` : 'USD';
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: state.currency, channels: state.channels});
+  const needsReview = usdGate.blocked;
+  const unitCurrencyWrong = state.currency !== 'USD';
+  if(display) display.textContent = unitCurrencyWrong ? `${state.currency} (requiere revisión manual)` : 'USD';
   if(notice) notice.style.display = needsReview ? 'none' : '';
   if(!box) return;
-  box.innerHTML = needsReview
-    ? `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad quedó guardada en <strong>${escapeHtml(state.currency)}</strong> — esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, planificación mensual y conciliación quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, y crea una unidad nueva directamente en USD (o si el valor guardado fue un error, cámbialo manualmente en el archivo exportado y vuelve a importarlo).</span></div>`
+  if(!needsReview){ box.innerHTML = ''; return; }
+  /* Recuperación segura de una unidad no-USD (auditoria externa, ronda 4):
+     "editar el JSON exportado a mano" ya NO es la única vía — el botón crea
+     una COPIA nueva directamente en USD, sin convertir ningún valor (los
+     números quedan exactamente como están hoy), marcada "pendiente de
+     revisión manual" (costBreakdownConfirmed se resetea a false a propósito,
+     para forzar revisar también los costos) — la unidad ORIGINAL nunca se
+     toca ni se borra. Solo tiene sentido si la unidad MISMA está en otra
+     moneda (un canal en otra moneda no tiene botón de copia — no hay forma
+     de crear/editar un canal desde la UI, solo de corregir el JSON). */
+  const copyBtn = unitCurrencyWrong
+    ? `<button type="button" id="createUsdCopyBtn" style="margin-top:8px;">Crear copia en USD (pendiente de revisión manual) →</button>`
     : '';
+  box.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" — ${escapeHtml(usdGate.reason||'')} Esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, Matriz, Alertas, planificación mensual y conciliación quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, corrige el dato manualmente en el archivo exportado y vuelve a importarlo, o usa el botón de abajo para crear una copia nueva directamente en USD (sin conversión automática, pendiente de revisión).${copyBtn}</span></div>`;
 }
 
 /* ================== RECONCILIACIÓN (datos reales, revision externa) ====== */
@@ -1166,8 +1267,15 @@ function reconcileResultHTML(r){
   const sevTag = {ok:'OK', warn:'AVISO', bad:'ALERTA'}[r.severity] || 'AVISO';
   const sevCls = {ok:'ok', warn:'warn', bad:'bad'}[r.severity] || 'warn';
   const rows = r.breakdown.map(b=>`<tr><td>${escapeHtml(b.component)}</td><td class="out">${typeof b.configured==='number'?b.configured.toFixed(2):b.configured}</td><td class="out">${typeof b.real==='number'?b.real.toFixed(2):b.real}</td></tr>`).join('');
+  /* Correcciones adicionales (auditoria externa, ronda 4): "CONFIABLE" ya no
+     es un solo estado — coincidir en el numero (numericMatch) NO es lo
+     mismo que un estimado con el modelo verificado (modelVerified). Ver
+     src/domain/reconciliation.js. */
+  const trustTag = r.reliable ? ' — CONCILIACIÓN CONFIABLE'
+    : r.numericMatch ? ' — COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES'
+    : '';
   return `
-    <div class="alert ${sevCls}"><span class="tag">${sevTag}${r.reliable?' — CONFIABLE':''}</span><span>Estimado ${f$(r.estimate.payout)} · Recibido ${f$(r.real.payoutReceivedInBase)}${r.real.currency!==state.currency?` (convertido desde ${escapeHtml(r.real.currency)})`:''} · Diferencia ${f$(r.diff.absolute)} (${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'})</span></div>
+    <div class="alert ${sevCls}"><span class="tag">${sevTag}${trustTag}</span><span>Estimado ${f$(r.estimate.payout)} · Recibido ${f$(r.real.payoutReceivedInBase)}${r.real.currency!==state.currency?` (convertido desde ${escapeHtml(r.real.currency)})`:''} · Diferencia ${f$(r.diff.absolute)} (${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'})</span></div>
     ${r.conversionCaveat ? `<p class="hint">${escapeHtml(r.conversionCaveat)}</p>` : ''}
     ${rows ? `<div class="table-wrap"><table><thead><tr><th>Componente</th><th>Configurado</th><th>Real</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
     ${r.causes.length ? `<p class="hint" style="margin-top:6px;"><strong>Posibles causas:</strong><br>${r.causes.map(c=>escapeHtml(c)).join('<br>')}</p>` : ''}
@@ -1203,7 +1311,12 @@ function renderReconciliationsList(model){
 function renderAuditChecklist(model){
   const box = document.getElementById('auditChecklist');
   if(!box) return;
-  const usingExampleCosts = parseFloat(state.fixedCost)===EXAMPLE_DEFAULTS.fixedCost && parseFloat(state.varCost)===EXAMPLE_DEFAULTS.varCost && !costBreakdownIsFilled(state.costBreakdown);
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): el item "costs" del checklist
+     ahora refleja el gate REAL (costGateNow().blocked) — antes solo miraba
+     si los campos seguian en el valor de ejemplo, asi que un desglose
+     detallado editado-pero-sin-confirmar pasaba como "costos reales
+     cargados" incorrectamente. */
+  const usingExampleCosts = costGateNow().blocked;
   const lastReconciliation = state.reconciliations.length
     ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, readiness: model.readiness})
     : null;
@@ -1223,6 +1336,8 @@ function renderAuditChecklist(model){
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
   document.querySelectorAll('[data-cb]').forEach(el=>el.value=state.costBreakdown[el.dataset.cb]);
+  const cbConfirmChk = document.getElementById('costBreakdownConfirmedChk');
+  if(cbConfirmChk) cbConfirmChk.checked = !!state.costBreakdownConfirmed;
   simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
   if(typeof recChId!=='undefined') recChId.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
@@ -1325,16 +1440,27 @@ document.addEventListener('change',e=>{
     renderAll();
   }
   else if(t.dataset.cb){
+    /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): ya NO se
+       sincroniza automaticamente fixedCost/varCost desde el desglose parcial
+       — ese auto-sync era el otro vector del mismo bug (un campo suelto como
+       "Consumos: 5" contaminaba tambien el modelo simple, ver cost-mode.js).
+       El desglose detallado, una vez CONFIRMADO, alimenta el motor
+       directamente (costBreakdown) — no necesita mezclarse con fixedCost/
+       varCost, que quedan como el modelo simple independiente de siempre.
+       Cualquier edicion aqui invalida una confirmacion previa. */
     const key=t.dataset.cb;
     const opts = key==='occNights' ? {min:1, max:31, integer:true, label:'Noches ocupadas al mes'} : {min:0, max:1e7, label:'Calculadora de costos — '+key};
     const r = readNumField(t, state.costBreakdown[key], opts);
     if(!r.ok) return;
     state.costBreakdown[key]=r.value;
-    const tot=costCalcTotals();
-    state.fixedCost=Math.round(tot.fixedPerNight);
-    state.varCost=Math.round(tot.varPerNight);
-    const fcEl=document.querySelector('[data-k="fixedCost"]'); if(fcEl) fcEl.value=state.fixedCost;
-    const vcEl=document.querySelector('[data-k="varCost"]'); if(vcEl) vcEl.value=state.varCost;
+    state.costBreakdownConfirmed = false;
+    renderAll();
+  }
+  else if(t.dataset.cbConfirm!==undefined){
+    /* La casilla "Revisé estos costos reales..." es la UNICA forma de pasar
+       a 'detailed_confirmed' (ver src/domain/cost-mode.js) — nunca se marca
+       sola con datos, siempre requiere esta accion explicita del usuario. */
+    state.costBreakdownConfirmed = t.checked;
     renderAll();
   }
   else if(['simPrice','simDays','simNights','simChannel'].includes(t.id)){renderSim(compute());}
@@ -1511,8 +1637,10 @@ document.addEventListener('click',e=>{
        ese `||` aqui. */
     if(model.baseReadinessBlocked){
       simPrice.value='';
-      const why = model.lmBlocked ? 'Last-Minute sin verificar'
+      const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
+        : model.lmBlocked ? 'Last-Minute sin verificar'
         : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+        : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
         : 'un dato financiero del canal que fija Base sigue sin confirmar (ver Verificación de datos financieros)';
       showInputError('Base Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confírmalo primero.');
     } else {
@@ -1583,6 +1711,37 @@ deleteUnit.addEventListener('click',async()=>{
   const label = unitList.options[unitList.selectedIndex]?.textContent || k;
   if(!confirm(`¿Eliminar "${label}"? Esta acción no se puede deshacer.`)) return;
   try{await window.storage.delete(k,false);refreshList();status('Eliminado');}catch(e){status('Error');}
+});
+/* Recuperación segura de una unidad no-USD (auditoria externa, ronda 4 —
+   "Recuperación segura de una unidad COP"): delegado en `document` (el botón
+   se re-crea en cada render de renderCurrencyReviewBanner()) — crea una
+   COPIA nueva directamente en USD, SIN convertir ningún valor (se preserva
+   exactamente lo que ya estaba configurado), marcada "pendiente de revisión
+   manual": `costBreakdownConfirmed` se resetea a false a propósito (fuerza
+   revisar también los costos, no solo la moneda) y el nombre deja explícito
+   que es una copia sin revisar. La unidad ORIGINAL (bloqueada) nunca se toca
+   ni se borra — sigue disponible en la lista, tal cual estaba. */
+document.addEventListener('click', async e=>{
+  if(e.target.id!=='createUsdCopyBtn') return;
+  if(state.currency==='USD') return; // defensivo — el boton solo deberia existir si la unidad no esta en USD
+  if(!confirm(`Se creará una COPIA nueva de "${state.name||'esta unidad'}" directamente en USD, marcada "pendiente de revisión manual". NO se convierte ningún valor — los números quedan EXACTAMENTE como están hoy en ${state.currency}, así que debes revisarlos y corregirlos tú mismo (incluyendo los costos) antes de confiar en cualquier recomendación. La unidad original en ${state.currency} NO se toca ni se borra. ¿Continuar?`)) return;
+  try{
+    const {state: copy} = normalizeUnit({
+      ...state,
+      currency: 'USD',
+      id: undefined,
+      name: (state.name||'Unidad') + ' (copia USD — pendiente de revisión manual)',
+      costBreakdownConfirmed: false
+    });
+    const record = buildV3Record(copy);
+    await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    await refreshList();
+    unitList.value = v3Key(record.id);
+    state = copy; state.id = record.id;
+    unitName.value = state.name;
+    hydrate(); renderAll();
+    status('Copia en USD creada ✓ — pendiente de revisión manual');
+  }catch(err){ console.error(err); status('Error al crear la copia'); }
 });
 migrateV2Btn.addEventListener('click', async()=>{
   try{
