@@ -4,6 +4,54 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.11.0] — BLOQUEANTE 3 corregido: la recuperación segura de una unidad COP no era segura
+
+Auditoría externa (ronda 5) sobre 0.10.0. El flujo "Crear copia en USD" (agregado en 0.10.0
+para recuperar una unidad no-USD sin editar JSON a mano) tenía un hueco crítico: la copia
+quedaba con `currency:'USD'` desde el instante en que se creaba — nada más la distinguía de
+una unidad USD real y verificada. Caso reproducido y confirmado: unidad COP con
+`fixedCost:40`/`varCost:25` → crear copia USD → resolver LM y verificaciones de negocio →
+Piso (USD 108,33) y Base (USD 196,97) se mostraban DISPONIBLES sin que nadie hubiera
+revisado si los números copiados representaban de verdad USD, o seguían siendo COP con la
+etiqueta encima.
+
+**Corrección**: `evaluateUsdOnlyReadiness()` (`src/domain/usd-only.js`, ya fuente única
+desde 0.10.0) gana un tercer motivo de bloqueo, `usdManualReviewPending`, evaluado ANTES
+que la moneda guardada — bloquea GLOBALMENTE (Piso, Base, Offset, KPIs, Matriz, Alertas,
+Simulador precargado, planificación mensual, conciliación, checklist de auditoría) aunque
+`unitCurrency` ya sea `'USD'`. La copia arranca con esta bandera en `true`. Solo un flujo
+explícito puede apagarla: el banner de moneda, mientras esté pendiente, muestra "Ya revisé
+manualmente todos los valores en USD →" — exige una confirmación FUERTE (`confirm()` con
+texto exacto) y es el ÚNICO punto de todo el código donde `usdManualReviewPending` puede
+pasar a `false`. Cada transición (creación de la copia, confirmación) queda registrada en
+`state.usdManualReviewLog` (append-only, nunca se borra, visible siempre en `#usdReviewTrail`
+aunque la unidad ya esté desbloqueada). `audit.js` se refactorizó para llamar a la misma
+`evaluateUsdOnlyReadiness()` en vez de reimplementar su propio chequeo de moneda.
+
+Verificación manual (con Node, caso exacto del encargo): unidad COP `fixedCost:40`/`varCost:25`
+→ copia con `usdManualReviewPending:true` → con LM y datos de negocio TODOS resueltos,
+`currencyBlocked` sigue `true` (ahora por revisión pendiente, no por moneda) →
+`floorReadinessBlocked`/`baseReadinessBlocked` ambos `true` → tras confirmar la revisión,
+ambos pasan a `false` y Piso/Base quedan disponibles con normalidad.
+
+Verificación de regresión: se reintrodujo deliberadamente el bug (chequeo de
+`usdManualReviewPending` removido de `evaluateUsdOnlyReadiness()`) — las 7 pruebas
+unitarias y las 4 E2E nuevas/ajustadas fallaron exactamente como se esperaba; el archivo se
+restauró después (`diff` verificado, cero cambios netos).
+
+Tests: `usd-only.test.js` (+4), `fase-usd-copy-recovery.test.js` (13, nuevo — reproduce el
+caso exacto contra `compute()`/`reconcileReservation()`/`computeMonthlyEconomics()`/
+`buildAuditChecklist()`), `real-data-persistence.test.js` (+11 — round-trip
+guardar→recargar, payload XSS en la nota de auditoría). `e2e/fase-usd-copy-recovery.spec.js`
+(3, nuevo — flujo completo en navegador real, dos unidades simultáneas, persistencia/recarga),
+`e2e/fase-usd-cost-blockers.spec.js` (1 test de 0.10.0 corregido — afirmaba, por error, que la
+copia quedaba "no bloqueada por moneda" inmediatamente tras crearla). **296/296 unitarios,
+72/72 e2e, sin regresión.**
+
+Riesgos abiertos: sin cambios respecto a 0.10.0 (`currency.js` sigue aislado; accesibilidad
+de campos dinámicos por canal aún parcial; sin recuperación guiada para un canal aislado en
+otra moneda; ningún dato real de Dani cargado/confirmado todavía).
+
 ## [0.10.0] — Dos bloqueantes corregidos: canal histórico no-USD sin bloquear; costos parciales bajando el Piso
 
 Auditoría externa (ronda 4) sobre 0.9.0. Objetivo de cierre: dejar la herramienta apta

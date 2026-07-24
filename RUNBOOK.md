@@ -163,10 +163,23 @@ cubre todavía, corre esto a mano en un navegador real:
 23. **Recuperación segura de una unidad no-USD**: con la unidad del punto 19 (moneda
     COP) cargada, en el banner rojo pulsa "Crear copia en USD (pendiente de revisión
     manual)" y confirma el diálogo. Debe crearse y cargarse una unidad nueva con
-    "(copia USD — pendiente de revisión manual)" en el nombre, mostrando "USD" como
-    moneda y sin el banner de moneda — pero sigue bloqueada por los demás motivos (LM,
-    costos) hasta que los confirmes uno por uno. Vuelve a la unidad ORIGINAL en el
-    selector — debe seguir intacta, en COP, bloqueada. Elimina ambas al terminar.
+    "(copia USD — pendiente de revisión manual)" en el nombre. Vuelve a la unidad
+    ORIGINAL en el selector — debe seguir intacta, en COP, bloqueada. Elimina ambas al
+    terminar. (Ver punto 24 para el comportamiento de la COPIA — cambió de fondo en la
+    ronda 5, ya NO queda "sin el banner de moneda" apenas se crea.)
+24. **BLOQUEANTE 3 corregido — la copia USD sigue bloqueada hasta confirmar la
+    revisión manual**: repite el punto 23. En la COPIA recién creada,
+    `#currencyDisplay` debe decir "USD (copia pendiente de revisión manual)" y el
+    banner rojo debe seguir mostrando "REQUIERE REVISIÓN MANUAL" (con el botón "Ya
+    revisé manualmente todos los valores en USD →" en vez de "Crear copia"). Resuelve
+    LM y todos los datos de negocio (Fase 5) — Min Price/Base Price deben seguir en "—"
+    con el motivo "revisión manual". Pulsa "Ya revisé manualmente todos los valores en
+    USD →", confirma el diálogo (texto exacto: "Revisé manualmente todos los valores
+    monetarios copiados y confirmo que ahora están expresados correctamente en USD.
+    Entiendo que no hubo conversión automática.") — recién ahí Min Price/Base Price
+    deben mostrar un número. Debajo del campo de moneda debe verse el historial
+    ("Copia creada" + "Revisión confirmada", con fecha) — recarga la página y
+    confírmalo, no debe desaparecer.
 
 ## Rollback
 
