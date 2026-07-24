@@ -417,8 +417,14 @@ export function compute(config){
      funcion que usan reconciliation.js y monthly-economics.js: los tres no
      pueden desalinearse porque no reimplementan el chequeo por su cuenta.
      `config.currency` ausente (callers de test que no participan) nunca
-     bloquea por si solo — regresion cero. */
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: config.currency, channels});
+     bloquea por si solo — regresion cero.
+
+     BLOQUEANTE 3 (auditoria externa, ronda 5): `config.usdManualReviewPending`
+     se reenvia tal cual a evaluateUsdOnlyReadiness() — ver el docblock de esa
+     funcion en src/domain/usd-only.js para el hallazgo completo (copia USD de
+     una unidad COP sin convertir ningun valor). Ausente/undefined (callers de
+     test, unidades normales preexistentes) nunca bloquea por si solo. */
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: config.currency, channels, usdManualReviewPending: config.usdManualReviewPending});
   const currencyBlocked = usdGate.blocked;
   const currencyBlockedReason = currencyBlocked
     ? `Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Esta versión de la app solo admite USD (la multimoneda queda fuera de esta fase). Corrige el dato (moneda de la unidad o del canal), o elimínalo y créalo de nuevo directamente en USD, antes de usar cualquier recomendación.`

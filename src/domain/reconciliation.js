@@ -20,9 +20,11 @@
 
    real = {chId, price, days, nights, currency?, payoutReceived, reference?,
            otaCommissionPct?, bankFeePct?, cleaningFeeCharged?, nativeDiscountPct?}
-   config = {quoteConfig, currency, readiness} — `currency` es la moneda
-   GUARDADA de la unidad (normalmente 'USD'; distinta solo si la unidad
-   "requiere revision manual", ver persistence.js). */
+   config = {quoteConfig, currency, readiness, usdManualReviewPending} — `currency`
+   es la moneda GUARDADA de la unidad (normalmente 'USD'; distinta solo si la
+   unidad "requiere revision manual", ver persistence.js). `usdManualReviewPending`
+   (BLOQUEANTE 3, ronda 5) bloquea igual aunque `currency` ya sea 'USD' — ver
+   src/domain/usd-only.js. */
 import {quoteScenario} from './quote.js';
 import {evaluateUsdOnlyReadiness} from './usd-only.js';
 
@@ -46,7 +48,7 @@ function severityOf(diffAbs, diffPct){
 }
 
 export function reconcileReservation(config){
-  const {real, quoteConfig, currency, readiness} = config;
+  const {real, quoteConfig, currency, readiness, usdManualReviewPending} = config;
   if(!real || typeof real!=='object')
     return {ok:false, reason:'Faltan los datos de la reserva real.'};
   if(!quoteConfig || !Array.isArray(quoteConfig.channels))
@@ -60,7 +62,7 @@ export function reconcileReservation(config){
      Se bloquea ANTES de cotizar nada. evaluateUsdOnlyReadiness() (src/domain/
      usd-only.js) es la MISMA funcion que usan engine.js y monthly-economics.js
      — no se reimplementa el chequeo aqui. */
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig.channels});
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig.channels, usdManualReviewPending});
   if(usdGate.blocked){
     return {
       ok:true, currencyBlocked:true,

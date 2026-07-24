@@ -187,7 +187,7 @@ function monthlyPoint({netPerNight, occupiedNights, avgNights, fixedCostsMonthly
 }
 
 /* config = {costBreakdown, avgNights, incomeScenario, quoteConfig?, distribution?,
-   currency?, readiness?, sensitivityNights?} */
+   currency?, readiness?, sensitivityNights?, usdManualReviewPending?} */
 export function computeMonthlyEconomics(config){
   const {costBreakdown, incomeScenario, quoteConfig, distribution, readiness} = config;
   const currency = config.currency || 'USD';
@@ -203,7 +203,7 @@ export function computeMonthlyEconomics(config){
      un dato historico en otra moneda). evaluateUsdOnlyReadiness() (src/domain/
      usd-only.js) es la MISMA fuente que usan engine.js/reconciliation.js —
      nunca convierte, nunca asume 1:1. */
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig && quoteConfig.channels});
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig && quoteConfig.channels, usdManualReviewPending: config.usdManualReviewPending});
   if(usdGate.blocked){
     return {ok:false, reason:`Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Esta versión solo admite USD. Corrige el dato (o elimina y recrea la unidad/canal directamente en USD) antes de calcular la planificación mensual.`, currency};
   }

@@ -22,11 +22,20 @@
    conversión (currency.js se conserva pero no se llama desde aquí). Una
    unidad marcada "requiere revisión manual" (moneda guardada != USD) o con
    algún canal marcado en otra moneda (dato viejo) siempre falla este item —
-   no existe ningún camino para que pase con datos multimoneda. */
+   no existe ningún camino para que pase con datos multimoneda.
+
+   BLOQUEANTE 3 (auditoria externa, ronda 5): el item "currency" ahora llama
+   a evaluateUsdOnlyReadiness() (src/domain/usd-only.js, la MISMA fuente que
+   engine.js/reconciliation.js/monthly-economics.js) en vez de reimplementar
+   su propio chequeo de moneda por canal — así una copia USD pendiente de
+   revisión manual (`usdManualReviewPending:true`) tampoco puede marcar
+   "listo_supervisado" en el checklist, aunque su `currency` ya diga 'USD'. */
+import {evaluateUsdOnlyReadiness} from './usd-only.js';
+
 const PROMO_KEYS = ['bookingGeniusMobileBoth', 'expediaVipTierMix', 'airbnbNonRefundable'];
 
 /* config = {usingExampleCosts, readiness, lmBlocked, channels, currency,
-   lastReconciliation} */
+   usdManualReviewPending, lastReconciliation} */
 export function buildAuditChecklist(config){
   const {usingExampleCosts, readiness, lmBlocked, channels, lastReconciliation} = config;
   const currency = config.currency || 'USD';
@@ -73,15 +82,12 @@ export function buildAuditChecklist(config){
     detail: promoPending.length ? `Falta confirmar promociones/reglas de plataforma en: ${promoPending.join(', ')}.` : 'Sin promociones pendientes de confirmar.'
   });
 
-  const unitCurrencyOk = currency==='USD';
-  const nonUsdChannels = [...new Set((channels||[]).map(c=>c.settlementCurrency).filter(cur=>cur && cur!=='USD'))];
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels, usdManualReviewPending: config.usdManualReviewPending});
   items.push({
-    key:'currency', label:'Moneda en USD', ok: unitCurrencyOk && nonUsdChannels.length===0,
-    detail: !unitCurrencyOk
-      ? `Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${currency}) no es USD. Corrígela antes de confiar en cualquier recomendación.`
-      : nonUsdChannels.length
-        ? `Algún canal quedó marcado con una moneda distinta de USD (dato de una versión anterior: ${nonUsdChannels.join(', ')}) — corrígelo manualmente.`
-        : 'Unidad en USD — sin canales marcados en otra moneda.'
+    key:'currency', label:'Moneda en USD', ok: !usdGate.blocked,
+    detail: usdGate.blocked
+      ? `Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Corrígela antes de confiar en cualquier recomendación.`
+      : 'Unidad en USD — sin canales marcados en otra moneda ni copias pendientes de revisión manual.'
   });
 
   const reconOk = !!(lastReconciliation && lastReconciliation.ok && !lastReconciliation.currencyBlocked && lastReconciliation.reliable);

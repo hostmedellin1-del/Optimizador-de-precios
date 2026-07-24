@@ -370,6 +370,38 @@ function normalizeReconciliations(raw, warnings){
   return raw.map((r,i)=>normalizeReconciliation(r, warnings, i)).filter(Boolean).slice(0, 200);
 }
 
+/* usdManualReviewLog: bitácora de auditoria de la revisión manual COP→USD
+   (BLOQUEANTE 3, auditoria externa ronda 5) — cada entrada registra CUANDO y
+   QUE paso ('copy_created' al crear la copia sin convertir nada,
+   'review_confirmed' cuando Dani confirma haber revisado uno por uno los
+   valores copiados). Es APEND-ONLY desde la UI (index.html nunca borra
+   entradas, solo agrega) — pero la normalizacion, como con reconciliations,
+   descarta entradas malformadas ENTERAS (nunca repara un evento desconocido
+   o una fecha invalida a medias: seria una nota de auditoria enganosa). Un
+   import que intente forzar 'review_confirmed' sin una entrada bien formada
+   simplemente no logra nada (el campo separado `usdManualReviewPending`
+   sigue siendo el que de verdad bloquea, ver mas abajo — esta bitacora es
+   solo el rastro visible, nunca la fuente del gate). */
+const USD_REVIEW_EVENTS = ['copy_created', 'review_confirmed'];
+function normalizeUsdReviewEntry(raw, warnings, idx){
+  if(!raw || typeof raw!=='object'){ warnings.push(`usdManualReviewLog[${idx}]: no es un objeto — descartado.`); return null; }
+  const path = `usdManualReviewLog[${idx}]`;
+  if(!USD_REVIEW_EVENTS.includes(raw.event)){ warnings.push(`${path}.event: "${String(raw.event).slice(0,40)}" no es un evento conocido — entrada descartada.`); return null; }
+  if(typeof raw.at!=='string' || !raw.at){ warnings.push(`${path}.at: falta la fecha — entrada descartada.`); return null; }
+  return {
+    at: raw.at.slice(0, 40),
+    event: raw.event,
+    text: strField(raw, 'text', '', warnings, path, 500)
+  };
+}
+function normalizeUsdReviewLog(raw, warnings){
+  if(!Array.isArray(raw)){
+    if(raw!==undefined) warnings.push('usdManualReviewLog: no es un arreglo — se uso una lista vacia.');
+    return [];
+  }
+  return raw.map((r,i)=>normalizeUsdReviewEntry(r, warnings, i)).filter(Boolean).slice(0, 200);
+}
+
 function normalizeCostBreakdown(raw, warnings){
   const def = defaultCostBreakdown();
   const out = {...def};
@@ -444,6 +476,19 @@ export function normalizeUnit(raw){
   const monthlyDistribution = normalizeMonthlyDistribution(raw.monthlyDistribution, warnings);
   const fxRates = normalizeFxRates(raw.fxRates, warnings);
   const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
+  /* BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js:
+     `usdManualReviewPending` es EXPLICITO, nunca inferido. Una unidad sin
+     este campo (normal, preexistente, o nueva) cae a `false` — no queda
+     bloqueada por una regla que no le aplica (cero regresion). Solo la
+     UI (boton "Crear copia en USD") escribe `true` al crear una copia; solo
+     el flujo de confirmacion fuerte de revision manual lo vuelve a `false`.
+     Un import malformado (valor no booleano) NUNCA puede establecer `true`
+     por accidente via boolField (cae al default `false`), pero tampoco
+     puede limpiar un `true` real sin pasar por ese mismo flujo si el campo
+     SI viene como `true` explicito en el JSON — eso es intencional: preserva
+     el bloqueo de una copia pendiente si se exporta/reimporta tal cual. */
+  const usdManualReviewPending = boolField(raw, 'usdManualReviewPending', false);
+  const usdManualReviewLog = normalizeUsdReviewLog(raw.usdManualReviewLog, warnings);
 
   /* Simplificacion a USD unico (revision externa): esta version SOLO opera
      en USD. Una unidad NUEVA (sin `raw.currency`, o con 'USD' exacto) se
@@ -473,6 +518,7 @@ export function normalizeUnit(raw){
     matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
     monthlyIncomeScenario, monthlyDistribution, fxRates, reconciliations,
+    usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
   return {state, warnings};
