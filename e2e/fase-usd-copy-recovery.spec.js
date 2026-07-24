@@ -179,3 +179,114 @@ test('BLOQUEANTE 3 (paso 10): persistencia — guardar/recargar conserva el esta
   page.once('dialog', d => d.accept());
   await page.locator('#deleteUnit').click();
 });
+
+/* ======================= BLOQUEANTE (ronda 6) — bypass por importación === */
+
+test('BYPASS: importar un JSON con usdManualReviewPending:false pero usdManualReviewLog con copy_created SIN review_confirmed — sigue bloqueada', async ({page}) => {
+  await page.goto('/index.html');
+  await importUnit(page, 'Intento de bypass por import', {
+    currency:'USD', fixedCost:40, varCost:25,
+    usdManualReviewPending: false, // el archivo MIENTE — dice que ya no hace falta revisión
+    usdManualReviewLog: [{at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde COP.'}]
+  });
+  await page.reload();
+  await page.selectOption('#unitList', {label: 'Intento de bypass por import'});
+  await expect(page.locator('#unitName')).toHaveValue('Intento de bypass por import', {timeout: 5000});
+
+  // ANTES del fix, esto quedaba desbloqueado (el booleano crudo bastaba).
+  await expect(page.locator('#currencyReviewBanner')).toContainText('REQUIERE REVISIÓN MANUAL');
+  await expect(page.locator('#currencyDisplay')).toHaveText('USD (copia pendiente de revisión manual)');
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('revisión manual');
+  await expect(page.locator('#confirmUsdReviewBtn')).toBeVisible();
+
+  await resolveEverythingExceptCurrency(page);
+  // Resolver TODO lo demás tampoco debe desbloquearla — el único gate que
+  // falta es la revisión manual, que la bitácora demuestra incompleta.
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('revisión manual');
+
+  // limpieza
+  page.once('dialog', d => d.accept());
+  await page.locator('#deleteUnit').click();
+});
+
+test('BYPASS: la MISMA copia, pero con review_confirmed VÁLIDO y posterior en el log — sí puede desbloquearse (una vez resueltos los demás gates)', async ({page}) => {
+  await page.goto('/index.html');
+  await importUnit(page, 'Copia con confirmación válida en el log', {
+    currency:'USD', fixedCost:40, varCost:25,
+    usdManualReviewPending: false,
+    usdManualReviewLog: [
+      {at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde COP.'},
+      {at:'2026-07-24T11:00:00.000Z', event:'review_confirmed', text:'Revisé manualmente todos los valores...'}
+    ]
+  });
+  await page.reload();
+  await page.selectOption('#unitList', {label: 'Copia con confirmación válida en el log'});
+  await expect(page.locator('#unitName')).toHaveValue('Copia con confirmación válida en el log', {timeout: 5000});
+  await expect(page.locator('#currencyReviewBanner')).toHaveText('');
+  await expect(page.locator('#currencyDisplay')).toHaveText('USD');
+
+  await resolveEverythingExceptCurrency(page);
+  await expect(page.locator('#kFloor')).not.toHaveText('—');
+
+  // limpieza
+  page.once('dialog', d => d.accept());
+  await page.locator('#deleteUnit').click();
+});
+
+/* ======================= BLOQUEANTE (ronda 6) — fallo de guardado ======== */
+
+test('Fallo de guardado al confirmar: la unidad sigue bloqueada en memoria y en pantalla, con un error explícito — nunca se muestra como revisada', async ({page}) => {
+  await page.goto('/index.html');
+  await importUnit(page, 'Falla de guardado al confirmar', {currency:'COP', fixedCost:40, varCost:25});
+  await page.reload();
+  await page.selectOption('#unitList', {label: 'Falla de guardado al confirmar'});
+  await expect(page.locator('#unitName')).toHaveValue('Falla de guardado al confirmar', {timeout: 5000});
+
+  page.once('dialog', d => d.accept());
+  await page.locator('#createUsdCopyBtn').click();
+  await page.waitForTimeout(300);
+  await expect(page.locator('#unitName')).toHaveValue(/copia USD — pendiente de revisión manual/, {timeout: 5000});
+  await expect(page.locator('#confirmUsdReviewBtn')).toBeVisible();
+
+  // Simula un fallo real de persistencia (ej. storage lleno/no disponible)
+  // — window.storage.set() empieza a devolver `false` para CUALQUIER
+  // escritura posterior, sin lanzar excepción.
+  await page.evaluate(() => { window.storage.set = async () => false; });
+
+  page.once('dialog', d => d.accept()); // confirm() del texto de revisión
+  await page.locator('#confirmUsdReviewBtn').click();
+  await page.waitForTimeout(300);
+
+  // La unidad debe seguir exactamente igual de bloqueada — ni el banner, ni
+  // los KPIs, ni el botón deben cambiar a "revisado".
+  await expect(page.locator('#currencyReviewBanner')).toContainText('REQUIERE REVISIÓN MANUAL');
+  await expect(page.locator('#currencyDisplay')).toHaveText('USD (copia pendiente de revisión manual)');
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#confirmUsdReviewBtn')).toBeVisible();
+  await expect(page.locator('#saveStatus')).not.toHaveText('Revisión manual confirmada ✓');
+  const statusText = await page.locator('#saveStatus').innerText().catch(()=>'');
+  expect(statusText.toLowerCase()).toContain('error');
+
+  // Restaurar el storage real (recargando la página) confirma que el
+  // estado persistido en disco NUNCA se corrompió — sigue pendiente.
+  await page.reload();
+  await page.selectOption('#unitList', {label: 'Falla de guardado al confirmar (copia USD — pendiente de revisión manual)'});
+  await expect(page.locator('#unitName')).toHaveValue(/copia USD — pendiente de revisión manual/, {timeout: 5000});
+  await expect(page.locator('#currencyReviewBanner')).toContainText('REQUIERE REVISIÓN MANUAL');
+
+  // Ahora sí, con el storage real funcionando, la confirmación normal debe funcionar.
+  page.once('dialog', d => d.accept());
+  await page.locator('#confirmUsdReviewBtn').click();
+  await page.waitForTimeout(300);
+  await expect(page.locator('#currencyReviewBanner')).toHaveText('');
+  await expect(page.locator('#currencyDisplay')).toHaveText('USD');
+
+  // limpieza
+  page.once('dialog', d => d.accept());
+  await page.locator('#deleteUnit').click();
+  await page.selectOption('#unitList', {label: 'Falla de guardado al confirmar'});
+  page.once('dialog', d => d.accept());
+  await page.locator('#deleteUnit').click();
+});

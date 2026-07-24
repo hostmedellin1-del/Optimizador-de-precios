@@ -295,3 +295,63 @@ test('BLOQUEANTE 3 — round-trip completo (guardar → recargar): una copia USD
   assert.equal(secondLoad.usdManualReviewLog.length, 1);
   assert.equal(secondLoad.usdManualReviewLog[0].event, 'copy_created');
 });
+
+/* BLOQUEANTE (auditoria externa, ronda 6) — "bypass de copia COP→USD por
+   importación": normalizeUnit() ahora CORRIGE usdManualReviewPending si
+   contradice la bitácora, en vez de confiar en el booleano crudo del JSON.
+   Ver src/domain/usd-only.js (evaluateUsdManualReviewState) para la fuente
+   única que decide esto — aquí se prueba que normalizeUnit() realmente la
+   consume y deja rastro (warning). */
+test('BYPASS (reproducción exacta): JSON con usdManualReviewPending:false + log copy_created SIN review_confirmed — normalizeUnit() lo CORRIGE a true y genera un warning explícito', () => {
+  const raw = {
+    name:'Copia bypass', currency:'USD', fixedCost:40, varCost:25,
+    usdManualReviewPending: false,
+    usdManualReviewLog:[{at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde COP.'}]
+  };
+  const {state, warnings} = normalizeUnit(raw);
+  assert.equal(state.usdManualReviewPending, true, 'ANTES del fix esto quedaba en false — el booleano del archivo se aceptaba sin cruzar la bitácora');
+  assert.ok(warnings.some(w=>w.includes('usdManualReviewPending') && w.includes('bitácora')), 'debe generar un warning explícito y entendible sobre la contradicción');
+});
+
+test('copia con copy_created + review_confirmed VÁLIDO posterior: normalizeUnit() preserva usdManualReviewPending:false, sin warning de contradicción', () => {
+  const raw = {
+    name:'Copia revisada', currency:'USD', fixedCost:40, varCost:25,
+    usdManualReviewPending: false,
+    usdManualReviewLog:[
+      {at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde COP.'},
+      {at:'2026-07-24T11:00:00.000Z', event:'review_confirmed', text:'Revisé manualmente...'}
+    ]
+  };
+  const {state, warnings} = normalizeUnit(raw);
+  assert.equal(state.usdManualReviewPending, false);
+  assert.equal(warnings.some(w=>w.includes('usdManualReviewPending')), false);
+});
+
+test('unidad USD normal preexistente sin log ni usdManualReviewPending: normalizeUnit() no la bloquea (cero regresión)', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad normal', currency:'USD', fixedCost:40, varCost:25});
+  assert.equal(state.usdManualReviewPending, false);
+  assert.equal(warnings.length, 0);
+});
+
+test('re-copia sin volver a confirmar (copy_created → review_confirmed → copy_created) con usdManualReviewPending:false en el JSON: sigue corrigiéndose a true', () => {
+  const raw = {
+    name:'Re-copia sin confirmar', currency:'USD',
+    usdManualReviewPending: false,
+    usdManualReviewLog:[
+      {at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'primera copia'},
+      {at:'2026-07-24T11:00:00.000Z', event:'review_confirmed', text:'primera revisión'},
+      {at:'2026-07-24T12:00:00.000Z', event:'copy_created', text:'segunda copia'}
+    ]
+  };
+  const {state} = normalizeUnit(raw);
+  assert.equal(state.usdManualReviewPending, true);
+});
+
+test('usdManualReviewLog con fecha no parseable ("hace un rato"): la entrada se descarta ENTERA con warning — no cuenta ni como copia ni como confirmación', () => {
+  const {state, warnings} = normalizeUnit({name:'X', currency:'USD', usdManualReviewLog:[
+    {at:'hace un rato', event:'copy_created', text:'fecha basura'}
+  ]});
+  assert.equal(state.usdManualReviewLog.length, 0);
+  assert.equal(state.usdManualReviewPending, false, 'sin ninguna entrada VALIDA de copy_created, no hay historial que bloquee');
+  assert.ok(warnings.some(w=>w.includes('usdManualReviewLog')));
+});

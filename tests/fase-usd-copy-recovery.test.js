@@ -166,3 +166,73 @@ test('buildAuditChecklist() con usdManualReviewPending:false — el item de mone
   const currencyItem = audit.items.find(i=>i.key==='currency');
   assert.equal(currencyItem.ok, true);
 });
+
+/* ======================= BLOQUEANTE (ronda 6) — bypass por importación ===
+   Reproduce el hallazgo exacto: JSON con usdManualReviewPending:false pero
+   usdManualReviewLog con un copy_created SIN review_confirmed posterior —
+   a nivel de DOMINIO (sin pasar por persistence.js/normalizeUnit()), para
+   confirmar que compute()/reconcileReservation()/computeMonthlyEconomics()/
+   buildAuditChecklist() NUNCA confían en el booleano crudo por su cuenta —
+   la defensa vive en evaluateUsdOnlyReadiness() (via
+   evaluateUsdManualReviewState()), no solo en la capa de persistencia. */
+
+const bypassLog = [{at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde COP.'}];
+
+test('BYPASS: compute() con usdManualReviewPending:false + log copy_created sin confirmar — currencyBlocked SIGUE true, Piso/Base SIGUEN bloqueados', () => {
+  const model = compute(copyConfig({usdManualReviewPending: false, usdManualReviewLog: bypassLog}));
+  assert.equal(model.currencyBlocked, true, 'ANTES del fix esto daba false — el booleano crudo bastaba para desbloquear');
+  assert.match(model.currencyBlockedReason, /revisión manual/);
+  assert.equal(model.floorReadinessBlocked, true);
+  assert.equal(model.baseReadinessBlocked, true);
+});
+
+test('compute() con log copy_created + review_confirmed VÁLIDO posterior y usdManualReviewPending:false — SÍ desbloquea (si el resto también está resuelto)', () => {
+  const validLog = [
+    {at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde COP.'},
+    {at:'2026-07-24T11:00:00.000Z', event:'review_confirmed', text:'Revisé manualmente todos los valores...'}
+  ];
+  const model = compute(copyConfig({usdManualReviewPending: false, usdManualReviewLog: validLog}));
+  assert.equal(model.currencyBlocked, false);
+  assert.equal(model.floorReadinessBlocked, false);
+  assert.ok(model.floor > 0);
+});
+
+test('BYPASS: reconcileReservation() con usdManualReviewPending:false + log sin confirmar — sigue bloqueada', () => {
+  const quoteConfig = quoteConfigFor();
+  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
+  const r = reconcileReservation({
+    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'USD', payoutReceived: est.payout},
+    quoteConfig, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog
+  });
+  assert.equal(r.currencyBlocked, true);
+  assert.equal(r.diff, null);
+});
+
+test('BYPASS: computeMonthlyEconomics() con usdManualReviewPending:false + log sin confirmar — sigue bloqueada', () => {
+  const quoteConfig = quoteConfigFor();
+  const res = computeMonthlyEconomics({
+    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
+    avgNights: 3,
+    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
+    quoteConfig, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog
+  });
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /revisión manual/);
+});
+
+test('BYPASS: buildAuditChecklist() con usdManualReviewPending:false + log sin confirmar — item de moneda sigue fallando, nunca "listo_supervisado"', () => {
+  const channels = freshChannels();
+  const audit = buildAuditChecklist({
+    usingExampleCosts: false, readiness: null, lmBlocked: false,
+    channels, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog, lastReconciliation: null
+  });
+  const currencyItem = audit.items.find(i=>i.key==='currency');
+  assert.equal(currencyItem.ok, false);
+  assert.notEqual(audit.status, 'listo_supervisado');
+});
+
+test('unidad USD normal (sin log, sin usdManualReviewPending) sigue funcionando exactamente igual — cero regresión del cruce nuevo', () => {
+  const model = compute(copyConfig({usdManualReviewPending: undefined, usdManualReviewLog: undefined}));
+  assert.equal(model.currencyBlocked, false);
+  assert.ok(model.floor > 0);
+});
