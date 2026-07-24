@@ -85,44 +85,65 @@ test('diferencia pequeña (<=3%): severidad "ok" pese a no ser exactamente igual
   assert.equal(r.reliable, true);
 });
 
-test('monedas DISTINTAS sin tipo de cambio verificado: consolidación bloqueada, sin diff numérico engañoso', () => {
+/* Simplificacion a USD unico (revision externa): esta version NUNCA convierte
+   — cualquier moneda distinta de 'USD' en el payout real bloquea la
+   conciliacion explicitamente, sin calcular diferencia ni severidad. Nunca
+   asume 1:1, nunca llama a currency.js/resolveConversion(). */
+test('payout real marcado en COP: bloqueado explícitamente, sin diff/severidad — nunca se convierte ni se asume 1:1', () => {
   const quoteConfig = quoteConfigFor();
   const r = reconcileReservation({
     real: {chId:'airbnb', price:150, nights:3, days:20, currency:'COP', payoutReceived: 400000},
-    quoteConfig, currency:'USD', fxRates:{}
+    quoteConfig, currency:'USD'
   });
   assert.equal(r.ok, true);
   assert.equal(r.currencyBlocked, true);
-  assert.match(r.currencyBlockedReason, /COP→USD/);
+  assert.match(r.currencyBlockedReason, /COP/);
+  assert.match(r.currencyBlockedReason, /solo admite USD/);
   assert.equal(r.diff, null);
+  assert.equal(r.severity, null);
   assert.equal(r.reliable, false);
 });
 
-test('conversión manual VERIFICADA: consolidación permitida, cálculo exacto con el rate configurado', () => {
+test('payout real marcado en EUR (moneda nunca soportada por esta app): bloqueado igual que COP', () => {
   const quoteConfig = quoteConfigFor();
-  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
-  // 1 COP = 1/4000 USD -> payoutReceived en COP que equivale EXACTO al estimado en USD
-  const payoutCOP = est.payout*4000;
   const r = reconcileReservation({
-    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'COP', payoutReceived: payoutCOP},
-    quoteConfig, currency:'USD', fxRates: {COP: {rate: 1/4000, source:'TRM manual', date:'2026-07-01', status:'verificado'}}
+    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'EUR', payoutReceived: 130},
+    quoteConfig, currency:'USD'
   });
-  assert.equal(r.ok, true);
-  assert.equal(r.currencyBlocked, false);
-  assert.ok(Math.abs(r.diff.absolute) < 1e-6);
-  assert.equal(r.severity, 'ok');
-  assert.match(r.conversionCaveat, /REFERENCIA/);
+  assert.equal(r.currencyBlocked, true);
+  assert.match(r.currencyBlockedReason, /EUR/);
 });
 
-test('tipo de cambio vacío/cero/negativo/NaN/inválido: bloqueado igual que sin entrada', () => {
+test('moneda del payout real vacía/ausente: se asume USD (el formulario ya no ofrece otra moneda), calcula normalmente', () => {
   const quoteConfig = quoteConfigFor();
-  for(const badRate of [null, 0, -100, NaN, 'texto']){
+  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
+  for(const emptyCurrency of [undefined, null, '']){
     const r = reconcileReservation({
-      real: {chId:'airbnb', price:150, nights:3, days:20, currency:'COP', payoutReceived: 400000},
-      quoteConfig, currency:'USD', fxRates: {COP: {rate: badRate, status:'verificado', source:'', date:''}}
+      real: {chId:'airbnb', price:150, nights:3, days:20, currency: emptyCurrency, payoutReceived: est.payout},
+      quoteConfig, currency:'USD'
     });
-    assert.equal(r.currencyBlocked, true, `rate=${badRate} debe bloquear`);
+    assert.equal(r.currencyBlocked, false, `currency=${JSON.stringify(emptyCurrency)} debe asumirse USD, no bloquear`);
+    assert.equal(r.diff.absolute, 0);
   }
+});
+
+test('la UNIDAD misma está marcada "requiere revisión manual" (moneda guardada != USD): bloquea TODO, ni siquiera cotiza el estimado', () => {
+  const quoteConfig = quoteConfigFor();
+  const r = reconcileReservation({
+    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'USD', payoutReceived: 100},
+    quoteConfig, currency:'COP' // la unidad misma quedó guardada en COP
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.currencyBlocked, true);
+  assert.match(r.currencyBlockedReason, /requiere revisión manual/);
+  assert.match(r.currencyBlockedReason, /COP/);
+  assert.equal(r.estimate, null, 'ni siquiera se cotiza un estimado — la moneda de la unidad no es confiable');
+});
+
+test('quoteScenario() usado internamente por el estimado siempre declara currency:\'USD\' explícito', () => {
+  const quoteConfig = quoteConfigFor();
+  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
+  assert.equal(est.currency, 'USD');
 });
 
 test('la reconciliación NUNCA cambia configuración financiera automáticamente — channels/discounts quedan bit-a-bit idénticos', () => {

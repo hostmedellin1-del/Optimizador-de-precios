@@ -138,9 +138,14 @@ export function unreadyChannels(readiness, channels){
 
    Contrato exacto (no reordenar sin actualizar CLAUDE.md):
    - `floorReady` es true SOLO SI: todos los canales activos tienen sus datos
-     financieros resueltos (`unreadyChannels(...).length===0`) Y `lmBlocked===false`.
-     Last-Minute sin verificar hace que CUALQUIER numero global (Piso incluido)
-     sea una proyeccion no verificable — bloquea el Piso igual que a Base.
+     financieros resueltos (`unreadyChannels(...).length===0`), `lmBlocked===false`
+     Y `currencyBlocked===false`. Last-Minute sin verificar hace que CUALQUIER
+     numero global (Piso incluido) sea una proyeccion no verificable — bloquea
+     el Piso igual que a Base. Lo mismo aplica a `currencyBlocked` (revision
+     externa — simplificacion a USD unico): una unidad marcada "requiere
+     revision manual" (su moneda guardada no es USD, ver src/domain/persistence.js)
+     no puede mostrar NINGUN numero global — el numero en si podria estar en
+     otra moneda, asi que ni el Piso es seguro.
    - `baseReady` es true SOLO SI `floorReady===true` Y `baseBlocked===false`.
      `baseBlocked` (precio LM fijo activo en el dia 45) es una condicion
      ADICIONAL que solo afecta a Base — nunca al Piso.
@@ -163,7 +168,7 @@ export function unreadyChannels(readiness, channels){
    Matriz/Alertas usan `unreadyChannels()` (arriba) para sus propios veredictos
    por VENTANA/alerta puntual — una pregunta legitimamente distinta a "¿el
    numero GLOBAL es confiable?" — no llaman a esta funcion. */
-export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked}){
+export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked, currencyBlocked}){
   const unready = unreadyChannels(readiness, channels);
   const dataReason = unready.length
     ? `${unready.map(c=>c.name).join(', ')} ${unready.length===1?'depende':'dependen'} de datos financieros sin confirmar: ${unready.map(c=>(readiness.byChannel[c.id].missing||[]).map(m=>m.reason).join(' ')).join(' ')}`
@@ -174,12 +179,19 @@ export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBl
   const baseFixedReason = baseBlocked
     ? 'Hay un precio Last-Minute FIJO activo en el día de referencia (45) — PriceLabs publica ese precio tal cual, así que Base Price no controla nada ahí (el Piso sigue protegiendo: evalúa el peor escenario real, LM incluido).'
     : null;
+  /* Simplificacion a USD unico (revision externa): una unidad "requiere
+     revision manual" (moneda guardada distinta de USD) nunca puede mostrar
+     un numero global — no se sabe con certeza en que moneda quedaria
+     expresado. Bloquea igual que lmBlocked (afecta Piso Y Base). */
+  const currencyReason = currencyBlocked
+    ? 'Esta unidad está marcada "requiere revisión manual" — su moneda guardada no es USD y esta versión solo admite USD. Ningún número global es confiable hasta que corrijas la moneda de la unidad (o la elimines y la vuelvas a crear en USD).'
+    : null;
 
-  const floorReady = unready.length===0 && !lmBlocked;
+  const floorReady = unready.length===0 && !lmBlocked && !currencyBlocked;
   const baseReady = floorReady && !baseBlocked;
 
-  const floorParts = [dataReason, lmReason].filter(Boolean);
-  const baseParts = [dataReason, lmReason, baseFixedReason].filter(Boolean);
+  const floorParts = [dataReason, lmReason, currencyReason].filter(Boolean);
+  const baseParts = [dataReason, lmReason, currencyReason, baseFixedReason].filter(Boolean);
   const buildReason = (label, parts) => `${label} es un número GLOBAL que se usa en PriceLabs para TODOS los canales — no se puede tratar como recomendación confiable todavía. ${parts.join(' ')} Confírmalo en Resumen → "Verificación de datos financieros" / "Last-Minute de PriceLabs" antes de usar este número en PriceLabs.`;
 
   return {

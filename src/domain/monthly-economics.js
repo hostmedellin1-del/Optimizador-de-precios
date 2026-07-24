@@ -37,23 +37,22 @@
    falta un dato esencial, se devuelve `{ok:false, reason}`, nunca un número
    fabricado. */
 import {quoteScenario} from './quote.js';
-import {resolveConversion} from './currency.js';
 
-/* Contrato de moneda (revision externa): un escenario 'channel'/'mix' puede
-   involucrar un canal cuya `settlementCurrency` (catalog/discounts.js) es
-   DISTINTA de la moneda base de la unidad (`currency`) — quoteScenario()
-   calcula el payout en la moneda de liquidacion de ESE canal, asi que
-   consolidarlo directo en el ingreso mensual (que se presenta en `currency`)
-   seria sumar monedas distintas sin decirlo. Se exige la misma conversion
-   EXPLICITA y VERIFICADA que reconciliation.js — si falta, el escenario
-   completo se bloquea (ok:false), nunca se mezcla en silencio. */
-function convertPayoutToBase(chId, payout, quoteConfig, currency, fxRates){
+/* Simplificacion a USD unico (revision externa): esta version SOLO consolida
+   valores en USD — nunca convierte, suma ni compara monedas distintas.
+   Antes esta funcion intentaba convertir con currency.js/resolveConversion()
+   si un canal declaraba `settlementCurrency` distinta; ese camino se
+   eliminó del flujo activo (currency.js se conserva para una fase
+   multimoneda futura, pero nada en este archivo lo llama). Si la unidad
+   misma no está en USD, o si algún canal usado en el escenario quedó
+   marcado con una `settlementCurrency` distinta de USD (dato viejo, ya no
+   configurable desde la UI), el escenario se BLOQUEA por completo — nunca
+   mezcla montos en silencio. */
+function ensureUsd(chId, quoteConfig){
   const ch = quoteConfig.channels.find(c=>c.id===chId);
-  const settlementCurrency = (ch && ch.settlementCurrency) || currency;
-  if(settlementCurrency===currency) return {ok:true, value: payout};
-  const conv = resolveConversion({amount: payout, fromCurrency: settlementCurrency, toCurrency: currency, fxRates});
-  if(!conv.ok) return {ok:false, reason: `${ch?ch.name:chId} liquida en ${settlementCurrency} (distinta de la moneda de la unidad, ${currency}). ${conv.reason}`};
-  return {ok:true, value: conv.value};
+  if(ch && ch.settlementCurrency && ch.settlementCurrency!=='USD')
+    return {ok:false, reason:`${ch.name} quedó marcado con una moneda de liquidación distinta de USD (${ch.settlementCurrency}, dato de una versión anterior) — esta versión solo admite USD. Corrige ese dato manualmente (o elimina y vuelve a crear el canal) antes de usarlo en la planificación mensual.`};
+  return {ok:true};
 }
 
 /* `mix` trae 4 filas fijas (una por canal del catálogo), todas apagadas
@@ -106,7 +105,7 @@ export function validateDistribution(distribution){
    que ya devuelve compute() (src/domain/readiness.js) — se REUSA para marcar
    el escenario como no confiable si el canal usado depende de un dato de
    negocio sin confirmar; no se reimplementa esa regla aquí. */
-function resolveIncomeScenario(incomeScenario, quoteConfig, readiness, currency, fxRates){
+function resolveIncomeScenario(incomeScenario, quoteConfig, readiness){
   const type = incomeScenario && incomeScenario.type;
   if(type==='manual'){
     /* P2 (revision externa): `manualNetPerNight` en null/undefined/'' significa
@@ -134,14 +133,14 @@ function resolveIncomeScenario(incomeScenario, quoteConfig, readiness, currency,
       return {ok:false, reason:'Escenario de canal específico: falta un precio de PriceLabs válido (> 0) para cotizar.'};
     const days = Math.max(0, parseFloat(ch.days)||0);
     const nights = Math.max(1, parseFloat(ch.nights)||1);
+    const usd = ensureUsd(ch.chId, quoteConfig);
+    if(!usd.ok) return {ok:false, reason: `Escenario de canal específico: ${usd.reason}`};
     const q = quoteScenario({chId: ch.chId, days, nights, price}, quoteConfig);
-    const converted = convertPayoutToBase(ch.chId, q.payout, quoteConfig, currency, fxRates);
-    if(!converted.ok) return {ok:false, reason: `Escenario de canal específico: ${converted.reason}`};
     const chReady = !readiness || !readiness.byChannel[ch.chId] || readiness.byChannel[ch.chId].ready;
     const unverifiedReasons = [];
     if(q.lmBlocked) unverifiedReasons.push('Last-Minute sin verificar');
     if(!chReady) readiness.byChannel[ch.chId].missing.forEach(m=>unverifiedReasons.push(m.label));
-    return {ok:true, netPerNight: converted.value, unverified: unverifiedReasons.length>0, unverifiedReasons, usedChannels:[ch.chId],
+    return {ok:true, netPerNight: q.payout, unverified: unverifiedReasons.length>0, unverifiedReasons, usedChannels:[ch.chId],
       description:`Cotizado con quoteScenario() — ${q.ch.name}, día ${days}, ${nights} noche${nights===1?'':'s'}, precio ${price}: payout ${q.payout.toFixed(2)}/noche.`};
   }
   if(type==='mix'){
@@ -161,10 +160,10 @@ function resolveIncomeScenario(incomeScenario, quoteConfig, readiness, currency,
       const days = Math.max(0, parseFloat(m.days)||0);
       const nights = Math.max(1, parseFloat(m.nights)||1);
       const w = (parseFloat(m.weightPct)||0)/100;
+      const usd = ensureUsd(m.chId, quoteConfig);
+      if(!usd.ok) return {ok:false, reason: `Escenario de mezcla de canales: ${usd.reason}`};
       const q = quoteScenario({chId: m.chId, days, nights, price}, quoteConfig);
-      const converted = convertPayoutToBase(m.chId, q.payout, quoteConfig, currency, fxRates);
-      if(!converted.ok) return {ok:false, reason: `Escenario de mezcla de canales: ${converted.reason}`};
-      weightedSum += converted.value*w;
+      weightedSum += q.payout*w;
       usedChannels.push(m.chId);
       const chReady = !readiness || !readiness.byChannel[m.chId] || readiness.byChannel[m.chId].ready;
       if(q.lmBlocked && !unverifiedReasons.includes('Last-Minute sin verificar')) unverifiedReasons.push('Last-Minute sin verificar');
@@ -190,13 +189,21 @@ function monthlyPoint({netPerNight, occupiedNights, avgNights, fixedCostsMonthly
 }
 
 /* config = {costBreakdown, avgNights, incomeScenario, quoteConfig?, distribution?,
-   currency?, readiness?, sensitivityNights?, fxRates?} */
+   currency?, readiness?, sensitivityNights?} */
 export function computeMonthlyEconomics(config){
   const {costBreakdown, incomeScenario, quoteConfig, distribution, readiness} = config;
   const currency = config.currency || 'USD';
-  const fxRates = config.fxRates || {};
   const sensitivityNights = config.sensitivityNights || [0, 5, 10, 15, 20, 25, 30];
   const assumptions = [];
+
+  /* Simplificacion a USD unico (revision externa): gate MAS FUNDAMENTAL,
+     antes que cualquier otra validacion — una unidad marcada "requiere
+     revision manual" (moneda guardada != USD) no puede proyectar NADA,
+     ni siquiera el escenario manual (el ingreso que Dani escribe podria
+     estar el mismo en otra moneda). Nunca convierte, nunca asume 1:1. */
+  if(currency!=='USD'){
+    return {ok:false, reason:`Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${currency}) no es USD y esta versión solo admite USD. Corrige la moneda de la unidad (o elimínala y créala de nuevo directamente en USD) antes de calcular la planificación mensual.`, currency};
+  }
 
   const avgNights = parseFloat(config.avgNights);
   if(!Number.isFinite(avgNights) || avgNights<1){
@@ -215,7 +222,7 @@ export function computeMonthlyEconomics(config){
     assumptions.push('Costos fijos mensuales (arriendo + administración + servicios + seguro + tecnología) suman 0 en la calculadora detallada — si esto no es correcto, complétalos antes de confiar en este resultado.');
   }
 
-  const income = resolveIncomeScenario(incomeScenario, quoteConfig, readiness, currency, fxRates);
+  const income = resolveIncomeScenario(incomeScenario, quoteConfig, readiness);
   if(!income.ok) return {ok:false, reason: income.reason, currency};
 
   const distValidation = validateDistribution(distribution);

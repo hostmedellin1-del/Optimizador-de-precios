@@ -12,18 +12,24 @@
      (comisiones, LM, Offset, promos, moneda) o todavía no se concilió
      ninguna reserva real, o la última conciliación no fue confiable.
    - 'listo_supervisado' ("listo para uso interno supervisado"): costos
-     reales, TODOS los datos de negocio confirmados, LM confirmado, moneda
-     resuelta si aplica, y al menos una reconciliación reciente con
-     diferencia dentro de lo esperado. Sigue sin ser "producción" — esa
-     palabra la usa Dani, nunca esta herramienta. */
-import {resolveConversion} from './currency.js';
+     reales, TODOS los datos de negocio confirmados, LM confirmado, unidad en
+     USD, y al menos una reconciliación reciente con diferencia dentro de lo
+     esperado. Sigue sin ser "producción" — esa palabra la usa Dani, nunca
+     esta herramienta.
 
+   Simplificación a USD único (revisión externa): esta versión SOLO admite
+   USD — el item "currency" del checklist ya NO intenta resolver una
+   conversión (currency.js se conserva pero no se llama desde aquí). Una
+   unidad marcada "requiere revisión manual" (moneda guardada != USD) o con
+   algún canal marcado en otra moneda (dato viejo) siempre falla este item —
+   no existe ningún camino para que pase con datos multimoneda. */
 const PROMO_KEYS = ['bookingGeniusMobileBoth', 'expediaVipTierMix', 'airbnbNonRefundable'];
 
 /* config = {usingExampleCosts, readiness, lmBlocked, channels, currency,
-   fxRates, lastReconciliation} */
+   lastReconciliation} */
 export function buildAuditChecklist(config){
-  const {usingExampleCosts, readiness, lmBlocked, channels, currency, fxRates, lastReconciliation} = config;
+  const {usingExampleCosts, readiness, lmBlocked, channels, lastReconciliation} = config;
+  const currency = config.currency || 'USD';
 
   const chName = chId => (channels||[]).find(c=>c.id===chId)?.name || chId;
   const missingByKey = {};
@@ -67,15 +73,15 @@ export function buildAuditChecklist(config){
     detail: promoPending.length ? `Falta confirmar promociones/reglas de plataforma en: ${promoPending.join(', ')}.` : 'Sin promociones pendientes de confirmar.'
   });
 
-  const neededCurrencies = [...new Set((channels||[]).map(c=>c.settlementCurrency).filter(cur=>cur && cur!==currency))];
-  const currencyMissing = neededCurrencies.filter(cur => !resolveConversion({amount:1, fromCurrency:cur, toCurrency:currency, fxRates}).ok);
+  const unitCurrencyOk = currency==='USD';
+  const nonUsdChannels = [...new Set((channels||[]).map(c=>c.settlementCurrency).filter(cur=>cur && cur!=='USD'))];
   items.push({
-    key:'currency', label:'Moneda/tipo de cambio verificado', ok: currencyMissing.length===0,
-    detail: !neededCurrencies.length
-      ? 'Todos los canales liquidan en la moneda base de la unidad — no se necesita conversión.'
-      : currencyMissing.length
-        ? `Falta un tipo de cambio verificado para: ${currencyMissing.join(', ')}.`
-        : `Tipo(s) de cambio verificado(s): ${neededCurrencies.join(', ')}.`
+    key:'currency', label:'Moneda en USD', ok: unitCurrencyOk && nonUsdChannels.length===0,
+    detail: !unitCurrencyOk
+      ? `Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${currency}) no es USD. Corrígela antes de confiar en cualquier recomendación.`
+      : nonUsdChannels.length
+        ? `Algún canal quedó marcado con una moneda distinta de USD (dato de una versión anterior: ${nonUsdChannels.join(', ')}) — corrígelo manualmente.`
+        : 'Unidad en USD — sin canales marcados en otra moneda.'
   });
 
   const reconOk = !!(lastReconciliation && lastReconciliation.ok && !lastReconciliation.currencyBlocked && lastReconciliation.reliable);
@@ -84,7 +90,7 @@ export function buildAuditChecklist(config){
     detail: !lastReconciliation
       ? 'Todavía no has conciliado ninguna reserva real contra el estimado del motor.'
       : lastReconciliation.currencyBlocked
-        ? 'La última conciliación quedó bloqueada por falta de un tipo de cambio verificado.'
+        ? `La última conciliación quedó bloqueada por moneda: ${lastReconciliation.currencyBlockedReason||'esta versión solo admite USD.'}`
         : `Última diferencia: ${lastReconciliation.diff && lastReconciliation.diff.percent!=null ? lastReconciliation.diff.percent.toFixed(1)+'%' : '—'} (severidad: ${lastReconciliation.severity||'—'}).`
   });
 

@@ -69,23 +69,38 @@ test('falta confirmar la comisión bancaria de UN canal: item "commissions" en f
   assert.equal(audit.status, 'datos_parciales');
 });
 
-test('moneda: un canal con settlementCurrency distinta SIN fx verificado bloquea el item "currency"', () => {
+/* Simplificacion a USD unico (revision externa): el item "currency" del
+   checklist ya no acepta ninguna forma de conversion — un canal marcado en
+   otra moneda (dato viejo) SIEMPRE bloquea el item, sin excepcion posible. */
+test('moneda: un canal con settlementCurrency distinta de USD (dato viejo) bloquea el item "currency", sin ningún camino para resolverlo salvo corregir el dato', () => {
   const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
   const discounts = freshDiscounts();
   const verification = resolveAll(defaultVerification());
   const readiness = evaluateRecommendationReadiness({channels, discounts, verification});
-  const audit = buildAuditChecklist({usingExampleCosts:false, readiness, lmBlocked:false, channels, currency:'USD', fxRates:{}, lastReconciliation:null});
+  const audit = buildAuditChecklist({usingExampleCosts:false, readiness, lmBlocked:false, channels, currency:'USD', lastReconciliation:null});
   const item = audit.items.find(i=>i.key==='currency');
   assert.equal(item.ok, false);
   assert.match(item.detail, /COP/);
 });
 
-test('moneda: con el fx verificado, el item "currency" pasa a true', () => {
-  const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
+test('moneda: la UNIDAD misma marcada en una moneda distinta de USD bloquea el item "currency" con mensaje de "requiere revisión manual"', () => {
+  const channels = freshChannels();
   const discounts = freshDiscounts();
   const verification = resolveAll(defaultVerification());
   const readiness = evaluateRecommendationReadiness({channels, discounts, verification});
-  const audit = buildAuditChecklist({usingExampleCosts:false, readiness, lmBlocked:false, channels, currency:'USD', fxRates:{COP:{rate:4000,status:'verificado',source:'x',date:'2026-01-01'}}, lastReconciliation:null});
+  const audit = buildAuditChecklist({usingExampleCosts:false, readiness, lmBlocked:false, channels, currency:'COP', lastReconciliation:null});
+  const item = audit.items.find(i=>i.key==='currency');
+  assert.equal(item.ok, false);
+  assert.match(item.detail, /requiere revisión manual/);
+  assert.equal(audit.status, 'datos_parciales', 'una unidad no-USD nunca puede llegar a listo_supervisado');
+});
+
+test('moneda: unidad en USD sin ningún canal marcado en otra moneda — item "currency" pasa', () => {
+  const channels = freshChannels(); // settlementCurrency null en todos, catalogo de fabrica
+  const discounts = freshDiscounts();
+  const verification = resolveAll(defaultVerification());
+  const readiness = evaluateRecommendationReadiness({channels, discounts, verification});
+  const audit = buildAuditChecklist({usingExampleCosts:false, readiness, lmBlocked:false, channels, currency:'USD', lastReconciliation:null});
   assert.equal(audit.items.find(i=>i.key==='currency').ok, true);
 });
 

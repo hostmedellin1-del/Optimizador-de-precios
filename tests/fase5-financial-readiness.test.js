@@ -436,6 +436,48 @@ test('evaluateGlobalRecommendationReadiness(): baseReady es false si floorReady 
   assert.equal(r.baseReady, false, 'baseReady no puede ser true si floorReady es false, sin importar baseBlocked');
 });
 
+/* ============================================================================
+   Simplificación a USD único (revisión externa): `currencyBlocked` es un
+   cuarto gate, mismo nivel que `lmBlocked` — bloquea Piso Y Base (una unidad
+   "requiere revisión manual" no puede mostrar NINGÚN número global, ni
+   siquiera el Piso, porque no se sabe con certeza en qué moneda quedaría
+   expresado). ============================================================ */
+test('evaluateGlobalRecommendationReadiness(): currencyBlocked bloquea Piso Y Base, igual que lmBlocked — no como baseBlocked (que solo afecta Base)', () => {
+  const channels = freshChannels();
+  const discounts = freshDiscounts();
+  const verification = defaultVerification();
+  ['hospyOffsetIsolated','bookingGeniusMobileBoth','expediaVipTierMix','airbnbNonRefundable'].forEach(k=>{ verification[k].status='no_aplica'; });
+  Object.keys(verification.bankFeePctByChannel).forEach(id=>{ verification.bankFeePctByChannel[id].status='verificado'; });
+  const readiness = evaluateRecommendationReadiness({channels, discounts, verification});
+  assert.equal(readiness.ready, true, 'precondicion: todos los canales resueltos, para aislar el efecto de currencyBlocked');
+
+  const r = evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked:false, baseBlocked:false, currencyBlocked:true});
+  assert.equal(r.floorReady, false, 'currencyBlocked debe bloquear el Piso, no solo Base');
+  assert.equal(r.baseReady, false);
+  assert.match(r.floorReason, /requiere revisión manual/);
+  assert.match(r.floorReason, /USD/);
+
+  const rOk = evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked:false, baseBlocked:false, currencyBlocked:false});
+  assert.equal(rOk.floorReady, true);
+  assert.equal(rOk.baseReady, true);
+});
+
+test('compute(): unidad marcada "requiere revisión manual" (currencyNeedsReview:true) bloquea Min Price y Base Price globales, con motivo explícito', () => {
+  const model = compute(config({currencyNeedsReview:true, currency:'COP'}));
+  assert.equal(model.currencyBlocked, true);
+  assert.match(model.currencyBlockedReason, /COP/);
+  assert.match(model.currencyBlockedReason, /solo admite USD/);
+  assert.equal(model.floorReadinessBlocked, true);
+  assert.match(model.floorReadinessBlockedReason, /requiere revisión manual/);
+  assert.equal(model.baseReadinessBlocked, true);
+});
+
+test('compute(): sin currencyNeedsReview (callers de test que no lo pasan, o unidad normal en USD), el gate de moneda NO se activa — regresión cero', () => {
+  const model = compute(config());
+  assert.equal(model.currencyBlocked, false);
+  assert.equal(model.currencyBlockedReason, null);
+});
+
 test('P1: Matriz — "RENTABLE EN TODOS" sigue bloqueado si un canal AJENO a la ventana peor caso tiene un dato pendiente (regresion del refactor a unreadyChannels compartido)', () => {
   const channels = generousChannelsWithOneOffset();
   const discounts = freshDiscounts().map(d=>({...d, on:false}));

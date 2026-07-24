@@ -150,6 +150,13 @@ export function quoteScenario(scenario, config){
     guest, feePerNight, feeTotal, guestWithFees,
     commAmt, bankAmt, payout,
     cost, margin, marginPct, markupPct,
+    /* Simplificacion a USD unico (revision externa): esta version SOLO opera
+       en USD — todo resultado monetario de quoteScenario() esta, por
+       contrato, en USD. Se expone explicito (en vez de dejarlo implicito)
+       para que cualquier consumidor (reconciliacion, planificacion mensual)
+       pueda afirmarlo sin adivinar. La multimoneda queda fuera de esta fase
+       (ver src/domain/currency.js, conservado mas no usado por el flujo activo). */
+    currency: 'USD',
     assumptions
   };
 }

@@ -129,3 +129,50 @@ test('reconciliations: más de 200 entradas se recortan (limite de sanidad, no c
   const {state} = normalizeUnit({name:'X', reconciliations: many});
   assert.equal(state.reconciliations.length, 200);
 });
+
+/* ============================================================================
+   Simplificación a USD único (revisión externa): la moneda GUARDADA de una
+   unidad NUNCA se convierte ni se reinterpreta en normalizeUnit() — un
+   valor distinto de 'USD' se PRESERVA tal cual (para que engine.js pueda
+   marcar la unidad "requiere revisión manual" y excluirla de cálculos), con
+   un warning explícito. Solo ausencia/tipo inválido cae al default seguro
+   'USD' (unidad nueva, nunca tuvo un dato de moneda que preservar). ========= */
+test('unidad nueva sin campo currency: recibe USD por defecto, sin warning (no es una unidad "vieja", es una nueva)', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad nueva'});
+  assert.equal(state.currency, 'USD');
+  assert.equal(warnings.filter(w=>w.startsWith('unidad.currency')).length, 0);
+});
+
+test('unidad vieja guardada en COP: se PRESERVA "COP" exacto (nunca se convierte a USD en silencio), con warning explícito de "requiere revisión manual"', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad vieja en COP', currency:'COP'});
+  assert.equal(state.currency, 'COP');
+  assert.ok(warnings.some(w=>w.includes('requiere revision manual') || w.includes('no es USD')));
+});
+
+test('unidad con una moneda nunca soportada por la app (EUR, o basura): también se preserva tal cual, nunca se reinterpreta como USD', () => {
+  for(const raw of ['EUR', 'cop', 'usd ', 'GBP']){
+    const {state} = normalizeUnit({name:'X', currency: raw});
+    assert.equal(state.currency, raw.trim(), `currency="${raw}" debe preservarse tal cual (trim, sin forzar a USD)`);
+  }
+});
+
+test('unidad con currency exactamente "USD": pasa sin warning, como siempre', () => {
+  const {state, warnings} = normalizeUnit({name:'X', currency:'USD'});
+  assert.equal(state.currency, 'USD');
+  assert.equal(warnings.filter(w=>w.startsWith('unidad.currency')).length, 0);
+});
+
+test('unidad con currency de tipo inválido (número, objeto, array, boolean): cae al default seguro USD, sin intentar preservar basura estructural', () => {
+  for(const bad of [42, {a:1}, ['USD'], true, null]){
+    assert.doesNotThrow(() => normalizeUnit({name:'Evil', currency: bad}));
+    const {state} = normalizeUnit({name:'Evil', currency: bad});
+    assert.equal(state.currency, 'USD');
+  }
+});
+
+test('reconciliations[].currency: un valor real distinto de USD/COP (ej. "EUR") se preserva tal cual, nunca se reinterpreta como "sin dato"', () => {
+  const {state} = normalizeUnit({name:'X', reconciliations:[
+    {chId:'airbnb', price:150, nights:3, days:20, payoutReceived:100, currency:'EUR'}
+  ]});
+  assert.equal(state.reconciliations[0].currency, 'EUR');
+});

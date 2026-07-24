@@ -9,11 +9,21 @@
    automaticamente: solo sugiere "revisar/verificar", la confirmacion sigue
    siendo 100% manual (Resumen → Verificación de datos financieros).
 
-   real = {chId, price, days, nights, currency, payoutReceived, reference?,
+   Simplificacion a USD unico (revision externa): esta version SOLO opera en
+   USD — NO se convierte, suma ni compara ningun monto en otra moneda. Si la
+   unidad esta marcada "requiere revision manual" (moneda guardada != USD) o
+   si `real.currency` llega distinto de 'USD' (o vacio/invalido), la
+   conciliacion se BLOQUEA explicitamente, sin calcular diferencia ni
+   severidad — nunca asume una equivalencia 1:1 ni convierte con currency.js
+   (ese modulo se conserva para una fase multimoneda futura, pero ningun
+   flujo activo lo llama).
+
+   real = {chId, price, days, nights, currency?, payoutReceived, reference?,
            otaCommissionPct?, bankFeePct?, cleaningFeeCharged?, nativeDiscountPct?}
-   config = {quoteConfig, currency, fxRates, readiness} */
+   config = {quoteConfig, currency, readiness} — `currency` es la moneda
+   GUARDADA de la unidad (normalmente 'USD'; distinta solo si la unidad
+   "requiere revision manual", ver persistence.js). */
 import {quoteScenario} from './quote.js';
-import {resolveConversion} from './currency.js';
 
 const EPS = 0.05; // umbral de "distinto" para comparar % configurado vs real — ruido de tecleo por debajo de esto no cuenta como discrepancia
 
@@ -35,11 +45,23 @@ function severityOf(diffAbs, diffPct){
 }
 
 export function reconcileReservation(config){
-  const {real, quoteConfig, currency, fxRates, readiness} = config;
+  const {real, quoteConfig, currency, readiness} = config;
   if(!real || typeof real!=='object')
     return {ok:false, reason:'Faltan los datos de la reserva real.'};
   if(!quoteConfig || !Array.isArray(quoteConfig.channels))
     return {ok:false, reason:'Falta la configuración de canales/descuentos/LM para cotizar el estimado.'};
+
+  /* Simplificacion a USD unico (revision externa): si la unidad misma esta
+     marcada "requiere revision manual" (su moneda guardada no es USD), no
+     hay NADA seguro que comparar — el estimado podria estar implicitamente
+     en otra moneda. Se bloquea ANTES de cotizar nada. */
+  if(currency && currency!=='USD'){
+    return {
+      ok:true, currencyBlocked:true,
+      currencyBlockedReason:`Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${currency}) no es USD y esta versión solo admite USD. Corrige la moneda de la unidad antes de conciliar.`,
+      estimate:null, real:{...real}, diff:null, breakdown:[], causes:[], severity:null, reliable:false, unverifiedAssumptions:[]
+    };
+  }
 
   const chId = real.chId;
   const ch = quoteConfig.channels.find(c=>c.id===chId);
@@ -57,30 +79,28 @@ export function reconcileReservation(config){
   if(!Number.isFinite(payoutReceived))
     return {ok:false, reason:'Falta el payout/liquidación real recibido — sin este dato no hay nada que comparar contra el estimado.'};
 
-  /* Estimado — SIEMPRE via quoteScenario(), nunca una formula paralela. */
+  /* Estimado — SIEMPRE via quoteScenario(), nunca una formula paralela.
+     quoteScenario() ya devuelve currency:'USD' explicito (ver quote.js). */
   const estimate = quoteScenario({chId, days, nights, price}, quoteConfig);
 
-  /* Contrato de moneda (revision externa): el estimado esta expresado en la
-     moneda BASE de la unidad (`currency`) — si la liquidacion real llego en
-     otra moneda, se exige una conversion EXPLICITA y VERIFICADA antes de
-     calcular cualquier diferencia numerica. Sin esa conversion, NUNCA se
-     resta un monto en USD de un monto en COP como si fueran comparables. */
-  const realCurrency = real.currency || currency;
-  let payoutReceivedInBase = payoutReceived;
-  let conversionCaveat = null;
-  if(realCurrency !== currency){
-    const conv = resolveConversion({amount: payoutReceived, fromCurrency: realCurrency, toCurrency: currency, fxRates});
-    if(!conv.ok){
-      return {
-        ok:true, currencyBlocked:true, currencyBlockedReason: conv.reason,
-        estimate,
-        real: {...real, chId, price, nights, days, payoutReceived, currency: realCurrency},
-        diff:null, breakdown:[], causes:[], severity:null, reliable:false, unverifiedAssumptions:[]
-      };
-    }
-    payoutReceivedInBase = conv.value;
-    conversionCaveat = conv.caveat;
+  /* Simplificacion a USD unico (revision externa): esta version NUNCA
+     convierte. `real.currency` vacio/ausente se asume 'USD' (el formulario
+     ya no ofrece otra moneda) — pero un valor EXPLICITO distinto de 'USD'
+     (dato viejo importado de antes de esta simplificacion, o un intento de
+     forzar otra moneda) bloquea la comparacion sin calcular nada, nunca
+     asume una equivalencia 1:1 ni llama a currency.js. */
+  const realCurrency = real.currency || 'USD';
+  if(realCurrency !== 'USD'){
+    return {
+      ok:true, currencyBlocked:true,
+      currencyBlockedReason:`El payout real se ingresó en ${realCurrency} — esta versión solo admite USD, no se realiza ninguna conversión automática. Convierte el valor tú mismo a USD (con tu propia fuente confiable) e ingrésalo directamente en USD, o espera a la fase multimoneda.`,
+      estimate,
+      real: {...real, chId, price, nights, days, payoutReceived, currency: realCurrency},
+      diff:null, breakdown:[], causes:[], severity:null, reliable:false, unverifiedAssumptions:[]
+    };
   }
+  const payoutReceivedInBase = payoutReceived;
+  const conversionCaveat = null;
 
   const diffAbs = payoutReceivedInBase - estimate.payout;
   const diffPct = estimate.payout>0 ? (diffAbs/estimate.payout)*100 : null;

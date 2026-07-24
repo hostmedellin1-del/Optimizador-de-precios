@@ -336,7 +336,13 @@ function normalizeReconciliation(raw, warnings, idx){
   if(typeof payoutReceived!=='number' || !Number.isFinite(payoutReceived)){ warnings.push(`${path}.payoutReceived: falta el payout real recibido — entrada descartada.`); return null; }
   const daysN = safeNum(raw.days, 0);
   const days = typeof daysN==='number' ? Math.max(0, Math.round(daysN)) : 0;
-  const currency = (raw.currency==='COP' || raw.currency==='USD') ? raw.currency : null;
+  /* Simplificacion a USD unico (revision externa): se PRESERVA cualquier
+     moneda no vacia tal cual (no solo 'USD'/'COP') — nunca se reinterpreta
+     un valor real como null ("sin dato" = se asumira USD en
+     reconciliation.js). Ausente/vacio si cae a null (equivalente a "no
+     especificado", que reconciliation.js SI trata como USD por defecto,
+     porque el formulario ya no ofrece otra moneda). */
+  const currency = (typeof raw.currency==='string' && raw.currency.trim()!=='') ? raw.currency.trim().slice(0,10) : null;
   const optionalPct = (key)=>{
     if(raw[key]===undefined || raw[key]===null || raw[key]==='') return null;
     const n = safeNum(raw[key], null);
@@ -427,9 +433,25 @@ export function normalizeUnit(raw){
   const fxRates = normalizeFxRates(raw.fxRates, warnings);
   const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
 
+  /* Simplificacion a USD unico (revision externa): esta version SOLO opera
+     en USD. Una unidad NUEVA (sin `raw.currency`, o con 'USD' exacto) se
+     crea/carga en USD, sin configuracion adicional. Una unidad VIEJA
+     guardada en otra moneda (COP de la fase multimoneda anterior, o
+     cualquier otro valor) se PRESERVA tal cual — nunca se convierte ni se
+     reinterpreta como USD en silencio — y queda marcada "requiere revision
+     manual" (engine.js/compute() la excluye de toda recomendacion global
+     mientras `state.currency !== 'USD'`, ver readiness.js). Solo un string
+     no vacio se preserva; ausencia/tipo invalido cae al default seguro
+     'USD' (una unidad sin dato de moneda es una unidad nueva, no una que
+     "requiere revision"). */
+  let currency = 'USD';
+  if(typeof raw.currency==='string' && raw.currency.trim()!==''){
+    currency = raw.currency.trim().slice(0, 10);
+    if(currency!=='USD') warnings.push(`unidad.currency: "${currency}" no es USD — esta version solo admite USD. La unidad queda marcada "requiere revision manual" y excluida de recomendaciones globales/planificacion mensual/conciliacion hasta que corrijas o recrees la unidad en USD.`);
+  }
   const state = {
     name,
-    currency: (raw.currency==='COP') ? 'COP' : 'USD',
+    currency,
     fixedCost: nonNegField(raw, 'fixedCost', 32, warnings, 'unidad', {min:0}),
     varCost: nonNegField(raw, 'varCost', 22, warnings, 'unidad', {min:0}),
     margin: pctField(raw, 'margin', 45, warnings, 'unidad', {min:0, max:95}),

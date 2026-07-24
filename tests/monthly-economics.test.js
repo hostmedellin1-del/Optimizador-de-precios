@@ -278,62 +278,48 @@ test('ESCENARIO DE MEZCLA: el neto ponderado es el promedio ponderado exacto de 
   assert.ok(Math.abs(r.incomeSource.netPerNight - expectedWeighted) < 1e-9);
 });
 
-/* Contrato de moneda (revision externa): un canal con `settlementCurrency`
-   distinta de la moneda de la unidad no puede consolidarse en el ingreso
-   mensual sin una conversión EXPLICITA y VERIFICADA — mismo chequeo que usa
-   reconciliation.js (currency.js), aquí aplicado a los escenarios 'channel'/
-   'mix' de planificación mensual. */
-test('MONEDA — escenario de canal con settlementCurrency distinta y SIN tipo de cambio verificado: bloqueado, nunca mezcla monedas en silencio', () => {
+/* Simplificacion a USD unico (revision externa): un canal con
+   `settlementCurrency` distinta de USD (dato viejo — ya no configurable
+   desde la UI) NUNCA se consolida en el ingreso mensual — se bloquea el
+   escenario completo, sin convertir ni asumir equivalencia. No existe ningun
+   camino (ni con "tipo de cambio verificado") que permita mezclar monedas en
+   esta version — currency.js se conserva pero ningun flujo activo lo llama. */
+test('MONEDA — escenario de canal con settlementCurrency distinta de USD (dato viejo): siempre bloqueado, sin excepción', () => {
   const channels = freshChannels().map(c=>c.id==='direct' ? {...c, settlementCurrency:'COP'} : c);
   const quoteConfig = quoteConfigFor({channels});
   const scenario = {chId:'direct', days:45, nights:3, price:150};
   const r = computeMonthlyEconomics({
     costBreakdown: cb(), avgNights:3,
     incomeScenario: {type:'channel', channel: scenario},
-    quoteConfig, currency:'USD', fxRates:{}
+    quoteConfig, currency:'USD'
   });
   assert.equal(r.ok, false);
   assert.match(r.reason, /COP/);
-  assert.match(r.reason, /VERIFICADO/);
+  assert.match(r.reason, /solo admite USD/);
 });
 
-test('MONEDA — escenario de canal con settlementCurrency distinta y CON tipo de cambio verificado: calcula el neto convertido exacto', () => {
-  const channels = freshChannels().map(c=>c.id==='direct' ? {...c, settlementCurrency:'COP'} : c);
-  const quoteConfig = quoteConfigFor({channels});
-  const scenario = {chId:'direct', days:45, nights:3, price:150};
-  const expected = quoteScenario(scenario, quoteConfig); // payout en COP (moneda de liquidacion de Directo)
-  const fxRates = {COP: {rate: 1/4000, source:'TRM manual', date:'2026-07-01', status:'verificado'}}; // 1 COP = 1/4000 USD
-  const r = computeMonthlyEconomics({
-    costBreakdown: cb(), avgNights:3,
-    incomeScenario: {type:'channel', channel: scenario},
-    quoteConfig, currency:'USD', fxRates
-  });
-  assert.equal(r.ok, true);
-  assert.ok(Math.abs(r.incomeSource.netPerNight - expected.payout/4000) < 1e-9);
-});
-
-test('MONEDA — escenario de canal SIN settlementCurrency (default, misma moneda que la unidad): funciona exactamente igual que antes, sin exigir fxRates', () => {
+test('MONEDA — escenario de canal SIN settlementCurrency (default, null): funciona exactamente igual que antes', () => {
   const quoteConfig = quoteConfigFor(); // catalogo de fabrica: settlementCurrency null en todos
   const scenario = {chId:'direct', days:45, nights:3, price:150};
   const expected = quoteScenario(scenario, quoteConfig);
   const r = computeMonthlyEconomics({
     costBreakdown: cb(), avgNights:3,
     incomeScenario: {type:'channel', channel: scenario},
-    quoteConfig, currency:'USD' // fxRates ni se pasa
+    quoteConfig, currency:'USD'
   });
   assert.equal(r.ok, true);
   assert.equal(r.incomeSource.netPerNight, expected.payout);
 });
 
-test('MONEDA — escenario de MEZCLA con un canal en moneda distinta sin fx verificado: bloquea TODA la mezcla, no solo ese canal', () => {
+test('MONEDA — escenario de MEZCLA con un canal marcado en moneda distinta de USD: bloquea TODA la mezcla, no solo ese canal', () => {
   const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
   const quoteConfig = quoteConfigFor({channels});
   const rowA = {chId:'direct', days:45, nights:3, price:150, weightPct:60};
-  const rowB = {chId:'airbnb', days:45, nights:3, price:150, weightPct:40}; // liquida en COP
+  const rowB = {chId:'airbnb', days:45, nights:3, price:150, weightPct:40}; // marcado en COP
   const r = computeMonthlyEconomics({
     costBreakdown: cb(), avgNights:3,
     incomeScenario: {type:'mix', mix:[rowA, rowB]},
-    quoteConfig, currency:'USD', fxRates:{}
+    quoteConfig, currency:'USD'
   });
   assert.equal(r.ok, false);
   assert.match(r.reason, /Airbnb/);
@@ -383,12 +369,27 @@ test('escenario manual NUNCA se marca "no verificado" — es un dato directo que
   assert.equal(r.incomeSource.unverified, false);
 });
 
-test('moneda: se pasa tal cual, nunca se convierte ni se mezcla con otra (no hay lógica de FX en este módulo)', () => {
+/* Simplificacion a USD unico (revision externa): esta version SOLO admite
+   USD — una unidad marcada currency!=='USD' ("requiere revision manual")
+   bloquea CUALQUIER calculo mensual, incluso el escenario manual (nunca se
+   trata "COP" como una etiqueta inofensiva que no cambia los numeros). */
+test('moneda: currency!==\'USD\' bloquea TODO el cálculo mensual — nunca se trata como una etiqueta inofensiva', () => {
   const rUSD = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:80}, currency:'USD'});
-  const rCOP = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:80}, currency:'COP'});
+  assert.equal(rUSD.ok, true);
   assert.equal(rUSD.currency, 'USD');
-  assert.equal(rCOP.currency, 'COP');
-  assert.equal(rUSD.profitMonthly, rCOP.profitMonthly, 'las cifras numéricas no cambian por currency — es solo una etiqueta, igual que state.currency en el resto de la app; nunca se aplica una tasa de conversión inventada');
+
+  for(const badCurrency of ['COP', 'EUR', 'usd', 'Usd']){
+    const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:80}, currency: badCurrency});
+    assert.equal(r.ok, false, `currency=${JSON.stringify(badCurrency)} debe bloquear todo el cálculo`);
+    assert.match(r.reason, /requiere revisión manual/);
+    assert.match(r.reason, /solo admite USD/);
+  }
+});
+
+test('moneda: currency ausente (config.currency undefined) asume USD por defecto — mismo comportamiento que siempre', () => {
+  const r = computeMonthlyEconomics({costBreakdown: cb(), avgNights:3, incomeScenario:{type:'manual', manualNetPerNight:80}});
+  assert.equal(r.ok, true);
+  assert.equal(r.currency, 'USD');
 });
 
 test('PROPIEDAD — sensibilidad por ocupación: noches 0,1,5,10,15,20,25,30,31 dan la misma fórmula que el resultado principal recalculado a esa ocupación', () => {

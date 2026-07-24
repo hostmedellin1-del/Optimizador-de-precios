@@ -391,8 +391,19 @@ export function compute(config){
      (precio LM fijo en el dia 45) SOLO afecta a `baseReady`, nunca a
      `floorReady` — el Piso sigue protegiendo con el peor escenario real
      (LM incluido) aunque Base no aplique ese dia. */
+  /* Simplificacion a USD unico (revision externa): `config.currencyNeedsReview`
+     lo decide el caller (normalizeUnit()/persistence.js — true si la moneda
+     GUARDADA de la unidad no es exactamente 'USD', preservada tal cual, nunca
+     convertida ni reinterpretada). Es un gate MAS del mismo tipo que
+     lmBlocked — bloquea Piso Y Base, nunca solo uno. Sin `config.currencyNeedsReview`
+     (callers de test que no lo pasan), cae a `false` — regresion cero, mismo
+     patron que el resto de gates opcionales de este archivo. */
+  const currencyBlocked = !!config.currencyNeedsReview;
+  const currencyBlockedReason = currencyBlocked
+    ? `Esta unidad está marcada "requiere revisión manual" — su moneda guardada (${config.currency||'desconocida'}) no es USD, y esta versión de la app solo admite USD (la multimoneda queda fuera de esta fase). Corrige la moneda de la unidad, o elimínala y créala de nuevo directamente en USD, antes de usar cualquier recomendación.`
+    : null;
   const {floorReady, baseReady, floorReason, baseReason} = evaluateGlobalRecommendationReadiness({
-    readiness, channels, lmBlocked, baseBlocked
+    readiness, channels, lmBlocked, baseBlocked, currencyBlocked
   });
   const floorReadinessBlocked = !floorReady;
   const floorReadinessBlockedReason = floorReason;
@@ -401,6 +412,7 @@ export function compute(config){
   return {
     cost, net, floor, floorCh, floorChId, base, baseCh, baseChId, effBase, errors, valid,
     lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason,
+    currencyBlocked, currencyBlockedReason,
     readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason
   };
 }
