@@ -14,6 +14,7 @@ import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConf
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
 import {defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './monthly-economics.js';
 import {defaultFxEntry} from './currency.js';
+import {evaluateUsdManualReviewState} from './usd-only.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
 
@@ -377,17 +378,32 @@ function normalizeReconciliations(raw, warnings){
    valores copiados). Es APEND-ONLY desde la UI (index.html nunca borra
    entradas, solo agrega) — pero la normalizacion, como con reconciliations,
    descarta entradas malformadas ENTERAS (nunca repara un evento desconocido
-   o una fecha invalida a medias: seria una nota de auditoria enganosa). Un
-   import que intente forzar 'review_confirmed' sin una entrada bien formada
-   simplemente no logra nada (el campo separado `usdManualReviewPending`
-   sigue siendo el que de verdad bloquea, ver mas abajo — esta bitacora es
-   solo el rastro visible, nunca la fuente del gate). */
+   o una fecha invalida a medias: seria una nota de auditoria enganosa).
+
+   BLOQUEANTE (auditoria externa, ronda 6 — "bypass de copia COP→USD por
+   importación"): esta bitácora YA NO es solo un rastro visible — es, junto
+   con `usdManualReviewPending`, la fuente que consume
+   `evaluateUsdManualReviewState()` (src/domain/usd-only.js) para decidir el
+   estado EFECTIVO de revisión. Antes, un JSON exportado y editado a mano
+   para dejar `usdManualReviewPending:false` (pero conservando un
+   `copy_created` sin `review_confirmed` real después) desbloqueaba la
+   unidad igual — el booleano crudo era la ÚNICA fuente. Ver mas abajo,
+   dentro de normalizeUnit(): si `evaluateUsdManualReviewState()` detecta
+   esa contradicción, `usdManualReviewPending` se CORRIGE a `true` aquí
+   mismo (defensa en la capa de persistencia) con un warning explícito —
+   ademas de que engine.js/reconciliation.js/monthly-economics.js/audit.js
+   NUNCA confían en el booleano crudo por su cuenta (defensa en la capa de
+   dominio, la autoritativa incluso si algo llega a `compute()` sin pasar
+   por aquí). La fecha (`at`) ahora debe ser un valor REALMENTE parseable
+   como fecha (antes solo se exigia "no vacio") — una fecha invalida no
+   puede contar como parte de la linea de tiempo que decide si una
+   confirmacion es realmente POSTERIOR a la copia. */
 const USD_REVIEW_EVENTS = ['copy_created', 'review_confirmed'];
 function normalizeUsdReviewEntry(raw, warnings, idx){
   if(!raw || typeof raw!=='object'){ warnings.push(`usdManualReviewLog[${idx}]: no es un objeto — descartado.`); return null; }
   const path = `usdManualReviewLog[${idx}]`;
   if(!USD_REVIEW_EVENTS.includes(raw.event)){ warnings.push(`${path}.event: "${String(raw.event).slice(0,40)}" no es un evento conocido — entrada descartada.`); return null; }
-  if(typeof raw.at!=='string' || !raw.at){ warnings.push(`${path}.at: falta la fecha — entrada descartada.`); return null; }
+  if(typeof raw.at!=='string' || !raw.at.trim() || !Number.isFinite(Date.parse(raw.at))){ warnings.push(`${path}.at: falta o no es una fecha válida — entrada descartada.`); return null; }
   return {
     at: raw.at.slice(0, 40),
     event: raw.event,
@@ -487,8 +503,24 @@ export function normalizeUnit(raw){
      puede limpiar un `true` real sin pasar por ese mismo flujo si el campo
      SI viene como `true` explicito en el JSON — eso es intencional: preserva
      el bloqueo de una copia pendiente si se exporta/reimporta tal cual. */
-  const usdManualReviewPending = boolField(raw, 'usdManualReviewPending', false);
+  const rawUsdManualReviewPending = boolField(raw, 'usdManualReviewPending', false);
   const usdManualReviewLog = normalizeUsdReviewLog(raw.usdManualReviewLog, warnings);
+  /* BLOQUEANTE (auditoria externa, ronda 6 — "bypass de copia COP→USD por
+     importación"): defensa en la capa de persistencia, ADEMAS de la que ya
+     hace evaluateUsdOnlyReadiness() en la capa de dominio (engine.js y
+     compañía). Si la bitácora dice que la copia sigue sin confirmar
+     (`copy_created` sin `review_confirmed` válido posterior) pero el JSON
+     trae `usdManualReviewPending:false`, NO se confía en el booleano —
+     `state.usdManualReviewPending` se CORRIGE aquí mismo a `true` y se dej
+     a un warning explícito y legible. Esto es lo que hace que CUALQUIER
+     lector de `state.usdManualReviewPending` (incluida la UI, que en varios
+     puntos lee ese campo directo del estado en vez de recalcular el gate)
+     vea siempre el valor SEGURO, nunca el que decía el archivo. */
+  const reviewState = evaluateUsdManualReviewState({usdManualReviewPending: rawUsdManualReviewPending, usdManualReviewLog});
+  if(reviewState.pending && rawUsdManualReviewPending!==true){
+    warnings.push(`usdManualReviewPending: el archivo decía "false", pero la bitácora (usdManualReviewLog) registra una copia sin convertir (copy_created) sin una confirmación de revisión manual (review_confirmed) válida y posterior — se corrigió a "true" (unidad bloqueada) por seguridad. Ninguna recomendación financiera puede depender de un booleano suelto que contradice su propio historial.`);
+  }
+  const usdManualReviewPending = reviewState.pending;
 
   /* Simplificacion a USD unico (revision externa): esta version SOLO opera
      en USD. Una unidad NUEVA (sin `raw.currency`, o con 'USD' exacto) se

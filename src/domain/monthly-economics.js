@@ -203,7 +203,7 @@ export function computeMonthlyEconomics(config){
      un dato historico en otra moneda). evaluateUsdOnlyReadiness() (src/domain/
      usd-only.js) es la MISMA fuente que usan engine.js/reconciliation.js —
      nunca convierte, nunca asume 1:1. */
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig && quoteConfig.channels, usdManualReviewPending: config.usdManualReviewPending});
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig && quoteConfig.channels, usdManualReviewPending: config.usdManualReviewPending, usdManualReviewLog: config.usdManualReviewLog});
   if(usdGate.blocked){
     return {ok:false, reason:`Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Esta versión solo admite USD. Corrige el dato (o elimina y recrea la unidad/canal directamente en USD) antes de calcular la planificación mensual.`, currency};
   }

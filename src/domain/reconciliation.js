@@ -48,7 +48,7 @@ function severityOf(diffAbs, diffPct){
 }
 
 export function reconcileReservation(config){
-  const {real, quoteConfig, currency, readiness, usdManualReviewPending} = config;
+  const {real, quoteConfig, currency, readiness, usdManualReviewPending, usdManualReviewLog} = config;
   if(!real || typeof real!=='object')
     return {ok:false, reason:'Faltan los datos de la reserva real.'};
   if(!quoteConfig || !Array.isArray(quoteConfig.channels))
@@ -62,7 +62,7 @@ export function reconcileReservation(config){
      Se bloquea ANTES de cotizar nada. evaluateUsdOnlyReadiness() (src/domain/
      usd-only.js) es la MISMA funcion que usan engine.js y monthly-economics.js
      — no se reimplementa el chequeo aqui. */
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig.channels, usdManualReviewPending});
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels: quoteConfig.channels, usdManualReviewPending, usdManualReviewLog});
   if(usdGate.blocked){
     return {
       ok:true, currencyBlocked:true,

@@ -39,11 +39,82 @@
    (index.html, tras la confirmación fuerte de revisión manual) puede pasar
    a `false` — nunca esta función, nunca por defecto. Se revisa ANTES que
    `unitCurrency`, con su propio mensaje: aunque la moneda ya diga 'USD', la
-   razón real del bloqueo es la revisión pendiente, no la moneda en sí. */
-export function evaluateUsdOnlyReadiness({unitCurrency, channels, legacyData, usdManualReviewPending} = {}){
+   razón real del bloqueo es la revisión pendiente, no la moneda en sí.
+
+   BLOQUEANTE (auditoria externa, ronda 6 — "bypass de copia COP→USD por
+   importación"): el booleano `usdManualReviewPending` SOLO no bastaba —
+   un JSON exportado, editado a mano para dejarlo en `false` pero
+   conservando en `usdManualReviewLog` un `copy_created` SIN un
+   `review_confirmed` real después, desbloqueaba la unidad igual, porque
+   nada contrastaba el booleano contra la bitácora. Ver
+   `evaluateUsdManualReviewState()` (debajo) — la fuente ÚNICA y pura que
+   decide el estado EFECTIVO de revisión manual, cruzando el booleano con
+   la bitácora en orden temporal. `evaluateUsdOnlyReadiness()` NUNCA vuelve
+   a leer `usdManualReviewPending` crudo — siempre pasa por esa función. */
+const REVIEW_EVENTS = ['copy_created', 'review_confirmed'];
+
+function isValidReviewEntry(e){
+  return !!e && typeof e === 'object'
+    && REVIEW_EVENTS.includes(e.event)
+    && typeof e.at === 'string' && e.at.trim() !== ''
+    && Number.isFinite(Date.parse(e.at));
+}
+
+/* evaluateUsdManualReviewState({usdManualReviewPending, usdManualReviewLog})
+   — pura, sin efectos secundarios, se puede llamar directo (tests) o desde
+   evaluateUsdOnlyReadiness()/normalizeUnit() (persistence.js), que la
+   reusan como MISMA fuente en vez de reimplementar el cruce.
+
+   Regla: se ordenan las entradas VÁLIDAS del log cronológicamente (por
+   `at`; un empate se resuelve por la posición original en el arreglo, que
+   es append-only desde la UI real — nunca se reordena a mano salvo que
+   alguien edite el JSON, y en ese caso el orden temporal manda). Si el
+   `copy_created` MÁS RECIENTE no tiene un `review_confirmed` VÁLIDO
+   después de él en esa línea de tiempo, el estado efectivo es "pendiente"
+   — sin importar lo que diga `usdManualReviewPending`. Entradas
+   malformadas (evento desconocido, fecha ausente/no parseable) se ignoran
+   POR COMPLETO: nunca cuentan como confirmación, y nunca fabrican un
+   `copy_created` que no exista. `usdManualReviewPending:true` SIEMPRE
+   bloquea, tenga o no bitácora — sigue siendo la bandera explícita que usa
+   index.html para marcar una copia recién creada, antes de que exista
+   ninguna entrada de log. Una unidad SIN log en absoluto (normal,
+   preexistente) y `usdManualReviewPending` ausente/false nunca queda
+   bloqueada por esta regla — cero regresión. */
+export function evaluateUsdManualReviewState({usdManualReviewPending, usdManualReviewLog} = {}){
+  const log = Array.isArray(usdManualReviewLog) ? usdManualReviewLog : [];
+  const sorted = log
+    .map((e, i) => ({e, i}))
+    .filter(({e}) => isValidReviewEntry(e))
+    .sort((a, b) => {
+      const ta = Date.parse(a.e.at), tb = Date.parse(b.e.at);
+      if(ta !== tb) return ta - tb;
+      return a.i - b.i;
+    })
+    .map(({e}) => e);
+
+  let lastCopyCreatedIdx = -1;
+  sorted.forEach((e, idx) => { if(e.event === 'copy_created') lastCopyCreatedIdx = idx; });
+  const confirmedAfter = lastCopyCreatedIdx >= 0
+    && sorted.slice(lastCopyCreatedIdx + 1).some(e => e.event === 'review_confirmed');
+  const historyRequiresReview = lastCopyCreatedIdx >= 0 && !confirmedAfter;
+
+  const rawPending = usdManualReviewPending === true;
+  const pending = rawPending || historyRequiresReview;
+  const inconsistentRaw = usdManualReviewPending === false && historyRequiresReview;
+
+  return {
+    pending, historyRequiresReview, inconsistentRaw,
+    reason: !pending ? null : (inconsistentRaw
+      ? 'el archivo indicaba que la revisión ya se había completado (usdManualReviewPending:false), pero la bitácora de la unidad registra una copia sin convertir (copy_created) sin una confirmación de revisión manual (review_confirmed) válida y posterior — por seguridad, se trata como pendiente'
+      : 'es una copia creada a partir de otra unidad en otra moneda, y sus valores monetarios (costos, tarifas, comisiones) todavía NO fueron revisados/confirmados uno por uno en USD; ningún valor fue convertido automáticamente')
+  };
+}
+
+export function evaluateUsdOnlyReadiness({unitCurrency, channels, legacyData, usdManualReviewPending, usdManualReviewLog} = {}){
   const reasons = [];
-  if(usdManualReviewPending === true){
-    reasons.push('la unidad quedó marcada "pendiente de revisión manual" — es una copia creada a partir de otra unidad en otra moneda, y sus valores monetarios (costos, tarifas, comisiones) todavía NO fueron revisados/confirmados uno por uno en USD; ningún valor fue convertido automáticamente');
+  const reviewState = evaluateUsdManualReviewState({usdManualReviewPending, usdManualReviewLog});
+  if(reviewState.pending){
+    reasons.push(`la unidad quedó marcada "pendiente de revisión manual" — ${reviewState.reason}`);
   }
   if(unitCurrency && unitCurrency !== 'USD'){
     reasons.push(`la unidad está guardada en ${unitCurrency}, no en USD`);

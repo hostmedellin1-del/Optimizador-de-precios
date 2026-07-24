@@ -35,7 +35,7 @@ import {evaluateUsdOnlyReadiness} from './usd-only.js';
 const PROMO_KEYS = ['bookingGeniusMobileBoth', 'expediaVipTierMix', 'airbnbNonRefundable'];
 
 /* config = {usingExampleCosts, readiness, lmBlocked, channels, currency,
-   usdManualReviewPending, lastReconciliation} */
+   usdManualReviewPending, usdManualReviewLog, lastReconciliation} */
 export function buildAuditChecklist(config){
   const {usingExampleCosts, readiness, lmBlocked, channels, lastReconciliation} = config;
   const currency = config.currency || 'USD';
@@ -82,7 +82,7 @@ export function buildAuditChecklist(config){
     detail: promoPending.length ? `Falta confirmar promociones/reglas de plataforma en: ${promoPending.join(', ')}.` : 'Sin promociones pendientes de confirmar.'
   });
 
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels, usdManualReviewPending: config.usdManualReviewPending});
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: currency, channels, usdManualReviewPending: config.usdManualReviewPending, usdManualReviewLog: config.usdManualReviewLog});
   items.push({
     key:'currency', label:'Moneda en USD', ok: !usdGate.blocked,
     detail: usdGate.blocked

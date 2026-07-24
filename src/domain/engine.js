@@ -423,8 +423,19 @@ export function compute(config){
      se reenvia tal cual a evaluateUsdOnlyReadiness() — ver el docblock de esa
      funcion en src/domain/usd-only.js para el hallazgo completo (copia USD de
      una unidad COP sin convertir ningun valor). Ausente/undefined (callers de
-     test, unidades normales preexistentes) nunca bloquea por si solo. */
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: config.currency, channels, usdManualReviewPending: config.usdManualReviewPending});
+     test, unidades normales preexistentes) nunca bloquea por si solo.
+
+     BLOQUEANTE ronda 6 ("bypass de copia COP→USD por importacion"):
+     `config.usdManualReviewLog` TAMBIEN se reenvia tal cual — sin esto,
+     un caller podia poner `usdManualReviewPending:false` a mano (ej. un
+     JSON exportado y editado) y el gate confiaba ciegamente en ese booleano,
+     aunque la bitacora siguiera mostrando una copia sin confirmar
+     (`copy_created` sin `review_confirmed` despues). `evaluateUsdOnlyReadiness()`
+     ya NUNCA confia en el booleano crudo — cruza ambos campos via
+     `evaluateUsdManualReviewState()`, la MISMA funcion que usan
+     normalizeUnit() (persistence.js) y el resto de los callers de este
+     modulo, para que nadie pueda desalinearse reimplementando el cruce. */
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: config.currency, channels, usdManualReviewPending: config.usdManualReviewPending, usdManualReviewLog: config.usdManualReviewLog});
   const currencyBlocked = usdGate.blocked;
   const currencyBlockedReason = currencyBlocked
     ? `Esta unidad está marcada "requiere revisión manual" — ${usdGate.reason} Esta versión de la app solo admite USD (la multimoneda queda fuera de esta fase). Corrige el dato (moneda de la unidad o del canal), o elimínalo y créalo de nuevo directamente en USD, antes de usar cualquier recomendación.`
