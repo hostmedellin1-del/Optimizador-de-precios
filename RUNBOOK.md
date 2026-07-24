@@ -118,20 +118,29 @@ cubre todavía, corre esto a mano en un navegador real:
     conciliación (botón "+ Guardar") — debe aparecer en la lista de abajo; bórrala con el
     botón "✕" y confirma que desaparece. Verifica en la pestaña del canal que su comisión
     configurada NO cambió por hacer esto — la reconciliación nunca toca la configuración.
-18. **Moneda: consolidación multi-moneda bloqueada sin tipo de cambio verificado**: en la
-    pestaña de un canal (ej. Airbnb), cambia "Moneda de liquidación" a una distinta de la
-    moneda de la unidad. Vuelve a Resumen → "Validar contra una reserva real", cotiza ese
-    canal con la moneda de liquidación seleccionada — debe decir "MONEDA SIN CONVERSIÓN —
-    BLOQUEADO" y mencionar el par de monedas exacto. Ve a "Moneda y tipo de cambio",
-    escribe un tipo de cambio y márcalo "Verificado" — la conciliación debe dejar de estar
-    bloqueada y mostrar el monto convertido con la nota "es una REFERENCIA...". Borra el
-    tipo de cambio (deja el campo vacío) o cámbialo a 0/negativo — debe volver a bloquear.
-19. **Auditoría de datos reales**: en una unidad nueva, "Auditoría de datos reales" debe
+18. **Simplificación a USD único — sin selector de moneda visible en ningún lado**:
+    confirma que en Resumen ("Costos por noche") el campo de moneda es un texto fijo
+    "USD" (no un `<select>`), con el aviso "Todos los valores deben ingresarse en USD."
+    debajo. Revisa la pestaña de cada canal — ya no debe existir un campo "Moneda de
+    liquidación". En "Validar contra una reserva real" ya no debe existir un selector de
+    moneda de la liquidación. Tampoco debe existir ninguna sección "Moneda y tipo de
+    cambio" en Resumen.
+19. **Unidad vieja con moneda distinta de USD — "requiere revisión manual"**: exporta el
+    JSON de una unidad, edítalo a mano poniendo `"currency":"COP"`, e impórtalo de vuelta
+    (o usa el mecanismo de import con un payload de prueba). Al cargar esa unidad debe
+    aparecer un banner rojo "REQUIERE REVISIÓN MANUAL" mencionando COP, el campo de
+    moneda debe mostrar "COP (requiere revisión manual)", y Min Price/Base Price deben
+    quedar en "—". En la pestaña Comparación, la Matriz debe mostrar el mismo aviso en
+    vez de filas — nunca "RENTABLE EN TODOS" ni ningún veredicto. En Resumen, las Alertas
+    tampoco deben mostrar "OK: sin conflictos". Si esa unidad tiene una conciliación
+    guardada de antes con otra moneda, debe verse en la lista como "bloqueada por
+    moneda", nunca con un % de diferencia. Elimina la unidad de prueba al terminar.
+20. **Auditoría de datos reales**: en una unidad nueva, "Auditoría de datos reales" debe
     decir "SIMULACION". Carga costos reales (o llena la calculadora detallada) — pasa a
     "DATOS PARCIALES". Verifica todos los datos de negocio pendientes (Verificación de
-    datos financieros), confirma LM, resuelve cualquier moneda pendiente, y guarda una
-    conciliación con diferencia baja — el estado debe pasar a "LISTO PARA USO INTERNO
-    SUPERVISADO". En ningún punto debe decir "producción".
+    datos financieros), confirma LM, y guarda una conciliación con diferencia baja — el
+    estado debe pasar a "LISTO PARA USO INTERNO SUPERVISADO". En ningún punto debe decir
+    "producción".
 
 ## Rollback
 

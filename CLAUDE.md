@@ -411,14 +411,17 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
    Expedia 0% — son estimados de Dani a falta de revisar facturas, no verificados.
    **(clave `bankFeePctByChannel`, POR CANAL — bloquea cada canal con comisión > 0%
    mientras esté pendiente; Airbnb/Expedia en 0% no lo necesitan.)**
-4. **[Actualizado — infraestructura lista, falta el dato real]** Multi-moneda: el
-   contrato de conversión YA EXISTE (`src/domain/currency.js`) — cada canal puede declarar
-   `settlementCurrency` distinta a la moneda base, y cualquier consolidación entre monedas
-   distintas queda bloqueada mientras no exista un tipo de cambio manual VERIFICADO en
-   Resumen → "Moneda y tipo de cambio". Lo que sigue pendiente es 100% de Dani: marcar qué
-   canal liquida en qué moneda para cada unidad real (Distrito Primavera, Casa Río Adentro,
-   Villa Juliana, El Refugio están en COP) y el tipo de cambio real que usa para
-   convertir — nadie lo inventó, arranca vacío/no verificado.
+4. **[Actualizado de nuevo — multimoneda DESACTIVADA a propósito]** Esta versión
+   opera **exclusivamente en USD** — la app NUNCA convierte, suma ni compara
+   valores de monedas distintas (ver "Contrato de moneda" arriba). El módulo
+   `src/domain/currency.js` (conversión manual verificada) se construyó y
+   luego se desactivó deliberadamente: la prioridad pasó a que los cálculos en
+   una sola moneda sean correctos y claros antes de reabrir multimoneda. Varias
+   unidades reales de Dani están en COP (Distrito Primavera, Casa Río Adentro,
+   Villa Juliana, El Refugio) — **cárgalas como unidades nuevas en USD**
+   (convirtiendo tú los valores reales con tu propia fuente confiable antes de
+   escribirlos) hasta que exista una fase multimoneda real. No existe ningún
+   camino en la UI para configurar una moneda distinta.
 5. Multi-unidad simultánea: el sistema permite guardar/cargar unidades por nombre, pero
    no comparar varias a la vez en una sola vista (portafolio). No construir esto sin que
    Dani lo pida — es una función nueva, no un arreglo.
@@ -438,9 +441,11 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
 9. % exacto del descuento no reembolsable de Airbnb, si este listing lo tiene activo.
    Hoy apagado en 0% por defecto (nadie inventó un 10%). **(clave `airbnbNonRefundable` —
    solo bloquea Airbnb si Dani activa este descuento sin confirmar el % real.)**
-10. **[Actualizado]** Moneda real y tipo de cambio por canal — ya se pregunta explícitamente
-    por canal (`channel.settlementCurrency`, pestaña de cada canal) y por tipo de cambio
-    (`state.fxRates`, Resumen → "Moneda y tipo de cambio"). Ver punto 4.
+10. **[Actualizado de nuevo]** Moneda real y tipo de cambio por canal — la UI para
+    configurar esto (`channel.settlementCurrency`, `state.fxRates`) se **eliminó**
+    de `index.html` en la simplificación a USD único; los campos siguen
+    existiendo en el modelo de datos/persistencia (para no romper unidades
+    viejas) pero ya no son editables ni afectan ningún cálculo. Ver punto 4.
 11. **[Nuevo]** Reconciliar reservas reales: la herramienta existe (Resumen → "Validar
     contra una reserva real") pero no se ha cargado ninguna conciliación real de ninguna
     unidad todavía — el checklist de auditoría de cada unidad seguirá en "simulación"/
@@ -818,33 +823,72 @@ reconciliación NUNCA cambia `channels`/`discounts` automáticamente** — solo
 sugiere qué revisar; confirmar un valor real sigue siendo 100% manual en
 Resumen → "Verificación de datos financieros".
 
-**Contrato de moneda** (`src/domain/currency.js`) — la app soporta 2 monedas
-(USD/COP). Cada unidad tiene una moneda BASE (`state.currency`, la de
-siempre); cada canal puede declarar su propia `settlementCurrency` si liquida
-en OTRA moneda (ej. Airbnb vía Supra en USD mientras la unidad opera en
-COP) — `null` (default) significa "misma que la unidad". `resolveConversion()`
-es la ÚNICA función que convierte un monto entre monedas: si
-`fromCurrency===toCurrency` no hay nada que convertir; si son distintas, EXIGE
-una entrada en `state.fxRates[fromCurrency]` con `status:'verificado'` y un
-`rate` numérico finito `> 0` — cualquier otra cosa (entrada ausente,
-no_verificado, rate vacío/0/negativo/NaN/texto) **bloquea** la conversión,
-nunca asume 1:1 ni inventa un valor. Nunca se llama a una API externa de tipo
-de cambio. Dos consumidores reusan esta misma función (nadie reimplementa la
-regla): `reconciliation.js` (convierte el payout real antes de comparar) y
-`monthly-economics.js` (escenarios `'channel'`/`'mix'` — si el canal usado
-liquida en otra moneda sin FX verificado, el escenario ENTERO queda
-`ok:false`, nunca mezcla montos en silencio). Una cotización de un solo canal
-en su propia moneda sigue mostrándose sin este chequeo — el bloqueo aplica
-solo cuando dos montos en monedas distintas necesitan consolidarse en un
-número.
+**Contrato de moneda — VERSIÓN ACTUAL: SOLO USD (revisión externa,
+simplificación posterior).** El soporte multimoneda (USD/COP con conversión
+manual verificada) que se construyó en la ronda anterior se **desactivó
+deliberadamente** — la prioridad pasó a ser que todos los cálculos
+financieros reales sean correctos, claros y seguros en **una sola moneda**.
+La multimoneda se implementará en una fase posterior; hasta entonces:
+
+- Toda la aplicación opera en **USD**: moneda de la unidad, precio publicado
+  por PriceLabs, payout real recibido, costos, Min Price, Base Price, Offset,
+  Simulador, Matriz, Alertas, planificación mensual, punto de equilibrio,
+  reparto y conciliación. `quoteScenario()` devuelve `currency: 'USD'`
+  explícito en su resultado — cualquier consumidor puede afirmarlo sin
+  adivinar.
+- **No existe ningún camino que convierta, sume o compare valores de monedas
+  distintas.** `src/domain/currency.js` (`resolveConversion()`) se
+  **conserva en el código** (para no destruir el trabajo de la fase
+  multimoneda futura), pero **ningún flujo activo lo llama** — ni la UI, ni
+  `reconciliation.js`, ni `monthly-economics.js`. La UI ya no ofrece ningún
+  selector de moneda, tasa FX, ni moneda de liquidación por canal.
+- **Unidades nuevas** se crean directamente en USD, sin configuración
+  adicional (`state.currency` siempre `'USD'` por defecto).
+- **Datos viejos en otra moneda (de la fase multimoneda revertida) NUNCA se
+  convierten ni se reinterpretan como USD.** `normalizeUnit()`
+  (`src/domain/persistence.js`) preserva `state.currency` TAL CUAL si el
+  valor guardado no es exactamente `'USD'` (COP, o cualquier otro valor), con
+  un warning explícito — nunca lo fuerza a USD en silencio. Esa unidad queda
+  marcada **"requiere revisión manual"** (`currencyNeedsReview`, calculado en
+  `index.html` como `state.currency !== 'USD'`) y **excluida de toda
+  recomendación global**: `engine.js`/`compute()` recibe `currencyNeedsReview`
+  y expone `currencyBlocked`/`currencyBlockedReason` — un cuarto gate en
+  `evaluateGlobalRecommendationReadiness()` (junto a los datos de negocio
+  pendientes y `lmBlocked`) que bloquea **tanto Piso como Base** (igual que
+  `lmBlocked`, no como `baseBlocked`, que solo afecta a Base). `index.html`
+  además corta explícitamente Matriz (`renderMatrix()`) y Alertas
+  (`renderAlerts()`) antes de calcular ninguna fila/veredicto si
+  `model.currencyBlocked` — ninguna de las dos conoce este gate internamente
+  (es ortogonal, igual que `lmBlocked` lo es de `readiness`), así que el
+  corte vive en el único lugar que ya sabe que la unidad está bloqueada.
+  `reconcileReservation()` y `computeMonthlyEconomics()` bloquean por su
+  cuenta si `currency !== 'USD'`, con el mismo mensaje. `channels[].settlementCurrency`
+  y `state.fxRates` (de la ronda anterior) se siguen normalizando/preservando
+  en `persistence.js` — nunca se borran datos existentes — pero ya no se
+  editan desde la UI ni afectan ningún cálculo activo; un canal viejo marcado
+  con una moneda distinta de USD simplemente bloquea su uso en planificación
+  mensual, con el mismo mensaje de "requiere revisión manual".
+- **Reconciliación**: `reconcileReservation()` exige `real.currency==='USD'`
+  (o ausente/vacío, que se asume USD porque el formulario ya no ofrece otra
+  moneda) — un valor explícito distinto bloquea con
+  `currencyBlocked:true`, sin calcular diferencia ni severidad. Una
+  conciliación VIEJA guardada con otra moneda (dato de la fase anterior)
+  también se bloquea igual al recomputarse — nunca muestra un % de
+  diferencia falso.
+- Advertencia visible en la UI: "Todos los valores deben ingresarse en USD."
+  (`#usdOnlyNotice`, junto al campo de moneda en Resumen).
 
 **Auditoría de datos reales** (`src/domain/audit.js`, `buildAuditChecklist()`)
 — rollup puro de señales que YA calculan otros módulos (nunca reimplementa
 qué está pendiente): costos reales cargados, comisiones por canal
 verificadas, Last-Minute verificado, Offset verificado, promociones
 verificadas (Booking Genius+Mobile, Expedia VIP, Airbnb no-reembolsable),
-moneda/tipo de cambio verificado si aplica, y la última reserva conciliada
-con su diferencia. Estado final — **SOLO 3 valores, NUNCA "producción"**:
+moneda en USD (item `currency`: falla si `state.currency!=='USD'` o si algún
+canal quedó marcado con una moneda de liquidación distinta de USD — dato
+viejo de la fase multimoneda anterior, ya no hay ningún camino para
+"resolverlo" salvo corregir el dato, ver contrato de moneda arriba), y la
+última reserva conciliada con su diferencia. Estado final — **SOLO 3
+valores, NUNCA "producción"**:
 - `'simulacion'`: los costos siguen en el valor ilustrativo de fábrica.
 - `'datos_parciales'`: hay costos reales pero falta confirmar algo, o no se
   ha conciliado ninguna reserva, o la última conciliación no fue confiable.
@@ -864,8 +908,11 @@ recomendado, en orden):
 4. Hospy/PriceLabs: si el Offset por canal se aísla de verdad por canal o se
    distribuye a todos los conectados; el modo real de Last-Minute que usa la
    cuenta.
-5. Extractos bancarios/pasarela: comisión real por transacción, y si hay un
-   tipo de cambio real distinto al configurado (compáralo contra `fxRates`).
+5. Extractos bancarios/pasarela: comisión real por transacción. **[Esta
+   versión solo admite USD — si tu unidad real liquida en otra moneda, no
+   ingreses valores convertidos por tu cuenta en los campos de esta app;
+   espera a la fase multimoneda o consulta antes de usar esta unidad para
+   recomendaciones.]**
 6. Guarda una conciliación real por canal periódicamente — un solo dato
    verificado en el formulario no reemplaza revisar reservas de verdad.
 
@@ -1221,3 +1268,55 @@ Tests: `tests/currency.test.js` (8), `tests/reconciliation.test.js` (12),
 escenarios `'channel'`/`'mix'`), `tests/real-data-persistence.test.js` (15, incluye
 payloads malformados/XSS en `reconciliations`, monedas inventadas, rates inválidos).
 `e2e/real-data.spec.js` (9). **221/221 unitarios, 60/60 e2e, sin regresión.**
+
+### Actualización (revisión externa) — simplificación a USD único: se desactiva la multimoneda de la ronda anterior
+
+**Decisión de producto, no técnica**: la ronda anterior construyó soporte multimoneda
+(USD/COP con conversión manual verificada). Esta ronda lo **desactiva deliberadamente** —
+la prioridad pasa a que TODOS los cálculos financieros reales sean correctos, claros y
+seguros en **una sola moneda (USD)**. La multimoneda queda explícitamente fuera de esta
+fase, para una fase posterior — ver "Contrato de moneda" arriba para el contrato vigente.
+
+- **`quoteScenario()` devuelve `currency: 'USD'` explícito** (`src/domain/quote.js`) —
+  cualquier consumidor puede afirmarlo sin adivinar.
+- **`evaluateGlobalRecommendationReadiness()` gana un cuarto gate, `currencyBlocked`**
+  (`src/domain/readiness.js`) — bloquea Piso Y Base (igual que `lmBlocked`, no como
+  `baseBlocked`, que solo afecta a Base): una unidad "requiere revisión manual" no puede
+  mostrar NINGÚN número global, porque no se sabe con certeza en qué moneda quedaría
+  expresado. `engine.js`/`compute()` recibe `currencyNeedsReview` del caller y expone
+  `currencyBlocked`/`currencyBlockedReason`.
+- **`reconciliation.js`/`monthly-economics.js` simplificados**: se eliminó
+  `resolveConversion()`/`fxRates` de su flujo activo — ahora exigen `currency==='USD'`
+  (de la unidad, y de `real.currency` si se especifica) de forma estricta, sin ningún
+  camino de conversión. `currency.js` se conserva en el código (no se borra) para una
+  fase multimoneda futura, pero ningún flujo activo lo llama.
+- **`persistence.js` preserva (nunca convierte) la moneda guardada**: si `raw.currency`
+  no es exactamente `'USD'` (COP, o cualquier otro valor de una unidad vieja), se
+  preserva tal cual con un warning explícito — nunca se fuerza a `'USD'` en silencio.
+  Mismo criterio para `reconciliations[].currency`.
+- **UI simplificada** (`index.html`): eliminados el selector de moneda de la unidad, la
+  sección "Moneda y tipo de cambio" (tasas FX), el selector de moneda de liquidación por
+  canal, y el selector de moneda en el formulario de conciliación — ya no existe ningún
+  camino en la UI para configurar multimoneda. Nuevo `#currencyReviewBanner` +
+  `#currencyDisplay` + `#usdOnlyNotice` ("Todos los valores deben ingresarse en USD.").
+  `renderMatrix()`/`renderAlerts()` cortan explícitamente antes de calcular filas/veredictos
+  si `model.currencyBlocked` (gate ortogonal que esos dos módulos de dominio no conocen).
+- **`audit.js`**: el item `currency` del checklist ya no intenta resolver ninguna
+  conversión — falla siempre que la unidad o algún canal queden marcados en una moneda
+  distinta de USD, sin excepción posible.
+
+Verificación manual (3 casos obligatorios, confirmados con Node antes de cualquier commit):
+1. Precio USD 150, 3 noches → estimado exacto USD 126.75; payout real USD 106.75 →
+   diferencia −20 (−15.78%), severidad `'bad'`.
+2. Payout marcado `currency:'COP'` 600.000 → `currencyBlocked:true`, sin diferencia ni
+   severidad calculada.
+3. Unidad vieja con `currency:'COP'` (preservada, nunca convertida) → `currencyBlocked:true`
+   en `compute()`, `floorReadinessBlocked`/`baseReadinessBlocked` ambos `true`.
+
+Tests: `tests/reconciliation.test.js`/`tests/monthly-economics.test.js` reescritos para el
+contrato USD-estricto (se eliminaron los casos de "conversión verificada permitida", que ya
+no existen), `tests/audit.test.js` actualizado, `tests/fase5-financial-readiness.test.js`
+(+3: `currencyBlocked` como cuarto gate), `tests/real-data-persistence.test.js` (+6: moneda
+de unidad preservada/no convertida). `e2e/real-data.spec.js` reescrito (sin selectores
+FX/moneda; +2 tests de unidad/conciliación vieja importada en COP bloqueada).
+**233/233 unitarios, 61/61 e2e, sin regresión.**

@@ -4,6 +4,43 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.9.0] — Simplificación a USD único: se desactiva la multimoneda de 0.8.0
+
+**Versión actual: solo USD. La multimoneda se implementará en una fase posterior.**
+Decisión de producto: la prioridad pasa a que todos los cálculos financieros reales sean
+correctos, claros y seguros en una sola moneda — no existe ningún camino que convierta,
+sume o compare valores de monedas distintas.
+
+- **`quoteScenario()` devuelve `currency:'USD'` explícito** en su resultado.
+- **`evaluateGlobalRecommendationReadiness()` gana `currencyBlocked`** — cuarto gate que
+  bloquea Piso Y Base (igual que `lmBlocked`) para una unidad "requiere revisión manual".
+- **`reconciliation.js`/`monthly-economics.js`**: se eliminó `resolveConversion()`/`fxRates`
+  del flujo activo — exigen `currency==='USD'` estricto, sin conversión posible.
+  `src/domain/currency.js` se conserva en el código (no se borra) para una fase
+  multimoneda futura, pero ningún flujo activo lo llama.
+- **`persistence.js`**: la moneda GUARDADA de una unidad (`state.currency`) nunca se
+  convierte ni se reinterpreta — un valor distinto de `'USD'` se preserva tal cual, con
+  warning, y la unidad queda excluida de toda recomendación global hasta corregirla.
+  Mismo criterio para `reconciliations[].currency`.
+- **UI**: eliminados el selector de moneda de la unidad, la sección "Moneda y tipo de
+  cambio", el selector de moneda de liquidación por canal, y el selector de moneda en el
+  formulario de conciliación. Nuevo aviso visible "Todos los valores deben ingresarse en
+  USD." y banner "REQUIERE REVISIÓN MANUAL" para unidades viejas en otra moneda.
+  `renderMatrix()`/`renderAlerts()` cortan explícitamente si la unidad está bloqueada por
+  moneda — nunca muestran "RENTABLE EN TODOS"/"OK: sin conflictos" en ese caso.
+
+Verificación manual (3 casos, confirmados con Node): (1) precio USD 150/3 noches, estimado
+USD 126.75, payout real USD 106.75 → diferencia −20 (−15.78%), severidad `bad`; (2) payout
+marcado COP 600.000 → bloqueado, sin diferencia/severidad calculada; (3) unidad vieja en
+COP → `currencyBlocked:true`, Piso y Base bloqueados globalmente.
+
+Tests: `reconciliation.test.js`/`monthly-economics.test.js` reescritos para USD estricto
+(se eliminaron los casos de "conversión verificada"), `audit.test.js` actualizado,
+`fase5-financial-readiness.test.js` (+3, `currencyBlocked`), `real-data-persistence.test.js`
+(+6, moneda de unidad preservada). `e2e/real-data.spec.js` reescrito (sin selectores
+FX/moneda; +2 tests de unidad/conciliación vieja en COP). **233/233 unitarios, 61/61 e2e,
+sin regresión.**
+
 ## [0.8.0] — Preparación para uso operativo con datos reales: reconciliación, moneda, auditoría
 
 Tres módulos puros nuevos que responden "¿cómo sé que el modelo se está desviando de lo
