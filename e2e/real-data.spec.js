@@ -1,14 +1,18 @@
 /* Preparación para uso operativo con datos reales (revisión externa):
-   reconciliación de reservas reales, contrato de moneda, y auditoría de
-   datos reales. Prueba en un navegador real que:
+   reconciliación de reservas reales, y auditoría de datos reales. Simplificado
+   a USD único (revisión externa posterior) — esta versión NO ofrece multimoneda:
+   prueba en un navegador real que:
    1. Reconciliar una reserva real igual al estimado muestra diferencia cero.
    2. Una comisión real distinta muestra la diferencia y la causa.
    3. Un payout real menor al estimado muestra una alerta clara.
-   4. Monedas distintas sin FX verificado bloquean la conciliación.
-   5. Un tipo de cambio verificado permite la conciliación.
-   6. Guardar/borrar una conciliación funciona y nunca cambia comisiones.
-   7. El checklist de auditoría refleja el estado real de la unidad.
-   8. Los bloqueos previos de Piso/Base/LM/fixed_price/readiness siguen
+   4. No existe NINGÚN selector de moneda/FX visible en la UI.
+   5. Una unidad vieja importada con moneda != USD queda "requiere revisión
+      manual" y no muestra recomendaciones globales (Piso/Base/Matriz/Alertas).
+   6. Una conciliación vieja importada con moneda != USD se muestra bloqueada,
+      nunca como un resultado numérico falso.
+   7. Guardar/borrar una conciliación funciona y nunca cambia comisiones.
+   8. El checklist de auditoría refleja el estado real de la unidad.
+   9. Los bloqueos previos de Piso/Base/LM/fixed_price/readiness siguen
       funcionando exactamente igual con las secciones nuevas presentes. */
 import {test, expect} from '@playwright/test';
 
@@ -62,41 +66,88 @@ test('reconciliación: payout real MENOR al estimado (más de 10%) muestra una a
   await expect(result.locator('.alert.bad')).toBeVisible();
 });
 
-test('reconciliación: moneda distinta a la de la unidad SIN tipo de cambio verificado bloquea la comparación', async ({page}) => {
+test('Simplificación a USD único: no existe NINGÚN selector de moneda/FX/liquidación en la UI', async ({page}) => {
   await page.goto('/index.html');
-  await fillField(page, '#recPrice', '150');
-  await fillField(page, '#recNights', '3');
-  await fillField(page, '#recDays', '20');
-  await fillField(page, '#recPayoutReceived', '400000');
-  await page.selectOption('#recCurrency', 'COP');
-  const result = page.locator('#reconcileResult');
-  await expect(result).toContainText('MONEDA SIN CONVERSIÓN — BLOQUEADO');
-  await expect(result).toContainText('VERIFICADO');
+  await expect(page.locator('[data-k="currency"]')).toHaveCount(0);
+  await expect(page.locator('#recCurrency')).toHaveCount(0);
+  await expect(page.locator('#fxRatesList')).toHaveCount(0);
+  await expect(page.locator('[data-fx-rate]')).toHaveCount(0);
+  await page.locator('[data-tabbtn="ch-airbnb"]').click();
+  await expect(page.locator('[data-ch-currency]')).toHaveCount(0);
+  await page.locator('[data-tabbtn="resumen"]').click();
+  await expect(page.locator('#currencyDisplay')).toHaveText('USD');
+  await expect(page.locator('#usdOnlyNotice')).toContainText('Todos los valores deben ingresarse en USD');
 });
 
-test('moneda: configurar un tipo de cambio verificado permite la conciliación en otra moneda', async ({page}) => {
+/* Simplificación a USD único: una unidad VIEJA (de antes de esta ronda) puede
+   tener quedado guardada en localStorage con currency='COP' — se importa vía
+   el mecanismo real de la app (Exportar/Importar) para probar el camino
+   realista, no inyectando `state` directamente. */
+test('unidad vieja importada con moneda COP: banner "requiere revisión manual", Min Price/Base Price/Matriz/Alertas bloqueados', async ({page}) => {
   await page.goto('/index.html');
-  // Airbnb liquida en COP (distinto a la unidad, USD por defecto)
-  await page.locator('[data-tabbtn="ch-airbnb"]').click();
-  await page.selectOption('select[data-ch-currency="airbnb"]', 'COP');
+  let dialogFired = false;
+  page.once('dialog', async dialog => { dialogFired = true; await dialog.accept(); });
+  const payload = {
+    exportedAt: new Date().toISOString(), schemaVersion: 3,
+    units: [{key: 'v3:e2e-old-cop-unit', value: JSON.stringify({name: 'Unidad vieja COP', currency: 'COP'})}]
+  };
+  const buffer = Buffer.from(JSON.stringify(payload));
+  await page.setInputFiles('#importUnitsFile', {name: 'old-cop.json', mimeType: 'application/json', buffer});
+  await page.waitForTimeout(500);
+  expect(dialogFired).toBe(true);
+
+  await page.reload();
+  await page.selectOption('#unitList', {label: 'Unidad vieja COP'});
+  await expect(page.locator('#unitName')).toHaveValue('Unidad vieja COP', {timeout: 5000});
+
+  await expect(page.locator('#currencyReviewBanner')).toContainText('REQUIERE REVISIÓN MANUAL');
+  await expect(page.locator('#currencyReviewBanner')).toContainText('COP');
+  await expect(page.locator('#currencyDisplay')).toContainText('COP');
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#kBase')).toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('requiere revisión manual');
+
+  await page.locator('[data-tabbtn="comparacion"]').click();
+  await expect(page.locator('#matrixIntro')).toContainText('REQUIERE REVISIÓN MANUAL');
+  await expect(page.locator('#matrixBody tr')).toHaveCount(0);
 
   await page.locator('[data-tabbtn="resumen"]').click();
-  await expect(page.locator('#fxRatesList')).toContainText('COP');
+  const alertsText = await page.locator('.alerts').innerText().catch(()=>'');
+  expect(alertsText.includes('RENTABLE') || alertsText.includes('OK')).toBe(false);
 
-  const rateInput = page.locator('input[data-fx-rate="COP"]');
-  await rateInput.click(); await rateInput.fill('0.00025'); await rateInput.dispatchEvent('change');
-  await page.selectOption('select[data-fx-status="COP"]', 'verificado');
+  // limpieza
+  page.once('dialog', d => d.accept());
+  await page.locator('#deleteUnit').click();
+});
 
-  await page.selectOption('#recChId', 'airbnb');
-  await fillField(page, '#recPrice', '150');
-  await fillField(page, '#recNights', '3');
-  await fillField(page, '#recDays', '20');
-  await page.selectOption('#recCurrency', 'COP');
-  await fillField(page, '#recPayoutReceived', '400000');
+test('conciliación vieja importada con moneda != USD: se muestra bloqueada explícitamente, nunca un resultado numérico falso', async ({page}) => {
+  await page.goto('/index.html');
+  let dialogFired = false;
+  page.once('dialog', async dialog => { dialogFired = true; await dialog.accept(); });
+  const payload = {
+    exportedAt: new Date().toISOString(), schemaVersion: 3,
+    units: [{key: 'v3:e2e-old-cop-recon', value: JSON.stringify({
+      name: 'Unidad con conciliación vieja en COP',
+      reconciliations: [{chId:'airbnb', price:150, nights:3, days:20, payoutReceived:600000, currency:'COP', reference:'HM-OLD-001'}]
+    })}]
+  };
+  const buffer = Buffer.from(JSON.stringify(payload));
+  await page.setInputFiles('#importUnitsFile', {name: 'old-cop-recon.json', mimeType: 'application/json', buffer});
+  await page.waitForTimeout(500);
+  expect(dialogFired).toBe(true);
 
-  const result = page.locator('#reconcileResult');
-  await expect(result).not.toContainText('BLOQUEADO');
-  await expect(result).toContainText('REFERENCIA');
+  await page.reload();
+  await page.selectOption('#unitList', {label: 'Unidad con conciliación vieja en COP'});
+  await expect(page.locator('#unitName')).toHaveValue('Unidad con conciliación vieja en COP', {timeout: 5000});
+
+  const list = page.locator('#reconciliationsList');
+  await expect(list).toContainText('HM-OLD-001');
+  await expect(list).toContainText('bloqueada por moneda');
+  await expect(list).not.toContainText('diferencia'); // nunca muestra un % de diferencia falso para esta fila
+
+  // limpieza
+  page.once('dialog', d => d.accept());
+  await page.locator('#deleteUnit').click();
 });
 
 test('reconciliación: guardar y borrar una conciliación funciona, y nunca cambia comisiones/descuentos configurados', async ({page}) => {
