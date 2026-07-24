@@ -196,6 +196,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <h2>Costos por noche</h2>
     <div class="field"><span id="currencyLabel">Moneda de esta unidad</span><span id="currencyDisplay" role="status" aria-labelledby="currencyLabel" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
     <p class="hint" id="usdOnlyNotice">Todos los valores deben ingresarse en USD. Esta versión no convierte ni mezcla monedas — la multimoneda se implementará en una fase posterior.</p>
+    <p class="hint" id="usdReviewTrail" style="display:none;"></p>
     <div class="field"><label for="f-fixedCost">Fijos (arriendo, admin, servicios, seguros, tech)</label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
     <div class="field"><label for="f-varCost">Variables (limpieza, lavandería, consumos, insumos)</label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
     <details class="cost-calc">
@@ -439,7 +440,9 @@ let state = {
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   monthlyIncomeScenario: defaultMonthlyIncomeScenario(CHANNELS.map(c=>c.id)), // PLANIFICACIÓN MENSUAL — escenario de ingreso para planificación mensual
   monthlyDistribution: defaultMonthlyDistribution(), // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
-  reconciliations: [] // DATOS REALES — reconciliaciones locales guardadas (auditoría, nunca datos sensibles de huésped)
+  reconciliations: [], // DATOS REALES — reconciliaciones locales guardadas (auditoría, nunca datos sensibles de huésped)
+  usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
+  usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
 };
 
 /* ================== ENGINE ================== */
@@ -485,8 +488,13 @@ function compute(){
     /* Simplificacion a USD unico (revision externa): `currency` es la moneda
        GUARDADA de la unidad (normalmente 'USD') — engine.js deriva el gate
        real (unidad + canales) el mismo con evaluateUsdOnlyReadiness(), ver
-       src/domain/usd-only.js. */
-    currency: state.currency
+       src/domain/usd-only.js.
+       BLOQUEANTE 3 (auditoria externa, ronda 5): `usdManualReviewPending`
+       bloquea igual aunque `state.currency` ya sea 'USD' — ver el docblock
+       de evaluateUsdOnlyReadiness() para el hallazgo (copia USD de una
+       unidad COP, sin convertir ningun valor). */
+    currency: state.currency,
+    usdManualReviewPending: state.usdManualReviewPending
   });
 }
 function suggestedOffset(chId, effBase, netObjetivo){
@@ -522,6 +530,7 @@ function computeMonthly(model){
     quoteConfig: quoteConfig(),
     distribution: state.monthlyDistribution,
     currency: state.currency,
+    usdManualReviewPending: state.usdManualReviewPending,
     readiness: model.readiness
   });
 }
@@ -1208,31 +1217,71 @@ function renderMonthlyResult(model){
    mira solo `state.currency` — usa evaluateUsdOnlyReadiness() (src/domain/
    usd-only.js, la MISMA fuente que engine.js/reconciliation.js/
    monthly-economics.js) para detectar TAMBIEN un canal historico con
-   settlementCurrency distinta de USD, no solo la moneda de la unidad. */
+   settlementCurrency distinta de USD, no solo la moneda de la unidad.
+
+   BLOQUEANTE 3 (auditoria externa, ronda 5): ahora TAMBIEN pasa
+   `usdManualReviewPending` — una copia USD recien creada desde una unidad en
+   otra moneda (ver el boton "Crear copia en USD" mas abajo) arranca
+   bloqueada por esta bandera aunque su `currency` YA sea 'USD', porque
+   ningun valor fue convertido. Cuando esta bandera es la UNICA razon del
+   bloqueo, el banner ofrece el flujo de "Finalizar revision manual"
+   (confirmacion fuerte + nota de auditoria persistida) en vez del boton de
+   "Crear copia" (que no aplica: la copia ya existe, lo que falta es
+   revisarla). `#usdReviewTrail` (fuera de esta caja, siempre visible aunque
+   la unidad ya este desbloqueada) muestra la bitacora completa — la nota de
+   que fue una copia sin convertir NUNCA desaparece, ni siquiera despues de
+   confirmar la revision (requisito explicito de la auditoria: "no borres la
+   nota historica"). */
 function renderCurrencyReviewBanner(model){
   const display = document.getElementById('currencyDisplay');
   const notice = document.getElementById('usdOnlyNotice');
   const box = document.getElementById('currencyReviewBanner');
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: state.currency, channels: state.channels});
+  const trail = document.getElementById('usdReviewTrail');
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: state.currency, channels: state.channels, usdManualReviewPending: state.usdManualReviewPending});
   const needsReview = usdGate.blocked;
   const unitCurrencyWrong = state.currency !== 'USD';
-  if(display) display.textContent = unitCurrencyWrong ? `${state.currency} (requiere revisión manual)` : 'USD';
+  const pendingReview = state.usdManualReviewPending === true;
+  if(display) display.textContent = unitCurrencyWrong ? `${state.currency} (requiere revisión manual)` : (pendingReview ? 'USD (copia pendiente de revisión manual)' : 'USD');
   if(notice) notice.style.display = needsReview ? 'none' : '';
+  if(trail){
+    const log = Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : [];
+    if(log.length){
+      trail.style.display = '';
+      trail.innerHTML = 'Historial de revisión manual (esta unidad es o fue una copia sin conversión automática — esta nota nunca se borra):<br>'
+        + log.map(e=>{
+            const label = e.event==='copy_created' ? 'Copia creada' : 'Revisión confirmada';
+            return `• ${escapeHtml(label)} — ${escapeHtml(e.at)}${e.text ? ': '+escapeHtml(e.text) : ''}`;
+          }).join('<br>');
+    } else {
+      trail.style.display = 'none';
+      trail.innerHTML = '';
+    }
+  }
   if(!box) return;
   if(!needsReview){ box.innerHTML = ''; return; }
   /* Recuperación segura de una unidad no-USD (auditoria externa, ronda 4):
      "editar el JSON exportado a mano" ya NO es la única vía — el botón crea
      una COPIA nueva directamente en USD, sin convertir ningún valor (los
      números quedan exactamente como están hoy), marcada "pendiente de
-     revisión manual" (costBreakdownConfirmed se resetea a false a propósito,
-     para forzar revisar también los costos) — la unidad ORIGINAL nunca se
-     toca ni se borra. Solo tiene sentido si la unidad MISMA está en otra
-     moneda (un canal en otra moneda no tiene botón de copia — no hay forma
-     de crear/editar un canal desde la UI, solo de corregir el JSON). */
-  const copyBtn = unitCurrencyWrong
+     revisión manual" (`usdManualReviewPending:true` — BLOQUEANTE 3, ronda 5
+     — más `costBreakdownConfirmed` reseteado a false a propósito, para
+     forzar revisar también los costos) — la unidad ORIGINAL nunca se toca
+     ni se borra. Solo tiene sentido si la unidad MISMA está en otra moneda
+     (un canal en otra moneda no tiene botón de copia — no hay forma de
+     crear/editar un canal desde la UI, solo de corregir el JSON); tampoco
+     tiene sentido si la unidad YA es una copia pendiente (no hay "unidad
+     original en otra moneda" que copiar de nuevo). */
+  const copyBtn = (unitCurrencyWrong && !pendingReview)
     ? `<button type="button" id="createUsdCopyBtn" style="margin-top:8px;">Crear copia en USD (pendiente de revisión manual) →</button>`
     : '';
-  box.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" — ${escapeHtml(usdGate.reason||'')} Esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, Matriz, Alertas, planificación mensual y conciliación quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, corrige el dato manualmente en el archivo exportado y vuelve a importarlo, o usa el botón de abajo para crear una copia nueva directamente en USD (sin conversión automática, pendiente de revisión).${copyBtn}</span></div>`;
+  /* BLOQUEANTE 3 (ronda 5): el UNICO camino para apagar `usdManualReviewPending`
+     — exige la confirmacion fuerte (dialogo con el texto exacto pedido en la
+     auditoria) del listener global mas abajo (`#confirmUsdReviewBtn`), nunca
+     un toggle silencioso. */
+  const finalizeBtn = pendingReview
+    ? `<button type="button" id="confirmUsdReviewBtn" style="margin-top:8px;">Ya revisé manualmente todos los valores en USD →</button>`
+    : '';
+  box.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" — ${escapeHtml(usdGate.reason||'')} Esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, Matriz, Alertas, planificación mensual y conciliación quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, corrige el dato manualmente en el archivo exportado y vuelve a importarlo, usa el botón de abajo para crear una copia nueva directamente en USD (sin conversión automática, pendiente de revisión), o si esta unidad YA es esa copia, confírmala una vez hayas revisado tú mismo cada valor monetario.${copyBtn}${finalizeBtn}</span></div>`;
 }
 
 /* ================== RECONCILIACIÓN (datos reales, revision externa) ====== */
@@ -1287,7 +1336,7 @@ function renderReconcileResult(model){
   if(!box || typeof recChId==='undefined') return;
   const real = readReconcileForm();
   if(!real.chId || (!real.price && !real.payoutReceived)){ box.innerHTML=''; return; } // formulario vacio: no mostrar nada todavia
-  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, readiness: model.readiness});
+  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: model.readiness});
   box.innerHTML = reconcileResultHTML(r);
 }
 function renderReconciliationsList(model){
@@ -1296,7 +1345,7 @@ function renderReconciliationsList(model){
   if(!state.reconciliations.length){ box.innerHTML = '<p class="hint">Todavía no has guardado ninguna conciliación.</p>'; return; }
   box.innerHTML = state.reconciliations.map(rec=>{
     const ch = state.channels.find(c=>c.id===rec.chId);
-    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, readiness: model.readiness});
+    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: model.readiness});
     const summary = !r.ok ? 'no calculable con la config actual'
       : r.currencyBlocked ? 'bloqueada por moneda'
       : `diferencia ${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'} (${r.severity})`;
@@ -1318,11 +1367,11 @@ function renderAuditChecklist(model){
      cargados" incorrectamente. */
   const usingExampleCosts = costGateNow().blocked;
   const lastReconciliation = state.reconciliations.length
-    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, readiness: model.readiness})
+    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: model.readiness})
     : null;
   const audit = buildAuditChecklist({
     usingExampleCosts, readiness: model.readiness, lmBlocked: model.lmBlocked,
-    channels: state.channels, currency: state.currency, lastReconciliation
+    channels: state.channels, currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, lastReconciliation
   });
   const STATUS_CLS = {simulacion:'warn', datos_parciales:'warn', listo_supervisado:'ok'};
   box.innerHTML = `
@@ -1666,7 +1715,7 @@ document.addEventListener('click',e=>{
      archiva el dato real que Dani ingreso. */
   if(e.target.id==='recSaveBtn'){
     const real = readReconcileForm();
-    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, readiness: compute().readiness});
+    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: compute().readiness});
     if(!check.ok){ showInputError('No se pudo guardar la conciliación: ' + check.reason); return; }
     state.reconciliations.push({...real, id:'rec'+Date.now(), savedAt:new Date().toISOString()});
     renderAll();
@@ -1713,25 +1762,36 @@ deleteUnit.addEventListener('click',async()=>{
   try{await window.storage.delete(k,false);refreshList();status('Eliminado');}catch(e){status('Error');}
 });
 /* Recuperación segura de una unidad no-USD (auditoria externa, ronda 4 —
-   "Recuperación segura de una unidad COP"): delegado en `document` (el botón
-   se re-crea en cada render de renderCurrencyReviewBanner()) — crea una
-   COPIA nueva directamente en USD, SIN convertir ningún valor (se preserva
-   exactamente lo que ya estaba configurado), marcada "pendiente de revisión
-   manual": `costBreakdownConfirmed` se resetea a false a propósito (fuerza
-   revisar también los costos, no solo la moneda) y el nombre deja explícito
-   que es una copia sin revisar. La unidad ORIGINAL (bloqueada) nunca se toca
+   "Recuperación segura de una unidad COP"; BLOQUEANTE 3 corregido en ronda
+   5): delegado en `document` (el botón se re-crea en cada render de
+   renderCurrencyReviewBanner()) — crea una COPIA nueva directamente en USD,
+   SIN convertir ningún valor (se preserva exactamente lo que ya estaba
+   configurado), marcada "pendiente de revisión manual":
+   `usdManualReviewPending:true` (BLOQUEANTE 3 — antes NO existía este campo,
+   así que la copia quedaba lista para producir Piso/Base en cuanto se
+   resolvían LM/verificaciones, aunque nadie hubiera revisado un solo número
+   copiado) más `costBreakdownConfirmed` reseteado a false a propósito
+   (fuerza revisar también los costos, no solo la moneda) y el nombre deja
+   explícito que es una copia sin revisar. Se agrega la primera entrada de
+   `usdManualReviewLog` (`event:'copy_created'`) — bitácora append-only, ver
+   src/domain/persistence.js. La unidad ORIGINAL (bloqueada) nunca se toca
    ni se borra — sigue disponible en la lista, tal cual estaba. */
 document.addEventListener('click', async e=>{
   if(e.target.id!=='createUsdCopyBtn') return;
   if(state.currency==='USD') return; // defensivo — el boton solo deberia existir si la unidad no esta en USD
-  if(!confirm(`Se creará una COPIA nueva de "${state.name||'esta unidad'}" directamente en USD, marcada "pendiente de revisión manual". NO se convierte ningún valor — los números quedan EXACTAMENTE como están hoy en ${state.currency}, así que debes revisarlos y corregirlos tú mismo (incluyendo los costos) antes de confiar en cualquier recomendación. La unidad original en ${state.currency} NO se toca ni se borra. ¿Continuar?`)) return;
+  if(!confirm(`Se creará una COPIA nueva de "${state.name||'esta unidad'}" directamente en USD, marcada "pendiente de revisión manual". NO se convierte ningún valor — los números quedan EXACTAMENTE como están hoy en ${state.currency}, así que debes revisarlos y corregirlos tú mismo (incluyendo los costos) antes de confiar en cualquier recomendación. Mientras no confirmes esa revisión, Piso/Base/Offset/Matriz/Alertas/planificación mensual/conciliación seguirán BLOQUEADOS en la copia, aunque su moneda ya diga USD. La unidad original en ${state.currency} NO se toca ni se borra. ¿Continuar?`)) return;
   try{
     const {state: copy} = normalizeUnit({
       ...state,
       currency: 'USD',
       id: undefined,
       name: (state.name||'Unidad') + ' (copia USD — pendiente de revisión manual)',
-      costBreakdownConfirmed: false
+      costBreakdownConfirmed: false,
+      usdManualReviewPending: true,
+      usdManualReviewLog: [
+        ...(Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : []),
+        {at: new Date().toISOString(), event:'copy_created', text:`Copia creada desde "${state.name||'unidad sin nombre'}" (${state.currency}) — ningún valor fue convertido automáticamente.`}
+      ]
     });
     const record = buildV3Record(copy);
     await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
@@ -1742,6 +1802,30 @@ document.addEventListener('click', async e=>{
     hydrate(); renderAll();
     status('Copia en USD creada ✓ — pendiente de revisión manual');
   }catch(err){ console.error(err); status('Error al crear la copia'); }
+});
+/* BLOQUEANTE 3 (auditoria externa, ronda 5) — flujo de finalización de la
+   revisión manual: exige una confirmación FUERTE (texto exacto pedido en el
+   encargo) antes de apagar `usdManualReviewPending`. Nunca un toggle
+   silencioso — es el único punto de todo el código donde ese campo puede
+   pasar a `false`. Agrega la entrada `event:'review_confirmed'` a la
+   bitácora (nunca borra `copy_created`) y persiste inmediatamente. */
+document.addEventListener('click', async e=>{
+  if(e.target.id!=='confirmUsdReviewBtn') return;
+  if(state.usdManualReviewPending!==true) return; // defensivo — el boton solo deberia existir mientras este pendiente
+  const confirmedText = 'Revisé manualmente todos los valores monetarios copiados y confirmo que ahora están expresados correctamente en USD. Entiendo que no hubo conversión automática.';
+  if(!confirm(`${confirmedText}\n\n¿Confirmas que ya hiciste esta revisión, campo por campo (costos, tarifas, comisiones, precios), y que los números de esta unidad SÍ representan USD reales?`)) return;
+  try{
+    state.usdManualReviewPending = false;
+    state.usdManualReviewLog = [
+      ...(Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : []),
+      {at: new Date().toISOString(), event:'review_confirmed', text: confirmedText}
+    ];
+    const {state: normalized} = normalizeUnit({...state, id: state.id});
+    const record = buildV3Record(normalized, {id: state.id});
+    const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    state = normalized; state.id = record.id;
+    if(r){ renderAll(); status('Revisión manual confirmada ✓'); } else status('Error al guardar la confirmación');
+  }catch(err){ console.error(err); status('Error al confirmar la revisión'); }
 });
 migrateV2Btn.addEventListener('click', async()=>{
   try{
