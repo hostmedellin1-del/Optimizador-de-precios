@@ -15,7 +15,17 @@ function quoteConfigFor(overrides = {}){
   };
 }
 
-test('reserva real IGUAL al estimado: diferencia cero, severidad "ok", confiable, sin causas', () => {
+/* Correcciones adicionales (auditoria externa, ronda 4): `quoteConfigFor()`
+   no pasa `lmConfig` — quoteScenario() cae a 'ceiling_auto' sin verificar
+   (ver pricelabs-lm.js), asi que CUALQUIER estimado armado con este helper
+   depende de un supuesto sin confirmar (`estimate.lmBlocked===true`). Antes
+   del fix, `reliable` era `true` aqui solo porque el numero coincidia — el
+   bug exacto que este round corrige: coincidir en el numero NO es lo mismo
+   que un estimado con el modelo verificado. Ahora `numericMatch` (el hecho
+   puramente numerico) sigue siendo `true`, pero `modelVerified`/`reliable`
+   son `false` hasta que el LM este verificado. Ver el test de
+   "CONCILIACIÓN CONFIABLE" mas abajo para el camino contrario. */
+test('reserva real IGUAL al estimado: numericMatch true (severidad "ok"), pero modelVerified/reliable false por LM sin verificar', () => {
   const quoteConfig = quoteConfigFor();
   const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
   const r = reconcileReservation({
@@ -27,9 +37,31 @@ test('reserva real IGUAL al estimado: diferencia cero, severidad "ok", confiable
   assert.equal(r.diff.absolute, 0);
   assert.equal(r.diff.percent, 0);
   assert.equal(r.severity, 'ok');
-  assert.equal(r.reliable, true);
+  assert.equal(r.numericMatch, true, 'coincide numericamente');
+  assert.equal(r.modelVerified, false, 'el estimado depende de LM sin verificar');
+  assert.equal(r.reliable, false, 'coincidir en el numero NO basta si el modelo detras no esta verificado');
   assert.deepEqual(r.breakdown, []);
   assert.deepEqual(r.causes, []);
+});
+
+/* Correcciones adicionales (auditoria externa, ronda 4): con un LM VERIFICADO
+   (y sin ningun dato de negocio pendiente, catalogo de fabrica normal — sin
+   Genius+Mobile/VIP/Offset/no-reembolsable activos aqui), el mismo escenario
+   IGUAL al estimado SI puede llegar a "reliable: true" — numericMatch Y
+   modelVerified ambos true. */
+test('reserva real IGUAL al estimado, CON LM verificado: numericMatch Y modelVerified true => reliable true ("CONCILIACIÓN CONFIABLE")', () => {
+  const verifiedLm = {mode:'flat', verified:true, flat:{pct:0, fromDay:0, toDay:0, on:false}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
+  const quoteConfig = quoteConfigFor({lmConfig: verifiedLm});
+  const est = quoteScenario({chId:'direct', days:20, nights:3, price:150}, quoteConfig);
+  assert.equal(est.lmBlocked, false, 'precondicion: LM verificado, no bloqueado');
+  const r = reconcileReservation({
+    real: {chId:'direct', price:150, nights:3, days:20, currency:'USD', payoutReceived: est.payout},
+    quoteConfig, currency:'USD', fxRates:{}
+  });
+  assert.equal(r.numericMatch, true);
+  assert.equal(r.modelVerified, true);
+  assert.equal(r.reliable, true);
+  assert.deepEqual(r.unverifiedAssumptions, []);
 });
 
 test('comisión OTA real DISTINTA de la configurada: aparece en el desglose y en las causas, con el % exacto de cada lado', () => {
@@ -73,7 +105,7 @@ test('payout real MAYOR al estimado, más de 3%: severidad "warn" (informativo, 
   assert.equal(r.reliable, false);
 });
 
-test('diferencia pequeña (<=3%): severidad "ok" pese a no ser exactamente igual — ruido normal', () => {
+test('diferencia pequeña (<=3%): severidad "ok" y numericMatch true pese a no ser exactamente igual — ruido normal; reliable sigue dependiendo de modelVerified (LM sin verificar aquí)', () => {
   const quoteConfig = quoteConfigFor();
   const est = quoteScenario({chId:'direct', days:20, nights:3, price:150}, quoteConfig);
   const real = est.payout*1.02; // 2% mas, dentro del umbral
@@ -82,7 +114,9 @@ test('diferencia pequeña (<=3%): severidad "ok" pese a no ser exactamente igual
     quoteConfig, currency:'USD', fxRates:{}
   });
   assert.equal(r.severity, 'ok');
-  assert.equal(r.reliable, true);
+  assert.equal(r.numericMatch, true);
+  assert.equal(r.modelVerified, false, 'quoteConfigFor() no verifica LM — el estimado sigue dependiendo de un supuesto sin confirmar');
+  assert.equal(r.reliable, false, 'numericMatch solo no basta para "reliable"');
 });
 
 /* Simplificacion a USD unico (revision externa): esta version NUNCA convierte

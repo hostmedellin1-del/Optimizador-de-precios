@@ -11,6 +11,35 @@ import assert from 'node:assert/strict';
 import {normalizeUnit} from '../src/domain/persistence.js';
 import {escapeHtml} from '../src/domain/sanitize.js';
 
+/* BLOQUEANTE 2 (auditoria externa, ronda 4) — costBreakdownConfirmed: el
+   ESTADO EXPLICITO de "revisé estos costos reales, incluidos los ceros" (ver
+   src/domain/cost-mode.js) debe persistir/migrar de forma SEGURA: nunca
+   `true` por defecto (ni para una unidad vieja que nunca tuvo este campo, ni
+   para un valor invalido) — solo se preserva si el dato guardado es
+   EXPLICITAMENTE `true`. */
+test('costBreakdownConfirmed: true explícito sobrevive el ciclo exacto', () => {
+  const {state} = normalizeUnit({name:'X', costBreakdownConfirmed:true});
+  assert.equal(state.costBreakdownConfirmed, true);
+});
+
+test('costBreakdownConfirmed: false explícito sobrevive el ciclo exacto', () => {
+  const {state} = normalizeUnit({name:'X', costBreakdownConfirmed:false});
+  assert.equal(state.costBreakdownConfirmed, false);
+});
+
+test('costBreakdownConfirmed: unidad vieja sin este campo en absoluto migra a false (NUNCA true por defecto)', () => {
+  const {state} = normalizeUnit({name:'Unidad vieja con desglose lleno', costBreakdown:{rent:500,admin:100,utilities:50,insurance:30,tech:20,occNights:22,cleaning:40,laundry:10,consumables:5,supplies:5}});
+  assert.equal(state.costBreakdownConfirmed, false, 'un desglose lleno de una unidad vieja NUNCA se marca confirmado automaticamente — debe quedar en detailed_incomplete hasta que el usuario lo confirme de nuevo');
+});
+
+test('costBreakdownConfirmed: un valor no-booleano (string, número, objeto) cae a false, nunca rompe', () => {
+  for(const bad of ['si', 1, {a:1}, ['true']]){
+    assert.doesNotThrow(() => normalizeUnit({name:'Evil', costBreakdownConfirmed:bad}));
+    const {state} = normalizeUnit({name:'Evil', costBreakdownConfirmed:bad});
+    assert.equal(state.costBreakdownConfirmed, false, `costBreakdownConfirmed=${JSON.stringify(bad)} debe caer a false`);
+  }
+});
+
 test('settlementCurrency: "USD"/"COP" sobreviven el ciclo exacto; null (default) también', () => {
   const {state} = normalizeUnit({name:'X', channels:[
     {id:'airbnb', settlementCurrency:'COP'},

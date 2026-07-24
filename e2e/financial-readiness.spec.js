@@ -25,6 +25,19 @@ async function verifyLm(page){
   await page.locator('[data-lm="verified"]').check();
 }
 
+/* BLOQUEANTE 2 (auditoria externa, ronda 4): los costos de fábrica (32/22,
+   nunca tocados) ahora BLOQUEAN Min Price/Base Price por sí solos (ver
+   src/domain/cost-mode.js) — los tests de este archivo aíslan
+   específicamente el gate de LM/datos de negocio (Fase 5), así que cargan
+   costos reales primero para que ese gate distinto no enmascare lo que
+   realmente se está probando. */
+async function setRealCosts(page){
+  const fc = page.locator('[data-k="fixedCost"]');
+  await fc.click(); await fc.fill('40'); await fc.dispatchEvent('change');
+  const vc = page.locator('[data-k="varCost"]');
+  await vc.click(); await vc.fill('25'); await vc.dispatchEvent('change');
+}
+
 /* P1 (revision externa — "Min Price y Base Price globales siguen siendo
    inseguros"): resuelve TODOS los hechos de negocio EXCEPTO la comisión
    bancaria de Directo — Directo no fija el Piso/Base con el catálogo de
@@ -123,6 +136,7 @@ test('Simulador: Airbnb (sin datos pendientes en el catálogo de fábrica) NO mu
 
 test('bypass del botón "Ver el paso a paso": con LM verificado pero datos financieros pendientes, tampoco precarga Base Price', async ({page}) => {
   await page.goto('/index.html');
+  await setRealCosts(page);
   await verifyLm(page);
   await expect(page.locator('#kBase')).toHaveText('—'); // confirma que sigue bloqueado (por datos, no por LM)
 
@@ -152,6 +166,7 @@ test('P1: Directo NO fija hoy el Piso/Base (su comisión es la más baja) pero s
 
 test('P1: al confirmar también la comisión bancaria de Directo (el último dato pendiente), Min Price/Base Price GLOBALES se desbloquean', async ({page}) => {
   await page.goto('/index.html');
+  await setRealCosts(page);
   await verifyLm(page);
   await resolveAllExceptDirectBankFee(page);
   await page.locator('[data-tabbtn="resumen"]').click();

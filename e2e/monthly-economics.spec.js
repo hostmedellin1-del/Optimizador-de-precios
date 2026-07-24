@@ -35,6 +35,13 @@ async function fillCostBreakdown(page, values){
   for(const [key, value] of Object.entries(values)){
     await fillField(page, `[data-cb="${key}"]`, String(value));
   }
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): llenar el desglose ya NO basta
+     — hay que confirmarlo explícitamente ("Revisé estos costos reales en
+     USD, incluidos los valores en cero") antes de que alimente cualquier
+     recomendación, incluida la planificación mensual (ver src/domain/
+     cost-mode.js). Sin este check, computeMonthlyEconomics() recibe
+     costBreakdown:undefined y dice "NO CALCULABLE — falta la calculadora". */
+  await page.locator('#costBreakdownConfirmedChk').check();
 }
 
 const BASE_COSTS = {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, supplies:5, consumables:5};

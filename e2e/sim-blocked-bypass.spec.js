@@ -65,6 +65,12 @@ test('con LM fixed_price activo en el día de referencia (baseBlocked), el botó
 
 test('una vez el LM está verificado (no bloqueado), el botón SÍ precarga Base Price normalmente', async ({page}) => {
   await page.goto('/index.html');
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): costos reales (no el ejemplo
+     de fábrica 32/22) — este test aísla el mecanismo de LM, no el de costos. */
+  const fc = page.locator('[data-k="fixedCost"]');
+  await fc.click(); await fc.fill('40'); await fc.dispatchEvent('change');
+  const vc = page.locator('[data-k="varCost"]');
+  await vc.click(); await vc.fill('25'); await vc.dispatchEvent('change');
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   const pct = page.locator('[data-lmf="flat.pct"]');

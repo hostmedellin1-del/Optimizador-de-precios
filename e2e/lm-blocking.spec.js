@@ -61,6 +61,15 @@ test('marcar el LM automático como "verificado" NO desbloquea — sigue siendo 
 
 test('cambiar a un modo configurable (plano) y marcarlo verificado SÍ desbloquea Min Price/Base Price', async ({page}) => {
   await page.goto('/index.html');
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): con los costos de fábrica
+     (32/22, nunca tocados) el gate de costos por sí solo mantendría Min
+     Price/Base Price bloqueados aunque LM/datos de negocio ya estén
+     resueltos — este test aísla específicamente el mecanismo de LM, así
+     que se cargan costos reales (no el ejemplo) primero. */
+  const fc = page.locator('[data-k="fixedCost"]');
+  await fc.click(); await fc.fill('40'); await fc.dispatchEvent('change');
+  const vc = page.locator('[data-k="varCost"]');
+  await vc.click(); await vc.fill('25'); await vc.dispatchEvent('change');
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   await page.locator('[data-lmf="flat.pct"]').fill('20');

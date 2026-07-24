@@ -23,7 +23,13 @@ async function fillField(page, selector, value){
   await loc.dispatchEvent('change');
 }
 
-test('reconciliación: reserva real IGUAL al estimado muestra diferencia cero y "CONFIABLE"', async ({page}) => {
+/* Correcciones adicionales (auditoria externa, ronda 4): "CONFIABLE" ya no es
+   un solo tag — se separó en "COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES"
+   (numericMatch true, modelVerified false: el caso de una unidad nueva, LM
+   sin verificar por defecto) vs "CONCILIACIÓN CONFIABLE" (numericMatch Y
+   modelVerified true — ver el segundo test, con LM verificado). Coincidir en
+   el número por si solo YA NO alcanza para llamarlo "confiable". */
+test('reconciliación: reserva real IGUAL al estimado (LM sin verificar, default de fábrica) muestra diferencia cero y "COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES", NUNCA "CONCILIACIÓN CONFIABLE"', async ({page}) => {
   await page.goto('/index.html');
   await fillField(page, '#recPrice', '150');
   await fillField(page, '#recNights', '3');
@@ -40,8 +46,34 @@ test('reconciliación: reserva real IGUAL al estimado muestra diferencia cero y 
   expect(match, `debe mostrar un estimado numérico: ${text0}`).not.toBeNull();
   const estimado = match[1].replace(/,/g, '');
   await fillField(page, '#recPayoutReceived', estimado);
-  await expect(result).toContainText('CONFIABLE');
+  await expect(result).toContainText('COINCIDE NUMÉRICAMENTE');
+  await expect(result).toContainText('SUPUESTOS PENDIENTES');
+  await expect(result).not.toContainText('CONCILIACIÓN CONFIABLE');
   await expect(result).toContainText('Diferencia USD 0');
+});
+
+test('reconciliación: reserva real IGUAL al estimado CON LM verificado (y sin datos de negocio pendientes en Directo) muestra "CONCILIACIÓN CONFIABLE"', async ({page}) => {
+  await page.goto('/index.html');
+  await page.selectOption('[data-lm="mode"]', 'flat');
+  await page.locator('[data-lmf="flat.on"]').check();
+  const pct = page.locator('[data-lmf="flat.pct"]');
+  await pct.click(); await pct.fill('20'); await pct.dispatchEvent('change');
+  await page.locator('[data-lm="verified"]').check();
+  // Airbnb: sin comisión bancaria ni Offset por defecto en el catálogo de
+  // fábrica, así que no depende de ningún dato de negocio sin confirmar
+  // (a diferencia de Booking/Directo/Expedia, ver financial-readiness.spec.js).
+  await page.selectOption('#recChId', 'airbnb');
+  await fillField(page, '#recPrice', '150');
+  await fillField(page, '#recNights', '3');
+  await fillField(page, '#recDays', '20');
+  const result = page.locator('#reconcileResult');
+  await fillField(page, '#recPayoutReceived', '1');
+  const text0 = await result.innerText();
+  const match = text0.match(/Estimado\s+USD\s+([\d.,]+)/);
+  expect(match, `debe mostrar un estimado numérico: ${text0}`).not.toBeNull();
+  const estimado = match[1].replace(/,/g, '');
+  await fillField(page, '#recPayoutReceived', estimado);
+  await expect(result).toContainText('CONCILIACIÓN CONFIABLE');
 });
 
 test('reconciliación: comisión OTA real distinta de la configurada aparece en el desglose y como causa', async ({page}) => {

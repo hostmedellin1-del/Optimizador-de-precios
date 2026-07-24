@@ -311,6 +311,27 @@ test('MONEDA — escenario de canal SIN settlementCurrency (default, null): func
   assert.equal(r.incomeSource.netPerNight, expected.payout);
 });
 
+/* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): ANTES, el chequeo de
+   moneda vivia dentro de resolveIncomeScenario() y solo miraba el/los
+   canal(es) REFERENCIADOS en el escenario — un canal con settlementCurrency
+   distinta de USD que NO estuviera en el escenario actual pasaba
+   desapercibido. Ahora evaluateUsdOnlyReadiness() se llama con el CATALOGO
+   COMPLETO de canales al inicio de computeMonthlyEconomics(), asi que
+   bloquea aunque el canal problematico no sea el que se esta usando hoy. */
+test('BLOQUEANTE 1: un canal con settlementCurrency distinta de USD que NO está en el escenario de ingreso actual IGUAL bloquea toda la planificación mensual', () => {
+  const channels = freshChannels().map(c=>c.id==='booking' ? {...c, settlementCurrency:'COP'} : c);
+  const quoteConfig = quoteConfigFor({channels});
+  const scenario = {chId:'direct', days:45, nights:3, price:150}; // NO usa 'booking'
+  const r = computeMonthlyEconomics({
+    costBreakdown: cb(), avgNights:3,
+    incomeScenario: {type:'channel', channel: scenario},
+    quoteConfig, currency:'USD'
+  });
+  assert.equal(r.ok, false, 'ANTES del fix esto daba ok:true — el canal COP no estaba en el escenario, asi que ensureUsd() por-canal no lo detectaba');
+  assert.match(r.reason, /Booking/);
+  assert.match(r.reason, /COP/);
+});
+
 test('MONEDA — escenario de MEZCLA con un canal marcado en moneda distinta de USD: bloquea TODA la mezcla, no solo ese canal', () => {
   const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
   const quoteConfig = quoteConfigFor({channels});
