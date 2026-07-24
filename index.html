@@ -62,6 +62,9 @@ button.ghost:hover{color:var(--text);border-color:var(--faint);}
 .alert.warn .tag{background:var(--warn-chip);color:#14151A;}
 .alert.ok .tag{background:var(--safe-chip);color:#14151A;}
 .alert .goto{background:none;border:none;color:inherit;text-decoration:underline;font-weight:600;font-size:inherit;font-family:inherit;cursor:pointer;padding:0;white-space:nowrap;}
+#inputErrorToast{position:fixed;bottom:16px;right:16px;max-width:380px;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.25);}
+#inputErrorToast button{background:none;border:none;color:inherit;cursor:pointer;font-size:14px;padding:0 0 0 8px;opacity:.7;}
+#inputErrorToast button:hover{opacity:1;}
 .matrix-intro{display:flex;gap:24px;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px;}
 .matrix-intro .mi-item{font-size:12.5px;line-height:1.5;}
 .matrix-intro .mi-label{display:block;color:var(--dim);}
@@ -153,6 +156,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <body>
 <div class="app">
 
+<div id="inputErrorToast" class="alert bad" style="display:none;" role="alert"></div>
+
 <header>
   <div class="eyebrow">HOST MEDELLÍN · REVENUE OPS · v2</div>
   <h1>Precios y Descuentos por Canal</h1>
@@ -168,6 +173,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
   <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
   <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
+  <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
   <span id="saveStatus"></span>
 </div>
 
@@ -182,44 +188,56 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <section class="card intro-card">
   <p class="intro-text">PriceLabs pone un precio por noche. Cada plataforma (Airbnb, Booking, Expedia) le resta sus propios descuentos y su comisión — cada una con sus reglas. Tu banco cobra aparte. <strong>Lo que sobra después de todo eso es tu ganancia real</strong>, no el precio que pusiste. Esta herramienta calcula ese precio mínimo y ese precio base para que no vendas por debajo del costo sin darte cuenta.</p>
 </section>
+<div id="currencyReviewBanner"></div>
+<div id="validationBanner"></div>
+<div id="dataProvenanceBanner"></div>
 <div class="row stack">
   <div class="card">
     <h2>Costos por noche</h2>
-    <div class="field"><span>Moneda de esta unidad</span><select data-k="currency"><option value="USD">USD</option><option value="COP">COP</option></select></div>
-    <div class="field"><span>Fijos (arriendo, admin, servicios, seguros, tech)</span><input type="number" data-k="fixedCost" step="1"></div>
-    <div class="field"><span>Variables (limpieza, lavandería, consumos, insumos)</span><input type="number" data-k="varCost" step="1"></div>
+    <div class="field"><span id="currencyLabel">Moneda de esta unidad</span><span id="currencyDisplay" role="status" aria-labelledby="currencyLabel" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
+    <p class="hint" id="usdOnlyNotice">Todos los valores deben ingresarse en USD. Esta versión no convierte ni mezcla monedas — la multimoneda se implementará en una fase posterior.</p>
+    <p class="hint" id="usdReviewTrail" style="display:none;"></p>
+    <div class="field"><label for="f-fixedCost">Fijos (arriendo, admin, servicios, seguros, tech)</label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
+    <div class="field"><label for="f-varCost">Variables (limpieza, lavandería, consumos, insumos)</label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
-        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Al escribir aquí, actualiza los campos de Fijos/Variables automáticamente.</p>
+        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Este desglose NO alimenta ninguna recomendación (Piso/Base/Offset/Matriz/Alertas/planificación mensual) hasta que lo confirmes explícitamente abajo — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba).</p>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Fijos mensuales</span>
-          <div class="field"><span>Arriendo/cuota</span><input type="number" data-cb="rent" step="1"></div>
-          <div class="field"><span>Administración</span><input type="number" data-cb="admin" step="1"></div>
-          <div class="field"><span>Servicios fijos (internet, TV, gas fijo…)</span><input type="number" data-cb="utilities" step="1"></div>
-          <div class="field"><span>Seguros</span><input type="number" data-cb="insurance" step="1"></div>
-          <div class="field"><span>Tech (PriceLabs, Hospy…)</span><input type="number" data-cb="tech" step="1"></div>
-          <div class="field"><span>Noches ocupadas al mes</span><input type="number" data-cb="occNights" step="1" min="1"></div>
+          <div class="field"><label for="f-cb-rent">Arriendo/cuota</label><input id="f-cb-rent" type="number" data-cb="rent" step="1"></div>
+          <div class="field"><label for="f-cb-admin">Administración</label><input id="f-cb-admin" type="number" data-cb="admin" step="1"></div>
+          <div class="field"><label for="f-cb-utilities">Servicios fijos (internet, TV, gas fijo…)</label><input id="f-cb-utilities" type="number" data-cb="utilities" step="1"></div>
+          <div class="field"><label for="f-cb-insurance">Seguros</label><input id="f-cb-insurance" type="number" data-cb="insurance" step="1"></div>
+          <div class="field"><label for="f-cb-tech">Tech (PriceLabs, Hospy…)</label><input id="f-cb-tech" type="number" data-cb="tech" step="1"></div>
+          <div class="field"><label for="f-cb-occNights">Noches ocupadas al mes</label><input id="f-cb-occNights" type="number" data-cb="occNights" step="1" min="1"></div>
           <div class="cost-calc-result" id="cbFixedResult"></div>
         </div>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Variables por turno <span class="hint">÷ estadía promedio</span></span>
-          <div class="field"><span>Limpieza</span><input type="number" data-cb="cleaning" step="1"></div>
-          <div class="field"><span>Lavandería</span><input type="number" data-cb="laundry" step="1"></div>
-          <div class="field"><span>Insumos (amenities, papelería…)</span><input type="number" data-cb="supplies" step="1"></div>
+          <div class="field"><label for="f-cb-cleaning">Limpieza</label><input id="f-cb-cleaning" type="number" data-cb="cleaning" step="1"></div>
+          <div class="field"><label for="f-cb-laundry">Lavandería</label><input id="f-cb-laundry" type="number" data-cb="laundry" step="1"></div>
+          <div class="field"><label for="f-cb-supplies">Insumos (amenities, papelería…)</label><input id="f-cb-supplies" type="number" data-cb="supplies" step="1"></div>
           <div class="cost-calc-result" id="cbTurnoResult"></div>
         </div>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Consumos <span class="hint">$/noche directo, no se divide — escala con las noches, no con el turno</span></span>
-          <div class="field"><span>Agua/luz/gas por noche ocupada</span><input type="number" data-cb="consumables" step="1"></div>
+          <div class="field"><label for="f-cb-consumables">Agua/luz/gas por noche ocupada</label><input id="f-cb-consumables" type="number" data-cb="consumables" step="1"></div>
           <div class="cost-calc-result" id="cbVarResult"></div>
         </div>
+        <div class="field" style="align-items:flex-start;gap:8px;">
+          <label for="costBreakdownConfirmedChk" style="flex:1;cursor:pointer;">
+            <input type="checkbox" id="costBreakdownConfirmedChk" data-cb-confirm style="width:auto;">
+            Revisé estos costos reales en USD, incluidos los valores en cero.
+          </label>
+        </div>
+        <p class="hint" id="costBreakdownStatusHint"></p>
       </div>
     </details>
-    <div class="field"><span>Margen objetivo total %</span><input type="number" data-k="margin" step="1"></div>
-    <div class="field"><span>Ventana de reserva del mercado (días, mediana)</span><input type="number" data-k="marketWindow" step="1"></div>
-    <div class="field"><span>Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></span><input type="number" data-k="avgNights" step="1" min="1"></div>
-    <div class="field"><span>Base que recomienda PriceLabs / mercado</span><input type="number" data-k="marketBase" step="1"></div>
+    <div class="field"><label for="f-margin">Margen objetivo total %</label><input id="f-margin" type="number" data-k="margin" step="1"></div>
+    <div class="field"><label for="f-marketWindow">Ventana de reserva del mercado (días, mediana)</label><input id="f-marketWindow" type="number" data-k="marketWindow" step="1"></div>
+    <div class="field"><label for="f-avgNights">Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></label><input id="f-avgNights" type="number" data-k="avgNights" step="1" min="1"></div>
+    <div class="field"><label for="f-marketBase">Base que recomienda PriceLabs / mercado</label><input id="f-marketBase" type="number" data-k="marketBase" step="1"></div>
   </div>
   <div class="card">
     <h2>Resultado del modelo</h2>
@@ -227,12 +245,80 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
       <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
       <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
       <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que puedes aceptar. Ni un peso menos, en ningún canal, ni con el peor descuento activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
-      <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos actuales, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
+      <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos, Offset y Last-Minute configurados HOY en cada canal, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
     </div>
-    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales. Las diferencias de comisión ya no se resuelven inflando este número — se resuelven con el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> % de cada canal (pestaña de cada OTA). Ajusta ahí.</p>
+    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales — YA incorpora el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> y el Last-Minute que tengas configurados hoy en cada canal, así que este número se recalcula solo si cambias cualquiera de los dos. Si un canal necesita más ajuste por su comisión, seguís tocando el Offset % de esa pestaña — Base reacciona automáticamente al valor que pongas ahí.</p>
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
+<section class="card">
+  <h2>Last-Minute de PriceLabs <span class="hint">cómo baja el precio cerca del check-in — configúralo si sabes el modo real de tu cuenta</span></h2>
+  <p class="hint">Por defecto usa el modo "Automático" (el techo por ventana de siempre) — cámbialo solo si confirmaste en PriceLabs que tu cuenta usa otro modo. Ninguno de estos modos trae un % de ejemplo activado: los llenas tú.</p>
+  <div class="field"><span>Modo</span>
+    <select data-lm="mode">
+      <option value="ceiling_auto">Automático (PriceLabs decide, no verificable matemáticamente)</option>
+      <option value="flat">Descuento plano (% fijo entre dos días)</option>
+      <option value="gradual">Descuento gradual (decae día a día hasta 0)</option>
+      <option value="fixed_price">Precio Last-Minute fijo</option>
+      <option value="tiers">Tramos personalizados</option>
+    </select>
+  </div>
+  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
+  <div id="lmModeFields"></div>
+</section>
+<section class="card">
+  <h2>Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
+  <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y reglas de Hospy/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Hospy — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
+  <div id="verificationList"></div>
+</section>
+<section class="card">
+  <h2>Rentabilidad mensual y punto de equilibrio <span class="hint">proyección de planificación — no es el costo/ingreso exacto de una reserva individual</span></h2>
+  <p class="hint">Usa los costos fijos MENSUALES y "Noches ocupadas al mes" de la calculadora de costos detallada (arriba) más la Estadía promedio (Resumen) para proyectar si la unidad cierra el mes en positivo, y cuántas noches necesitas vender para no perder plata. Reservas estimadas = noches ocupadas planeadas ÷ estadía promedio — es una PROYECCIÓN de planificación, no el número exacto de reservas reales del mes.</p>
+
+  <h3 style="margin-top:16px;">Escenario de ingreso</h3>
+  <div class="field"><span>Método</span>
+    <select data-mon="incomeType">
+      <option value="manual">Manual — neto/noche que tú escribes</option>
+      <option value="channel">Canal específico cotizado (usa quoteScenario)</option>
+      <option value="mix">Mezcla de canales configurada</option>
+    </select>
+  </div>
+  <div id="monthlyIncomeFields"></div>
+
+  <h3 style="margin-top:16px;">Reparto Propietario / Administrador (PM) <span class="hint">apagado por defecto — no reemplaza el Margen objetivo existente</span></h3>
+  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-mon="distConfigured"><span>Activar reparto detallado (si no, la utilidad mensual se muestra sin dividir)</span></label></div>
+  <div id="monthlyDistFields"></div>
+
+  <div id="monthlyResult"></div>
+</section>
+<section class="card">
+  <h2>Validar contra una reserva real <span class="hint">compara el estimado del motor contra una liquidación real ya cerrada</span></h2>
+  <p class="hint">Ingresa los datos reales de UNA reserva/liquidación ya cerrada, <strong>en USD</strong> — el motor cotiza el mismo escenario con quoteScenario() (la misma fuente que usan Piso/Base/Matriz/Simulador) y muestra la diferencia. Esto NUNCA cambia tu configuración (comisiones, descuentos) automáticamente — solo dice qué revisar. No ingreses datos del huésped (nombre, email, teléfono); solo números financieros y, si quieres, una referencia/código de reserva.</p>
+  <div class="row">
+    <div class="field"><label for="recChId">Canal</label><select id="recChId"></select></div>
+    <div class="field"><label for="recPrice">Precio publicado por PriceLabs (USD)</label><input type="number" id="recPrice"></div>
+    <div class="field"><label for="recNights">Noches</label><input type="number" id="recNights" min="1" step="1"></div>
+    <div class="field"><label for="recDays">Días de anticipación</label><input type="number" id="recDays" min="0" step="1"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label for="recOtaCommissionPct">Comisión OTA real % <span class="hint">opcional</span></label><input type="number" id="recOtaCommissionPct"></div>
+    <div class="field"><label for="recBankFeePct">Comisión bancaria real % <span class="hint">opcional</span></label><input type="number" id="recBankFeePct"></div>
+    <div class="field"><label for="recCleaningFeeCharged">Tarifa de aseo cobrada <span class="hint">opcional</span></label><input type="number" id="recCleaningFeeCharged"></div>
+    <div class="field"><label for="recNativeDiscountPct">Descuento nativo reportado % <span class="hint">opcional</span></label><input type="number" id="recNativeDiscountPct"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label for="recPayoutReceived">Payout/liquidación real recibido (USD)</label><input type="number" id="recPayoutReceived"></div>
+    <div class="field"><label for="recReference">Referencia de reserva <span class="hint">opcional — código/confirmación, nunca datos del huésped</span></label><input type="text" id="recReference" maxlength="120"></div>
+  </div>
+  <button type="button" class="ghost" id="recSaveBtn" style="margin-top:8px;">+ Guardar esta conciliación</button>
+  <div id="reconcileResult" style="margin-top:12px;"></div>
+  <h3 style="margin-top:16px;">Conciliaciones guardadas <span class="hint">solo datos locales, en este navegador — bórralas cuando quieras</span></h3>
+  <div id="reconciliationsList"></div>
+</section>
+<section class="card">
+  <h2>Auditoría de datos reales <span class="hint">qué falta confirmar antes de confiar en la recomendación</span></h2>
+  <div id="auditChecklist"></div>
+</section>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -261,10 +347,10 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <section class="card">
   <h2>Simulador de reserva <span class="hint">una reserva concreta, paso a paso, con el porqué de cada línea</span></h2>
   <div class="sim-inputs">
-    <div class="fld"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><input type="number" id="simPrice" step="1"></div>
-    <div class="fld"><span>Canal</span><select id="simChannel"></select></div>
-    <div class="fld"><span>Días antes del check-in</span><input type="number" id="simDays" step="1" value="2"></div>
-    <div class="fld"><span>Noches de estadía</span><input type="number" id="simNights" step="1" value="2"></div>
+    <div class="fld"><label for="simPrice">Precio calculado por PriceLabs (antes de LM/offset)</label><input type="number" id="simPrice" step="1"></div>
+    <div class="fld"><label for="simChannel">Canal</label><select id="simChannel"></select></div>
+    <div class="fld"><label for="simDays">Días antes del check-in</label><input type="number" id="simDays" step="1" value="2"></div>
+    <div class="fld"><label for="simNights">Noches de estadía</label><input type="number" id="simNights" step="1" value="2"></div>
   </div>
   <div class="wf" id="simResult"></div>
   <div class="ignored" id="simIgnored"></div>
@@ -281,7 +367,33 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 </div>
 
 </div>
-<script>
+<script type="module">
+/* Fase 1 de la auditoria tecnica (jul 2026): el motor financiero se extrajo a
+   modulos ES en src/ (ver src/domain, src/catalog) — cero cambio de logica todavia,
+   solo relocacion + firmas explicitas para poder testear con Node. index.html sigue
+   siendo el unico punto de UI/estado/eventos, ahora importando el dominio en vez de
+   definirlo inline. Requiere servir el sitio por http(s) (GitHub Pages funciona;
+   abrir el archivo directo con file:// bloquea imports ES por CORS en Chrome — usar
+   un server local, ej. `npx serve` o `python3 -m http.server`, para probar en local). */
+import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from './src/catalog/discounts.js';
+import {pct} from './src/domain/percent.js';
+import {f$ as f$base, fP} from './src/domain/format.js';
+import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
+import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
+import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
+import {simulateReservation} from './src/domain/simulate.js';
+import {quoteScenario} from './src/domain/quote.js';
+import {worstScenariosInWindow, buildMatrixVerdict} from './src/domain/matrix.js';
+import {defaultVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
+import {gradualCurve} from './src/domain/pricelabs-lm.js';
+import {escapeHtml} from './src/domain/sanitize.js';
+import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
+import {parseValue, validateRange} from './src/domain/input-parse.js';
+import {computeMonthlyEconomics, defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './src/domain/monthly-economics.js';
+import {reconcileReservation} from './src/domain/reconciliation.js';
+import {buildAuditChecklist} from './src/domain/audit.js';
+import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
+import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -314,340 +426,267 @@ if (typeof window.storage === 'undefined') {
   };
 }
 /* ================== MODEL ================== */
-const CHANNELS = [
-  {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0},
-  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6},
-  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0},
-  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6}
-];
-/* Discount catalog. kind: constant | window (booking-window days) | los (min nights)
-   group drives combination rules per channel. */
-function defaultDiscounts(){ return [
-  /* AIRBNB — grupo 'promo': solo UNA aplica, por orden de prioridad fijo (prio menor = gana) */
-  {id:'ab_new', ch:'airbnb', name:'Promo anuncio nuevo (20%)', kind:'constant', group:'promo', prio:1, pct:20, on:false, note:'primeras 3 reservas; máxima prioridad'},
-  {id:'ab_cus', ch:'airbnb', name:'Promoción personalizada', kind:'window', group:'promo', prio:2, pct:0, from:0, to:9999, on:false, note:'fechas específicas'},
-  {id:'ab_los1', ch:'airbnb', name:'Estadía media (≥3 noches)',  kind:'los', group:'promo', prio:3, pct:5,  minN:3,  on:false, note:'sugerido — noches completamente editables, ajusta o apaga'},
-  {id:'ab_los2', ch:'airbnb', name:'Semanal (≥7 noches)',        kind:'los', group:'promo', prio:3, pct:10, minN:7,  on:false, lockN:true, note:'7 noches fijo — el nombre "Semanal" depende de ese número; % sí ajustable'},
-  {id:'ab_los3', ch:'airbnb', name:'Quincenal (≥14 noches)',     kind:'los', group:'promo', prio:3, pct:15, minN:14, on:false, lockN:true, note:'14 noches fijo — el nombre "Quincenal" depende de ese número; % sí ajustable'},
-  {id:'ab_los4', ch:'airbnb', name:'Larga estadía (≥28 noches)', kind:'los', group:'promo', prio:3, pct:25, minN:28, on:true,  lockN:true, note:'activo hoy: ≥28 noches → 25% (umbral real de "estadía larga" en Airbnb, fijo)'},
-  {id:'ab_los5', ch:'airbnb', name:'Duración personalizada A', kind:'los', group:'promo', prio:3, pct:0, minN:5,  on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ab_los6', ch:'airbnb', name:'Duración personalizada B', kind:'los', group:'promo', prio:3, pct:0, minN:10, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ab_los7', ch:'airbnb', name:'Duración personalizada C', kind:'los', group:'promo', prio:3, pct:0, minN:21, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ab_eb1',  ch:'airbnb', name:'Early-bird (1 mes / ≥30 días)', kind:'window', group:'promo', prio:4, pct:10, from:30, to:9999, on:false, lockN:true, note:'30 días fijo (1 mes) — % sí ajustable'},
-  {id:'ab_eb2',  ch:'airbnb', name:'Early-bird (2 meses / ≥60 días)', kind:'window', group:'promo', prio:4, pct:15, from:60, to:9999, on:false, lockN:true, note:'60 días fijo (2 meses) — % sí ajustable'},
-  {id:'ab_eb3',  ch:'airbnb', name:'Early-bird (3 meses / ≥90 días)', kind:'window', group:'promo', prio:4, pct:20, from:90, to:9999, on:false, lockN:true, note:'90 días fijo (3 meses) — % sí ajustable'},
-  {id:'ab_lm1',  ch:'airbnb', name:'Last-minute 1', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:1,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_lm2',  ch:'airbnb', name:'Last-minute 2', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:3,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_lm3',  ch:'airbnb', name:'Last-minute 3', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:7,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_rs',  ch:'airbnb', name:'Ajuste de rule set / temporada', kind:'constant', group:'stackable', prio:0, pct:0, on:false, note:'apila sobre la promo ganadora'},
-  /* BOOKING — proactive stack; reactive exclusive; mobile conflicts w/ country & limited */
-  {id:'bk_gen', ch:'booking', name:'Genius (constante)', kind:'constant', group:'proactive', pct:10, on:true, note:'lo funde el host; L1=10%'},
-  {id:'bk_mob', ch:'booking', name:'Mobile Rate', kind:'constant', group:'proactive-mobile', pct:10, on:true, note:'apila con Genius; no con Country/Limited'},
-  {id:'bk_cty', ch:'booking', name:'Country Rate', kind:'constant', group:'proactive-country', pct:0, on:false},
-  {id:'bk_lmd', ch:'booking', name:'Last-Minute Deal', kind:'window', group:'reactive', pct:0, from:0, to:3, on:false},
-  {id:'bk_ebd', ch:'booking', name:'Early Booker Deal', kind:'window', group:'reactive', pct:0, from:30, to:9999, on:false},
-  {id:'bk_bas', ch:'booking', name:'Basic Deal', kind:'constant', group:'reactive', pct:0, on:false},
-  {id:'bk_ltd', ch:'booking', name:'Limited-time Deal', kind:'constant', group:'reactive-limited', pct:0, on:false, note:'no combina con Mobile'},
-  {id:'bk_los1', ch:'booking', name:'Duración de estadía A (≥7 noches)', kind:'los', group:'los', pct:0, minN:7, on:false, note:'es tu tarifa (Rates & Availability → Discounts → duración de estadía), no un "deal" — se apila con Genius/Mobile/deals; noches y % editables'},
-  {id:'bk_los2', ch:'booking', name:'Duración de estadía B (≥14 noches)', kind:'los', group:'los', pct:0, minN:14, on:false, note:'noches y % editables, ajusta o apaga'},
-  {id:'bk_los3', ch:'booking', name:'Duración de estadía C (≥28 noches)', kind:'los', group:'los', pct:0, minN:28, on:false, note:'noches y % editables, ajusta o apaga'},
-  /* EXPEDIA — base promos exclusive (max); MOD stacks on top */
-  {id:'ex_mod', ch:'expedia', name:'Oferta VIP miembros (negociada, no editable en Expedia)', kind:'constant', group:'mod', pct:20, on:true, note:'apila sobre la promo base; Expedia da Blue 10% / Silver 15% / Gold+Platino 20% según el nivel del viajero — se usa el peor caso (20%) para proteger el piso, igual que el resto del motor'},
-  {id:'ex_mob', ch:'expedia', name:'Mobile-only', kind:'constant', group:'base', pct:0, on:false},
-  {id:'ex_sd',  ch:'expedia', name:'Same-day / last-minute', kind:'window', group:'base', pct:0, from:0, to:1, on:false},
-  {id:'ex_eb',  ch:'expedia', name:'Early booking', kind:'window', group:'base', pct:0, from:30, to:9999, on:false},
-  {id:'ex_bas', ch:'expedia', name:'Basic promo', kind:'constant', group:'base', pct:0, on:false},
-  {id:'ex_los1', ch:'expedia', name:'Duración de estadía A (≥7 noches)', kind:'los', group:'base', pct:0, minN:7, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ex_los2', ch:'expedia', name:'Duración de estadía B (≥14 noches)', kind:'los', group:'base', pct:0, minN:14, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  {id:'ex_los3', ch:'expedia', name:'Duración de estadía C (≥28 noches)', kind:'los', group:'base', pct:0, minN:28, on:false, note:'noches y % completamente editables, ajusta o apaga'},
-  /* DIRECT */
-  {id:'di_lm',  ch:'direct', name:'Last-minute directo', kind:'window', group:'any', pct:0, from:0, to:3, on:false}
-];}
-const WINDOWS = [
-  {id:'w0', label:'0–1 día', lo:0, hi:1, ceil:35},
-  {id:'w1', label:'2–3 días', lo:2, hi:3, ceil:28},
-  {id:'w2', label:'4–7 días', lo:4, hi:7, ceil:18},
-  {id:'w3', label:'8–14 días', lo:8, hi:14, ceil:8},
-  {id:'w4', label:'15–29 días', lo:15, hi:29, ceil:0},
-  {id:'w5', label:'30+ días', lo:30, hi:9999, ceil:15}
-];
-/* Calculadora opcional de costos por noche a partir de líneas reales — no reemplaza
-   fixedCost/varCost, los calcula y escribe ahí (compute() sigue leyendo solo esos dos). */
-function defaultCostBreakdown(){ return {rent:0, admin:0, utilities:0, insurance:0, tech:0, occNights:22, cleaning:0, laundry:0, consumables:0, supplies:0}; }
+/* CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown ahora vienen de
+   src/catalog/discounts.js (import arriba) — ver ese archivo para el catálogo completo. */
 let state = {
   name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
   avgNights:3, matrixNights:1,
   costBreakdown: defaultCostBreakdown(),
+  costBreakdownConfirmed:false, // BLOQUEANTE 2 (auditoria externa, ronda 4) — ver src/domain/cost-mode.js
   channels: CHANNELS.map(c=>({...c})),
   discounts: defaultDiscounts(),
-  ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil]))
+  ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
+  lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
+  verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
+  monthlyIncomeScenario: defaultMonthlyIncomeScenario(CHANNELS.map(c=>c.id)), // PLANIFICACIÓN MENSUAL — escenario de ingreso para planificación mensual
+  monthlyDistribution: defaultMonthlyDistribution(), // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
+  reconciliations: [], // DATOS REALES — reconciliaciones locales guardadas (auditoría, nunca datos sensibles de huésped)
+  usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
+  usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
 };
 
 /* ================== ENGINE ================== */
-const pct = v=>Math.min(Math.max(parseFloat(v)||0,0),95);
-const pct2 = v=>parseFloat(v)||0; /* offset puede ser negativo, no lo recortamos a 0-95 */
-const f$ = x=>!isFinite(x)?'—':(state.currency||'USD')+' '+new Intl.NumberFormat('es-CO',{maximumFractionDigits:0}).format(Math.round(x));
-const fP = x=>x.toFixed(x<10&&x>0?1:0)+'%';
-
-function windowApplies(d, daysOut){
-  if(d.kind==='constant') return true;
-  if(d.kind==='window') return daysOut>= (d.from??0) && daysOut<=(d.to??9999);
-  return false; /* los handled separately */
-}
-function losApplies(d, nights){ return d.kind==='los' && nights>=(d.minN||0); }
-
-/* Returns {factor, applied:[{name,pct,why}], ignored:[{name,reason}]} for one channel */
-function combineChannel(chId, daysOut, nights){
-  const ds = state.discounts.filter(d=>d.ch===chId && d.on && pct(d.pct)>0);
-  const applied=[], ignored=[];
-  let factor=1;
-  const add=(d,why)=>{factor*=(1-pct(d.pct)/100); applied.push({name:d.name,pct:pct(d.pct),why});};
-
-  if(chId==='airbnb'){
-    /* Capa apilable (rule sets / ajuste estacional) se aplica primero y NO compite */
-    ds.filter(d=>d.group==='stackable').forEach(d=>add(d,'rule set: apila sobre la promo ganadora'));
-    /* Grupo promo: solo UNA aplica. 1º por prioridad de tipo (nuevo>personalizada>duración>early-bird>last-minute).
-       2º, dentro del mismo tipo con varios escalones, gana el umbral MÁS PROFUNDO que se cumple
-       (más noches para duración, más días de anticipación para early-bird) — no el % más alto. */
-    const cands = ds.filter(d=> d.group==='promo' &&
-      (d.kind==='constant' || windowApplies(d,daysOut) || losApplies(d,nights)));
-    if(cands.length){
-      const minPrio = Math.min(...cands.map(c=>c.prio??9));
-      const top = cands.filter(c=>(c.prio??9)===minPrio);
-      top.sort((a,b)=>{
-        const av = a.kind==='los' ? (a.minN||0) : (a.from||0);
-        const bv = b.kind==='los' ? (b.minN||0) : (b.from||0);
-        return bv-av;
-      });
-      const win = top[0];
-      const tieBreak = top.length>1 ? `, umbral más profundo dentro del mismo tipo (${win.kind==='los'?'≥'+win.minN+' noches':'≥'+win.from+' días'})` : '';
-      add(win, `gana por prioridad Airbnb (nivel ${win.prio??'—'}: nuevo > personalizada > duración > early-bird > last-minute)${tieBreak}`);
-      cands.filter(c=>c!==win).forEach(d=>ignored.push({name:d.name,reason: (d.prio??9)!==minPrio
-        ? `Airbnb aplica solo una promo por noche; ganó ${win.name} por prioridad`
-        : `mismo tipo que ${win.name}; ese umbral es más profundo y gana`}));
-    }
-  }
-  else if(chId==='booking'){
-    const limited = ds.find(d=>d.group==='reactive-limited');
-    const country = ds.find(d=>d.group==='proactive-country');
-    const mobile = ds.find(d=>d.group==='proactive-mobile');
-    const genius = ds.find(d=>d.group==='proactive');
-    if(genius) add(genius,'Genius combina con todo (categoría propia)');
-    if(country) add(country,'Country Rate activa');
-    if(mobile){
-      if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
-      else add(mobile,'apila sobre Genius (categorías distintas)');
-    }
-    /* Descuento por duración de estadía: es tu tarifa (Rates & Availability → Discounts),
-       no un "deal" que compite por categoría — se apila con Genius/Mobile/reactivos.
-       Si varios umbrales califican a la vez, gana el más profundo (igual que Airbnb LOS). */
-    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights));
-    if(losCands.length){
-      losCands.sort((a,b)=>(b.minN||0)-(a.minN||0));
-      const winLos=losCands[0];
-      add(winLos,'tarifa por duración de estadía que configuraste — se apila con Genius/Mobile/deals');
-      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:'ya aplica un umbral de duración más profundo ('+winLos.name+')'}));
-    }
-    const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
-      .sort((a,b)=>pct(b.pct)-pct(a.pct));
-    if(reactives.length){
-      add(reactives[0],'único deal reactivo aplicado (misma categoría no combina)');
-      reactives.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo un deal reactivo aplica; ganó '+reactives[0].name}));
-    }
-  }
-  else if(chId==='expedia'){
-    const bases = ds.filter(d=>d.group==='base' && (windowApplies(d,daysOut)||losApplies(d,nights))).sort((a,b)=>pct(b.pct)-pct(a.pct));
-    if(bases.length){
-      add(bases[0],'promo base mayor (Expedia no combina promos base)');
-      bases.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo la promo base mayor aplica'}));
-    }
-    const mod = ds.find(d=>d.group==='mod');
-    if(mod) add(mod,'Member Only apila sobre la promo base');
-  }
-  else { /* direct: stack all */
-    ds.filter(d=>windowApplies(d,daysOut)||losApplies(d,nights)).forEach(d=>add(d,'canal directo: apila'));
-  }
-  /* redondeo a 1 decimal: (1-factor)*100 arrastra ruido de float (18.999… en vez de 19) */
-  return {factor, totalPct: Math.round((1-factor)*1000)/10, applied, ignored};
-}
-
-/* Worst-case native per channel: escanea ventanas de reserva Y duraciones de estadía.
-   Antes solo usaba nights=1, así que los descuentos por duración (LOS) quedaban invisibles
-   para el piso — una reserva larga podía vender bajo costo sin que el modelo lo detectara. */
-function worstNative(chId){
-  let worst=0;
-  const losNights = state.discounts.filter(d=>d.ch===chId && d.kind==='los' && d.on)
-    .map(d=>(d.minN||1));
-  const nightsToTest = [1, ...losNights];
-  WINDOWS.forEach(w=>{
-    const mid = Math.min(w.lo+1, w.hi);
-    nightsToTest.forEach(n=>{
-      const t = combineChannel(chId, mid, n).totalPct;
-      if(t>worst) worst=t;
-    });
+/* Fase 2.1: combineChannel()/worstNative() ya NO tienen wrapper propio aqui — nada en
+   index.html los llama directo; toda vista que necesita cotizar pasa por
+   quoteScenario() (quoteConfig(), mas abajo), que a su vez los usa internamente desde
+   src/domain/engine.js. Mantener un wrapper sin uso invitaba a que una vista nueva
+   reimplementara formula aparte en vez de usar la fuente unica. compute()/
+   suggestedOffset() siguen siendo wrappers delgados que cierran sobre `state`/WINDOWS
+   — la logica real vive en src/domain/engine.js. */
+const f$ = x => f$base(x, state.currency);
+/* BLOQUEANTE 2 corregido (auditoria externa, ronda 4) — ver src/domain/
+   cost-mode.js: el contrato de costos ya NO se decide con "algun campo del
+   desglose > 0" (`costBreakdownIsFilled()`, todavia se usa para saber si el
+   desglose fue TOCADO, nunca para decidir si alimenta una recomendacion).
+   `costGateNow()` es el UNICO punto que arma ese estado real (simple /
+   simple_example / detailed_incomplete / detailed_confirmed) a partir de
+   `state` — compute()/quoteConfig()/computeMonthly() lo consumen, nunca
+   reimplementan el calculo. */
+function costGateNow(){
+  return evaluateCostReadiness({
+    costBreakdown: state.costBreakdown,
+    costBreakdownConfirmed: state.costBreakdownConfirmed,
+    usingExampleCosts: parseFloat(state.fixedCost)===EXAMPLE_COST_DEFAULTS.fixedCost
+      && parseFloat(state.varCost)===EXAMPLE_COST_DEFAULTS.varCost
+      && !costBreakdownIsFilled(state.costBreakdown)
   });
-  return worst;
-}
-/* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas
-   sobre el precio que paga el huésped (no se acumulan una sobre la otra, se restan las dos
-   del mismo número — así es como se factura en la práctica, confirmado por Dani). */
-function payoutFactor(c){
-  return Math.max(0, 1 - pct(c.comm)/100 - pct(c.bankFeePct)/100);
 }
 function compute(){
-  const cost = (parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
-  const m = Math.min(parseFloat(state.margin)||0,90);
-  const net = cost/(1-m/100);
-  /* floor: pushed price such that worst channel still nets >= cost.
-     Incluye el offset del canal: en producción PriceLabs publica precio×(1+offset), así que
-     el piso DEBE reflejarlo — si no, un offset negativo (bajar precio para competir) rompe
-     la garantía de no vender bajo costo. Con offset positivo el piso baja para ese canal
-     (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
-     baja de verdad si TODOS tienen offset positivo. */
-  let floor=0, floorCh='';
-  state.channels.forEach(c=>{
-    const wn = worstNative(c.id)/100, pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
-    const denom = (1+off)*(1-wn)*pf;
-    const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
-    if(p>floor){floor=p;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+  /* BLOQUEANTE CRITICO corregido: el Piso/Base ahora SI reciben `ceilings` y
+     `lmConfig` — antes esta llamada nunca los pasaba, asi que compute() jamas
+     podia proteger contra un Last-Minute configurado, sin importar que
+     src/domain/engine.js ya supiera hacerlo. */
+  return computeBase({
+    fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
+    channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
+    lmConfig: state.lmConfig, verification: state.verification,
+    /* Se pasa el desglose SIEMPRE (aunque este vacio o sin confirmar) —
+       engine.js decide internamente si es usable (`costBreakdownConfirmed`),
+       nunca index.html: fuente unica de verdad, ver cost-mode.js. */
+    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
+    usingExampleCosts: costGateNow().usingExampleCosts,
+    /* Simplificacion a USD unico (revision externa): `currency` es la moneda
+       GUARDADA de la unidad (normalmente 'USD') — engine.js deriva el gate
+       real (unidad + canales) el mismo con evaluateUsdOnlyReadiness(), ver
+       src/domain/usd-only.js.
+       BLOQUEANTE 3 (auditoria externa, ronda 5): `usdManualReviewPending`
+       bloquea igual aunque `state.currency` ya sea 'USD' — ver el docblock
+       de evaluateUsdOnlyReadiness() para el hallazgo (copia USD de una
+       unidad COP, sin convertir ningun valor). */
+    currency: state.currency,
+    usdManualReviewPending: state.usdManualReviewPending,
+    usdManualReviewLog: state.usdManualReviewLog
   });
-  /* base: pushed price that nets target on every channel using its CONSTANT natives (window natives are tactical) */
-  let base=0, baseCh='';
-  state.channels.forEach(c=>{
-    const cn = combineChannel(c.id, 45, 1).totalPct/100; /* 45 días: fuera de ventanas tácticas cortas */
-    const pf = payoutFactor(c);
-    const p = net/((1-cn)*pf);
-    if(p>base){base=p;baseCh=c.name;}
-  });
-  const mb=parseFloat(state.marketBase)||0;
-  const effBase = mb>0 ? mb : base;   /* evaluar contra el precio que realmente vas a poner */
-  return {cost, net, floor, floorCh, base, baseCh, effBase};
 }
-
-/* Tarifa de aseo fija por reserva (solo Airbnb), diluida por noche según la estadía dada.
-   Devuelve 0 para canales sin aseo. Reusa la regla 1-2 noches / 3+ del catálogo. */
-function cleanFeePerNight(c, nights){
-  if(c.id!=='airbnb') return 0;
-  const n = Math.max(1, nights||1);
-  const feeTotal = n<=2 ? (parseFloat(c.cleanFeeShort)||0) : (parseFloat(c.cleanFeeLong)||0);
-  return feeTotal/n;
-}
-/* Offset % que necesita un canal para netear el objetivo, dado un Base uniforme (effBase),
-   evaluado sobre la ESTADÍA PROMEDIO: así el nativo incluye descuentos por duración que la
-   reserva típica sí califica, y el aseo (fijo por reserva) se diluye correctamente por noche. */
 function suggestedOffset(chId, effBase, netObjetivo){
-  const c = state.channels.find(x=>x.id===chId);
-  if(!c || effBase<=0) return 0;
-  const avgN = Math.max(1, parseFloat(state.avgNights)||1);
-  const nat = combineChannel(chId, 45, avgN).totalPct/100; /* nativo a estadía promedio, sin ventanas tácticas cortas */
-  const pf = payoutFactor(c);
-  const feePN = cleanFeePerNight(c, avgN);
-  const denom = effBase*(1-nat);
-  if(denom<=0 || pf<=0) return 0;
-  /* net = [effBase*(1+off)*(1-nat) + feePN]*pf = netObjetivo
-     => off = (netObjetivo/pf - feePN)/(effBase*(1-nat)) - 1 */
-  return ((netObjetivo/pf - feePN)/denom - 1)*100;
+  return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo, lmConfig: state.lmConfig, windows: WINDOWS, ceilings: state.ceilings});
+}
+/* config compartido para quoteScenario() — Fase 2.1: unico punto de armado, lo usan
+   renderMatrix()/renderChannelPages()/renderSim() para no duplicar sus campos. */
+function quoteConfig(){
+  return {
+    channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
+    fixedCost: state.fixedCost, varCost: state.varCost,
+    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
+    lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
+  };
+}
+/* PLANIFICACIÓN MENSUAL — punto de equilibrio. Wrapper delgado sobre
+   src/domain/monthly-economics.js (computeMonthlyEconomics) — cero fórmula
+   financiera aquí, solo arma el config con `state`/quoteConfig()/model.readiness
+   (misma fuente que ya usan Piso/Base/Matriz/Alertas, ver Fase 5).
+   BLOQUEANTE 2 (auditoria externa, ronda 4): a diferencia de compute()/
+   quoteConfig() (que SIEMPRE pasan `costBreakdown` y dejan que engine.js/
+   quote.js decidan si es usable), computeMonthlyEconomics() exige que
+   `costBreakdown` este REALMENTE lleno y confirmado para calcular algo —
+   sin el (ni siquiera tocado, ni tocado-sin-confirmar), se niega a inventar
+   un total mensual desde fixedCost/varCost por noche (contrato propio de
+   ese modulo, sin cambios). Se pasa `undefined` en cualquier otro caso que
+   no sea 'detailed_confirmed' para no reimplementar esa regla aqui. */
+function computeMonthly(model){
+  return computeMonthlyEconomics({
+    costBreakdown: costGateNow().mode==='detailed_confirmed' ? state.costBreakdown : undefined,
+    avgNights: state.avgNights,
+    incomeScenario: {...state.monthlyIncomeScenario, mix: state.monthlyIncomeScenario.mix.filter(m=>m.on)},
+    quoteConfig: quoteConfig(),
+    distribution: state.monthlyDistribution,
+    currency: state.currency,
+    usdManualReviewPending: state.usdManualReviewPending,
+    usdManualReviewLog: state.usdManualReviewLog,
+    readiness: model.readiness
+  });
 }
 
 /* ================== ALERTS ================== */
 function buildAlerts(model){
-  const A=[];
-  const on = id=>{const d=state.discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
-  /* ceiling breaches & floor breaches per window */
-  WINDOWS.forEach(w=>{
-    const ceil=pct(state.ceilings[w.id]);
-    const mid=Math.min(w.lo+1,w.hi);
-    let maxN=0,maxCh='';
-    state.channels.forEach(c=>{const t=combineChannel(c.id,mid,1).totalPct;if(t>maxN){maxN=t;maxCh=c.name;}});
-    if(maxN>ceil+0.5) A.push({lvl:'bad',tag:'TECHO',tab:'comparacion',msg:`${w.label}: solo los nativos de ${maxCh} ya suman ${fP(maxN)} y tu techo es ${fP(ceil)}. PriceLabs queda en 0% y aún así te pasas — baja el nativo o sube el techo.`});
-    const lm = maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-    state.channels.forEach(c=>{
-      const nat=combineChannel(c.id,mid,1).totalPct/100, cm=pct(c.comm)/100;
-      const netAtBase = model.effBase*(1-lm/100)*(1-nat)*(1-cm);
-      if(model.base>0 && netAtBase < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} · ${c.name}: al precio de referencia (${f$(model.effBase)}) con LM ${fP(lm)} + nativos ${fP(nat*100)} + comisión, netearías ${f$(netAtBase)} < costo ${f$(model.cost)}.`});
-    });
-  });
-  /* config contradictions */
-  const ebActive = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='window'&&d.on&&pct(d.pct)>0&&(d.from??0)>=14);
-  ebActive.forEach(eb=>{
-    if((eb.from??30)>(parseFloat(state.marketWindow)||16))
-      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`${eb.name} arranca a ${eb.from} días pero tu mercado reserva a ~${state.marketWindow} días (mediana). Casi nunca se activa, y cuando lo hace regala margen en las pocas reservas anticipadas. Evalúa apagarlo o subir el umbral.`});
-  });
-  if(on('bk_mob')&&(on('bk_cty')||on('bk_ltd')))
-    A.push({lvl:'warn',tag:'CONFLICTO',tab:'ch-booking',msg:'Booking: Mobile Rate no combina con Country Rate / Limited-time. El motor ya ignora Mobile en ese caso, pero tenlos claros en la extranet.'});
-  const lmActive = state.discounts.filter(d=>d.ch==='airbnb' && d.id.startsWith('ab_lm') && d.on && pct(d.pct)>0);
-  const abEbOverlap = ebActive.find(eb=>lmActive.some(lm=>(lm.to??3)>=(eb.from??30)));
-  if(abEbOverlap)
-    A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: alguna ventana de Last-minute activa se solapa con ${abEbOverlap.name}. Airbnb solo aplicará una (gana duración/early-bird sobre last-minute si ambas califican), pero revisa los umbrales.`});
-  const losOn = state.discounts.filter(d=>d.ch==='airbnb'&&d.kind==='los'&&d.on&&pct(d.pct)>0);
-  if(losOn.length>1){
-    const sorted=[...losOn].sort((a,b)=>a.minN-b.minN);
-    for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
-      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más descuento que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a exigir menos noches. Al huésped que califica para ambas gana el umbral más profundo (${sorted[i+1].name}), así que el de menos noches nunca se aplica realmente — revisa la escala.`});
-  }
-  const ebOn = ebActive;
-  if(ebOn.length>1){
-    const sorted=[...ebOn].sort((a,b)=>a.from-b.from);
-    for(let i=0;i<sorted.length-1;i++) if(pct(sorted[i].pct)>pct(sorted[i+1].pct))
-      A.push({lvl:'warn',tag:'CONFIG',tab:'ch-airbnb',msg:`Airbnb: ${sorted[i].name} (${fP(pct(sorted[i].pct))}) da más que ${sorted[i+1].name} (${fP(pct(sorted[i+1].pct))}) pese a activarse antes. Gana el umbral más profundo (${sorted[i+1].name}) cuando ambos aplican — revisa la escala para que suba con la anticipación.`});
-  }
-  const bkStack=combineChannel('booking',1,1).totalPct;
-  if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',tab:'ch-booking',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
-  /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí. */
-  state.channels.forEach(c=>{
-    state.discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
-      const r = combineChannel(c.id, 45, d.minN||1);
-      const netLos = (model.effBase*(1+pct2(c.offsetPct)/100)*(1-r.totalPct/100) + cleanFeePerNight(c, d.minN||1))*payoutFactor(c);
-      if(netLos < model.cost-0.5)
-        A.push({lvl:'bad',tag:'DURACIÓN',tab:CH_TAB[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)} por noche, bajo tu costo de ${f$(model.cost)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
-      else if(netLos < model.net)
-        A.push({lvl:'warn',tag:'DURACIÓN',tab:CH_TAB[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net)}. Válido si priorizas ocupación larga; revísalo si no.`});
-    });
-  });
-  if(model.floor>model.base&&model.base>0)
-    A.push({lvl:'bad',tag:'MODELO',tab:'resumen',msg:`Tu piso (${f$(model.floor)}) quedó por ENCIMA del Base (${f$(model.base)}): con estos descuentos y margen, el modelo no cierra. Baja descuentos, baja margen objetivo o revisa costos.`});
-  /* Chequeo de realidad contra el mercado */
-  const mb=parseFloat(state.marketBase)||0;
-  if(mb>0){
-    if(model.floor>mb)
-      A.push({lvl:'bad',tag:'INVIABLE',tab:'resumen',msg:`Tu piso (${f$(model.floor)}) está POR ENCIMA de la base de mercado (${f$(mb)}). A precio de mercado y con estos descuentos, esta unidad no cubre costo. No es un problema de pricing: es costos, descuentos o producto.`});
-    else if(model.base>mb*1.05){
-      /* margen alcanzable al precio de mercado, en el canal que peor te deja */
-      let peorNeto=Infinity, peorCh='';
-      state.channels.forEach(c=>{
-        const n = mb*(1+pct2(c.offsetPct)/100)*(1-worstNative(c.id)/100)*payoutFactor(c);
-        if(n<peorNeto){peorNeto=n;peorCh=c.name;}
-      });
-      const achievable = peorNeto>0 ? 100*(1-model.cost/peorNeto) : 0;
-      A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(state.margin))} es ${f$(model.base)}, pero el mercado paga ~${f$(mb)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso (${peorCh}): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
-    }
-  }
-  if(!A.length) A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
-  return A;
+  return buildAlertsBase({
+    discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
+    marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
+    chTab: CH_TAB, currency: state.currency, margin: state.margin,
+    lmConfig: state.lmConfig, verification: state.verification, floor: model.floor
+  }, model);
 }
 
 /* ================== RENDER ================== */
 function renderKpis(model){
+  /* Fase 5: si el modelo no es valido (errores de nivel 'error'), no se muestra
+     ningun KPI numerico — mejor un bloqueo explicito que un numero que parece
+     confiable pero no lo es (NaN/Infinity/negativo). */
+  if(!model.valid){
+    kCost.textContent='—'; kNet.textContent='—'; kFloor.textContent='—'; kBase.textContent='—';
+    kFloorWhy.textContent='bloqueado — revisa los errores arriba'; kBaseWhy.textContent='bloqueado — revisa los errores arriba';
+    return;
+  }
+  /* Simplificacion a USD unico (revision externa): una unidad "requiere
+     revision manual" (moneda != USD) tampoco muestra Costo/Neto objetivo —
+     no son "recomendaciones" en el mismo sentido que Piso/Base, pero mostrar
+     un numero en dolares sin aclarar que la moneda real es otra seria
+     enganoso. El aviso completo vive en #currencyReviewBanner. */
+  if(model.currencyBlocked){
+    kCost.textContent='—'; kNet.textContent='—'; kFloor.textContent='—'; kBase.textContent='—';
+    kFloorWhy.textContent='requiere revisión manual — ver aviso arriba'; kBaseWhy.textContent='requiere revisión manual — ver aviso arriba';
+    return;
+  }
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): Costo/Neto SI se siguen
+     mostrando aunque `model.costBlocked` sea true (ejemplo de fabrica, o
+     desglose sin confirmar) — `model.cost` ya cae de forma segura al modelo
+     simple mientras no este confirmado (nunca al desglose parcial, ver
+     src/domain/cost-mode.js), asi que el numero en si nunca es el que
+     causaba el bug original; lo que SI queda oculto es Piso/Base (mas abajo,
+     via floorReadinessBlocked/baseReadinessBlocked, que ya incorporan
+     costBlocked) — el aviso completo vive en #dataProvenanceBanner. */
   kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
-  kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
-  kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
+  /* Refactor de cierre (revision externa): `floorReadinessBlocked`/
+     `baseReadinessBlocked` (compute(), src/domain/readiness.js —
+     evaluateGlobalRecommendationReadiness()) son la UNICA fuente que decide
+     si Min Price/Base Price GLOBALES se muestran — ya incorporan LM sin
+     verificar (los dos) y el precio fijo activo (solo Base). Aqui NUNCA se
+     recalcula esa decision con `model.lmBlocked`/`model.baseBlocked`; esas
+     dos banderas solo se leen para elegir QUE TEXTO CORTO mostrar (el motivo
+     mas especifico primero), el aviso completo vive en #validationBanner. */
+  if(model.floorReadinessBlocked){
+    kFloor.textContent='—';
+    kFloorWhy.textContent = model.lmBlocked ? 'LM sin verificar — ver aviso arriba' : 'dato financiero sin verificar — ver aviso arriba';
+  } else {
+    kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
+  }
+  if(model.baseReadinessBlocked){
+    kBase.textContent='—';
+    kBaseWhy.textContent = model.lmBlocked ? 'LM sin verificar — ver aviso arriba'
+      : model.baseBlocked ? 'Precio LM fijo activo — ver aviso arriba'
+      : 'dato financiero sin verificar — ver aviso arriba';
+  } else {
+    kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
+  }
+}
+function renderValidation(model){
+  const box = document.getElementById('validationBanner');
+  if(!box) return;
+  const errs = (model.errors||[]).filter(e=>e.level==='error');
+  const warns = (model.errors||[]).filter(e=>e.level==='warning');
+  const lmBlock = model.lmBlocked ? [model.lmBlockedReason] : [];
+  /* Bloqueante P1 (revision externa, ronda 3): aviso separado de lmBlock —
+     este puede estar activo AUNQUE el LM este verificado (el problema no es
+     "no confirmaste el modo", es "el modo fijo hace que Base no controle
+     nada en el dia de referencia"). Mismo componente visual (#validationBanner),
+     tag distinto para no confundir los dos motivos. */
+  const baseBlock = model.baseBlocked ? [model.baseBlockedReason] : [];
+  /* Fase 5 (revision externa — "datos financieros verificados"): avisos
+     separados de lmBlock/baseBlock — un dato de NEGOCIO (comision bancaria,
+     Offset en Hospy, VIP de Expedia, Genius+Mobile de Booking, no-reembolsable
+     de Airbnb) sin confirmar es un motivo de bloqueo DISTINTO a Last-Minute,
+     aunque el LM ya este verificado. */
+  /* Refactor de cierre: floorReadinessBlocked/baseReadinessBlocked ahora
+     tambien quedan true cuando la UNICA causa es LM sin verificar o precio
+     fijo activo (evaluateGlobalRecommendationReadiness() los incluye para
+     que Min Price/Base Price nunca se muestren en ese caso) — esos dos
+     motivos YA tienen su propio banner arriba (lmBlock/baseBlock). Este
+     banner de "dato financiero" solo debe aparecer si además hay un dato de
+     NEGOCIO pendiente (`model.readiness.ready===false`, el mismo campo de
+     siempre de evaluateRecommendationReadiness), para no duplicar el aviso
+     cuando el motivo real es puramente LM/precio fijo. */
+  const hasPendingBusinessData = !!(model.readiness && !model.readiness.ready);
+  const floorReadinessBlock = (model.floorReadinessBlocked && hasPendingBusinessData) ? [model.floorReadinessBlockedReason] : [];
+  const baseReadinessBlock = (model.baseReadinessBlocked && hasPendingBusinessData) ? [model.baseReadinessBlockedReason] : [];
+  if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
+  box.innerHTML = `
+    ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
+    ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Verificación de datos financieros →</button></div>` : ''}
+    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen">Ir a Verificación de datos financieros →</button></div>` : ''}
+    ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
+  `;
+}
+/* Fase 5 — distinguir datos REALES de HIPOTETICOS: fixedCost/varCost arrancan en
+   32/22, el ejemplo ilustrativo del webinar de Kunas (ver CLAUDE.md seccion 5) —
+   NO son los costos reales de ninguna unidad de Dani. Mientras el valor siga
+   exactamente en ese default sin tocar, se avisa explicitamente para que no se
+   confunda con un dato real ya cargado.
+
+   BLOQUEANTE 2 corregido (auditoria externa, ronda 4): este banner es ahora el
+   lugar UNICO y SIEMPRE VISIBLE (no depende de `hasPendingBusinessData` como
+   #validationBanner) donde se explica el estado real de los costos —
+   `costGateNow()` (mismo gate que ya bloquea Piso/Base/Offset/Matriz/Alertas/
+   planificación mensual, ver src/domain/cost-mode.js) decide el mensaje:
+   - 'simple_example': costo fijo/variable siguen en el valor ilustrativo de
+     fábrica — nunca antes esto bloqueaba una recomendación, ahora SÍ.
+   - 'detailed_incomplete': el desglose detallado fue editado pero todavía no
+     se confirmó (o una edición posterior invalidó una confirmación previa) —
+     este es exactamente el caso del bug reportado (un campo suelto como
+     "Consumos: 5" ya no baja el Piso en silencio). */
+function renderDataProvenance(){
+  const box = document.getElementById('dataProvenanceBanner');
+  if(!box) return;
+  const cg = costGateNow();
+  if(cg.mode==='simple_example'){
+    box.innerHTML = `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (${EXAMPLE_COST_DEFAULTS.fixedCost}) y variable (${EXAMPLE_COST_DEFAULTS.varCost}) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada y confírmala) antes de confiar en el Min Price/Base Price/Offset/Matriz/Alertas/planificación mensual: mientras tanto quedan bloqueados, no solo advertidos.</span></div>`;
+  } else if(cg.mode==='detailed_incomplete'){
+    box.innerHTML = `<div class="alert warn"><span class="tag">COSTOS SIN CONFIRMAR</span><span>${escapeHtml(cg.reason)}</span></div>`;
+  } else {
+    box.innerHTML = '';
+  }
 }
 function discountRowHTML(d){
   /* d.lockN: el nombre está atado a un número específico (Semanal=7, Quincenal=14,
      Larga estadía=28, "X meses"=30/60/90) — si el número fuera editable, se podría
      desincronizar del nombre (ej. "Semanal (≥7 noches)" pero con un 10 puesto). Se
      muestra el umbral como texto fijo, no como input. */
+  /* Bloqueante 4 (revision externa): escapeHtml() tambien en campos NUMERICOS —
+     defensa en profundidad ademas de normalizeUnit() (que ya garantiza que
+     estos son numeros JS reales, no strings). Un `number` nunca puede romper
+     un atributo, pero escapar aqui igual cuesta cero y cubre cualquier ruta
+     futura que escriba en `state` sin pasar por el normalizador. */
   const win = d.lockN
-    ? `<span class="d-win">${d.kind==='los' ? '≥'+d.minN+'n' : '≥'+d.from+'d'}</span>`
+    ? `<span class="d-win">${d.kind==='los' ? '≥'+escapeHtml(d.minN)+'n' : '≥'+escapeHtml(d.from)+'d'}</span>`
     : d.kind==='window'
-      ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${d.from}">–<input type="number" data-did="${d.id}" data-f="to" value="${d.to>=9999?'':d.to}" placeholder="∞">d</span>`
-      : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${d.minN}">n</span>` : '';
+      ? `<span class="d-win"><input type="number" data-did="${d.id}" data-f="from" value="${escapeHtml(d.from)}">–<input type="number" data-did="${d.id}" data-f="to" value="${escapeHtml(d.to>=9999?'':d.to)}" placeholder="∞">d</span>`
+      : d.kind==='los' ? `<span class="d-win">≥<input type="number" data-did="${d.id}" data-f="minN" value="${escapeHtml(d.minN)}">n</span>` : '';
   return `<div class="d-item ${d.on?'on':''}">
     <input type="checkbox" data-did="${d.id}" data-f="on" ${d.on?'checked':''}>
-    <span class="d-name">${d.name}${d.note?`<span class="d-meta">${d.note}</span>`:''}</span>
+    <span class="d-name">${escapeHtml(d.name)}${d.note?`<span class="d-meta">${escapeHtml(d.note)}</span>`:''}</span>
     ${win}
-    <input type="number" data-did="${d.id}" data-f="pct" value="${d.pct}"><span class="hint">%</span>
+    <input type="number" data-did="${d.id}" data-f="pct" value="${escapeHtml(d.pct)}"><span class="hint">%</span>
   </div>`;
 }
 const CH_TAB = {airbnb:'ch-airbnb', booking:'ch-booking', expedia:'ch-expedia', direct:'ch-direct'};
@@ -661,76 +700,152 @@ function renderChannelPages(model){
     const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
     const avgN = Math.max(1, parseFloat(state.avgNights)||1);
-    const netHoy = (model.effBase*(1+pct2(c.offsetPct)/100)*(1-combineChannel(c.id,45,avgN).totalPct/100) + cleanFeePerNight(c,avgN))*payoutFactor(c);
+    /* Fase 2.1: netHoy ya no reimplementa la formula aparte (usaba totalPct redondeado
+       y omitia el techo/LM de PriceLabs) — sale de quoteScenario(), la fuente unica.
+       Dia 45 sigue siendo el mismo escenario de referencia que suggestedOffset()
+       ("fuera de ventanas tacticas cortas"), ver engine.js. */
+    const netHoy = quoteScenario({chId:c.id, days:45, nights:avgN, price:model.effBase}, quoteConfig()).payout;
     panel.innerHTML = `
       <section class="card">
         <div class="chpage-head">
-          <div class="fld"><span>Comisión ${c.name} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${c.comm}"></div>
-          <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${c.bankFeePct||0}"></div>
-          <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${c.offsetPct||0}"></div>
+          <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${escapeHtml(c.comm)}"></div>
+          <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${escapeHtml(c.bankFeePct||0)}"></div>
+          <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${escapeHtml(c.offsetPct||0)}"></div>
           ${c.id==='airbnb' ? `
-          <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${c.cleanFeeShort||0}"></div>
-          <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${c.cleanFeeLong||0}"></div>` : ''}
-          <div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>
+          <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
+          <div class="fld"><span>Tarifa de aseo — reservas 3+ noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeLong" value="${escapeHtml(c.cleanFeeLong||0)}"></div>` : ''}
+          ${(()=>{
+            /* Fase 5 (revision externa — "datos financieros verificados"): si
+               ESTE canal depende de un dato de negocio sin confirmar (comision
+               bancaria real, Offset aislado en Hospy, VIP de Expedia,
+               Genius+Mobile de Booking, no-reembolsable de Airbnb), su Offset
+               sugerido/neto estimado tampoco es una recomendacion confiable —
+               mismo principio que lmBlocked/baseBlocked, pero para datos que
+               no tienen nada que ver con Last-Minute (ver readiness.js).
+               Prioridad de motivos (lmBlocked > baseBlocked > datos de negocio
+               > normal): lmBlocked/baseBlocked son MAS especificos (explican
+               ademas el numero corregido de Offset) y no deben ocultarse
+               detras de un aviso generico de datos pendientes — si ambos
+               aplican a la vez, el aviso de datos pendientes se agrega como
+               nota adicional, nunca reemplaza la explicacion de LM/precio fijo. */
+            const chReady = !model.readiness || !model.readiness.byChannel[c.id] || model.readiness.byChannel[c.id].ready;
+            const readinessNote = (!model.lmBlocked && chReady===false)
+              ? ` <span class="hint">(además, sin confirmar: ${model.readiness.byChannel[c.id].missing.map(m=>escapeHtml(m.label)).join('; ')} — ver Resumen → "Verificación de datos financieros")</span>`
+              : '';
+            /* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): el Offset
+               sugerido/neto estimado de ESTE canal tampoco es una
+               recomendacion confiable si la unidad esta "requiere revision
+               manual" por moneda (unidad o CUALQUIER canal, ver
+               src/domain/usd-only.js) — maxima prioridad, antes que LM. */
+            if(model.currencyBlocked){
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: esta unidad está marcada "requiere revisión manual" por moneda (ver aviso arriba en Resumen) — ningún número de este canal es confiable hasta corregirlo.</div>`;
+            }
+            if(model.lmBlocked){
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).</div>`;
+            }
+            if(model.baseBlocked){
+              /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
+                 (precio LM fijo activo en el dia de referencia), pero el
+                 Offset SI puede seguir controlando el resultado — se aplica
+                 DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
+                 Se muestra el numero corregido, con nota explicita de que ya
+                 NO se calcula sobre Base. */
+              return `<div class="offset-hint">⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b>${readinessNote}<br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
+            }
+            if(chReady===false){
+              const missing = model.readiness.byChannel[c.id].missing;
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos en Resumen → "Verificación de datos financieros".</div>`;
+            }
+            /* BLOQUEANTE 2 (auditoria externa, ronda 4): prioridad MAS BAJA
+               (solo se muestra si nada mas arriba ya explico un bloqueo) para
+               no tapar los avisos de LM/precio fijo/datos de negocio que ya
+               tienen sus propios textos verificados — un costo sin confirmar
+               (ejemplo de fabrica, o desglose sin confirmar) tampoco permite
+               tratar el Offset/neto estimado como recomendación. */
+            if(model.costBlocked){
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: el costo real de esta unidad todavía no está confirmado (${escapeHtml(model.costBlockedReason||'')}) — confírmalo en Resumen → "Costos por noche".</div>`;
+            }
+            return `<div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
+          })()}
         </div>
-        <h2>Descuentos activos hoy — ${c.name}</h2>
+        <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
         <div class="chpage-discounts">${activeD}</div>
         ${restD.length ? `<details class="discounts-more"${wasOpen?' open':''}><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${restD.map(discountRowHTML).join('')}</div></details>` : ''}
       </section>`;
   });
 }
 function renderMatrix(model){
+  /* Simplificacion a USD unico (revision externa): una unidad "requiere
+     revision manual" no puede mostrar NINGUNA fila de la Matriz — ni
+     siquiera "TECHO EXCEDIDO"/"BAJO COSTO" son confiables si la moneda real
+     de la unidad no se sabe con certeza. matrix.js/buildMatrixVerdict() no
+     conoce currencyBlocked (es un gate ortogonal, igual que lmBlocked lo es
+     de readiness) — se corta aqui, en el unico lugar que ya sabe que la
+     unidad esta bloqueada por moneda, sin tocar la logica de veredictos. */
+  if(model.currencyBlocked){
+    matrixIntro.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" por moneda — la Matriz no puede mostrar ninguna recomendación hasta corregirlo (ver aviso en Resumen).</span></div>`;
+    matrixBody.innerHTML = '';
+    return;
+  }
+  /* Bloqueante CRITICO (revision externa, ronda 2): Min Price/Base Price se
+     bloquean aqui tambien (no solo en renderKpis) — matrixIntro es un resumen
+     que Dani puede leer sin haber visto el KPI de Resumen. */
+  /* Refactor de cierre: gate unico por KPI (`floorReadinessBlocked`/
+     `baseReadinessBlocked`, ya incluyen LM/precio fijo) — `model.lmBlocked`/
+     `model.baseBlocked` solo se leen para elegir el texto mas especifico,
+     nunca para decidir si se bloquea (mismo patron que renderKpis()). */
   matrixIntro.innerHTML = `
-    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${f$(model.floor)}</span></div>
-    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos de hoy</span></span><span class="mi-val">${f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.floorReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':'— (dato financiero sin verificar)'):f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.baseReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':'— (dato financiero sin verificar)'):f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
-  const nights=Math.max(1,parseFloat(state.matrixNights)||1);
+  /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
+     dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
+     Last-Minute (lmCriticalDays) y no enumeraba noches criticas — asi que un
+     LM configurable (flat/gradual/precio fijo/tramos) podia hacer que el
+     verdadero peor payout ocurriera en un dia/noche que la matriz ni evaluaba.
+     Ahora se enumera dia critico x noche critica x canal (OTA + LM), se cotiza
+     CADA combinacion con quoteScenario(), y la fila se arma sobre el escenario
+     que realmente da el PEOR NETO, no el que solo tiene mas descuento nativo.
+     `matrixNights` (el input de "noches a evaluar") ya no filtra el peor caso —
+     se mantiene solo como referencia manual de Dani, el veredicto siempre usa
+     el peor caso real encontrado.
+     El veredicto (vLvl/vTag/vMsg) ya NO se arma inline aqui — vive en
+     buildMatrixVerdict() (src/domain/matrix.js), pura y testeada sin DOM, para
+     que Min Price/Base/Offset/Matriz nunca puedan desalinearse en como tratan
+     un LM no verificable (bloqueante CRITICO ronda 2: antes esta funcion
+     agregaba "⚠ LM SIN VERIFICAR" como texto suelto sin cambiar vLvl='ok' ni
+     el tag "RENTABLE EN TODOS" — una advertencia que nadie lee encima de un
+     veredicto que sigue gritando "estas bien"). */
+  const qConfig = quoteConfig();
   matrixBody.innerHTML = WINDOWS.map(w=>{
     const ceil=pct(state.ceilings[w.id]);
-    const mid=Math.min(w.lo+1,w.hi);
-    const per=state.channels.map(c=>({c,r:combineChannel(c.id,mid,nights)}));
-    const maxN=Math.max(0,...per.map(p=>p.r.totalPct));
-    const maxCh=(per.find(p=>p.r.totalPct===maxN)||{}).c;
-    const breach=maxN>ceil;
-    const lm=breach?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-    const netPer=per.map(p=>({
-      c:p.c,
-      netV:model.effBase*(1+pct2(p.c.offsetPct)/100)*(1-lm/100)*(1-p.r.totalPct/100)*payoutFactor(p.c)
-    }));
-    const worst = netPer.reduce((a,b)=>b.netV<a.netV?b:a, netPer[0]);
-    /* Veredicto en una frase: primero el techo (bloquea el LM de PriceLabs), luego el
-       piso (vender bajo costo), luego el objetivo de margen — en ese orden de gravedad,
-       para que Dani sepa qué revisar primero sin tener que leer las 4 columnas viejas. */
-    let vLvl, vTag, vMsg;
-    if(breach){
-      vLvl='bad'; vTag='TECHO EXCEDIDO';
-      vMsg=`${maxCh?maxCh.name:'un canal'} ya suma ${fP(maxN)} de descuento propio — más que tu techo de ${fP(ceil)}. PriceLabs se queda en 0% de LM aquí y aun así se pasa: baja el descuento nativo de ${maxCh?maxCh.name:'ese canal'} o sube el techo.`;
-    } else if(worst.netV<model.cost){
-      vLvl='bad'; vTag='BAJO COSTO';
-      vMsg=`Con ${fP(lm)} de LM, ${worst.c.name} te dejaría ${f$(worst.netV)} — menos que tu costo de ${f$(model.cost)}. Súbele el Offset a ${worst.c.name} en su pestaña, o baja su descuento nativo.`;
-    } else if(worst.netV<model.net){
-      vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
-      vMsg=`Todos los canales quedan sobre tu costo, pero ${worst.c.name} solo te deja ${f$(worst.netV)} — por debajo de tu margen objetivo (${f$(model.net)}). Revisa su Offset si quieres acercarlo.`;
-    } else {
-      vLvl='ok'; vTag='RENTABLE EN TODOS';
-      vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worst.c.name}, con ${f$(worst.netV)}.`;
-    }
-    const natCol=per.map(p=>`<span class="${p.r.totalPct>ceil+0.5?'bad':''}">${p.c.name}: ${fP(p.r.totalPct)}${p.r.applied.length?' <span style="color:var(--faint)">('+p.r.applied.map(a=>a.name.split(' ')[0]).join('+')+')</span>':''}</span>`).join('');
+    const {worstTecho, worstPayoutRow, perChannel} = worstScenariosInWindow(qConfig, w, model.effBase);
+    const lm=worstPayoutRow.q.lm;
+    const breach=worstTecho.q.breach;
+    /* Cada canal muestra SU PROPIO peor (dia,noche) — igual que la alerta PISO —
+       porque el peor caso de un canal no tiene por que coincidir con el de otro. */
+    const per = perChannel;
+    const {vLvl, vTag, vMsg} = buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, perChannel: per, currency: state.currency});
+    const natCol=per.map(p=>`<span class="${p.q.nativoPct>ceil+0.5?'bad':''}">${escapeHtml(p.c.name)}: ${fP(p.q.nativoPct)}${p.q.applied.length?' <span style="color:var(--faint)">('+p.q.applied.map(a=>escapeHtml(a.name.split(' ')[0])).join('+')+')</span>':''}</span>`).join('');
     const totCol=per.map(p=>{
-      const t=100*(1-(1-lm/100)*(1-p.r.totalPct/100));
-      return `<span class="${t>ceil+0.5?'bad':'ok'}">${p.c.name}: ${fP(t)}</span>`;
+      const t=100*(1-(1-p.q.lm/100)*p.q.nativoFactor); // exacto (factor), no totalPct redondeado; LM del propio peor escenario de este canal
+      return `<span class="${t>ceil+0.5?'bad':'ok'}">${escapeHtml(p.c.name)}: ${fP(t)}</span>`;
     }).join('');
-    const netCol=netPer.map(p=>{
-      const cls=p.netV<model.cost?'bad':(p.netV<model.net?'warn':'ok');
-      return `<span class="${cls}">${p.c.name}: ${f$(p.netV)}</span>`;
+    const netCol=per.map(p=>{
+      const cls=p.q.payout<model.cost?'bad':(p.q.payout<model.net?'warn':'ok');
+      return `<span class="${cls}">${escapeHtml(p.c.name)}: ${f$(p.q.payout)} <span style="color:var(--faint)">(día ${p.day}, ${p.night}n, LM ${fP(p.q.lm)})</span></span>`;
     }).join('');
+    /* Bloqueante BAJO (revision externa, ronda 2): worstScenariosInWindow()
+       devuelve `day`/`night` (ver matrix.js) — este texto leia `.d`/`.n`, que
+       nunca existieron en ese objeto, asi que siempre mostraba "día undefined".
+       Fix: usar los campos reales que la funcion realmente devuelve. */
     return `<tr>
       <td>${w.label}</td>
-      <td><input type="number" data-ceil="${w.id}" value="${state.ceilings[w.id]}" style="width:58px"></td>
-      <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${vMsg}</span></div></td>
+      <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
+      <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
-          <div class="hint" style="margin:6px 0 2px;">LM de PriceLabs en esta ventana: <strong>${breach?'0% ⚠':fP(lm)}</strong></div>
+          <div class="hint" style="margin:6px 0 2px;">Peor payout real detectado: <strong>día ${worstPayoutRow.day}</strong>, ${worstPayoutRow.night} noche${worstPayoutRow.night===1?'':'s'} (${escapeHtml(worstPayoutRow.c.name)}) · LM en ese escenario: <strong>${fP(lm)}</strong>${breach?' · TECHO tambien excedido en algun escenario de esta ventana':''}</div>
           <div class="hint" style="margin:6px 0 2px;">Nativo combinado (sin LM):</div>
           <div class="cell-ch">${natCol}</div>
           <div class="hint" style="margin:6px 0 2px;">Total visto por el huésped (nativo + LM):</div>
@@ -743,74 +858,108 @@ function renderMatrix(model){
   }).join('');
 }
 function renderAlerts(model){
+  /* Simplificacion a USD unico (revision externa): mismo motivo que
+     renderMatrix() — "sin conflictos" tampoco es una afirmacion confiable
+     para una unidad que requiere revision manual por moneda. */
+  if(model.currencyBlocked){
+    alertsBox.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" por moneda — no se muestran alertas hasta corregirlo (ver aviso en Resumen).</span></div>`;
+    return;
+  }
   const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
-  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${a.msg}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${tabLabel(a.tab)} →</button>`:''}</span></div>`).join('');
+  alertsBox.innerHTML = buildAlerts(model).map(a=>`<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${escapeHtml(tabLabel(a.tab))} →</button>`:''}</span></div>`).join('');
 }
+/* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
+   src/domain/simulate.js (import arriba), que a su vez consume quoteScenario()
+   — aqui solo se arma el HTML del waterfall a partir de lo que esa funcion
+   devuelve. Fase 2: el LM ya usa los days/nights REALES del escenario, no un
+   punto medio sintetico de ventana ni nights=1 fijo (bug P4, corregido).
+   src/domain/simulate-legacy.js se deja intacto como registro historico del bug
+   — ya no lo usa index.html. */
 function renderSim(model){
-  const price=parseFloat(simPrice.value)||model.effBase||0;
+  /* Bloqueante P2 (revision externa, ronda 3): antes, si el campo de precio
+     quedaba vacio, este fallback usaba `model.effBase` — que es EXACTAMENTE
+     el Base bloqueado (`model.base`) cuando no hay marketBase configurado.
+     Eso revivia silenciosamente la recomendacion bloqueada apenas se entraba
+     al Simulador (por el boton "Ver el paso a paso", por click directo en la
+     pestaña, o al escribir en cualquier otro campo — renderSim() se llama en
+     CADA renderAll()). Ahora: si el campo esta vacio Y el modelo esta
+     bloqueado (LM sin verificar o precio LM fijo activo), no se simula nada
+     con un numero inventado — se explica el motivo y se pide un precio manual. */
+  const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
+  /* Refactor de cierre: `model.baseReadinessBlocked` (evaluateGlobalRecommendationReadiness())
+     YA es true si LM esta sin verificar, si hay un precio fijo activo, O si un
+     canal tiene un dato de negocio pendiente — no hace falta volver a unir los
+     tres con `||`, eso seria la misma logica duplicada que este refactor
+     elimina. Solo se lee `model.lmBlocked`/`model.baseBlocked` para elegir el
+     texto mas especifico del motivo. */
+  if((typedPrice==null || !Number.isFinite(typedPrice)) && model.baseReadinessBlocked){
+    const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
+      : model.lmBlocked ? 'Last-Minute sin verificar'
+      : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+      : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
+      : 'un dato financiero del canal que fija Base sigue sin confirmar';
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen">Resumen → "Verificación de datos financieros" →</button>.</div>`;
+    simIgnored.innerHTML = '';
+    return;
+  }
+  const price = (typedPrice!=null && Number.isFinite(typedPrice)) ? typedPrice : (model.effBase||0);
   const chId=simChannel.value||'airbnb';
-  const ch=state.channels.find(c=>c.id===chId);
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
-  const w=WINDOWS.find(w=>days>=w.lo&&days<=w.hi)||WINDOWS[5];
-  const ceil=pct(state.ceilings[w.id]);
-  const maxN=Math.max(0,...state.channels.map(c=>combineChannel(c.id,Math.min(w.lo+1,w.hi),1).totalPct));
-  const lm=maxN>ceil?0:Math.max(0,100*(1-(1-ceil/100)/(1-maxN/100)));
-  const r=combineChannel(chId,days,nights);
-  const cost=(parseFloat(state.fixedCost)||0)+(parseFloat(state.varCost)||0);
-  let running=price;
+  const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
+  const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, marginPct, markupPct, totalDisc} = s;
+  /* Fase 5 (revision externa — "datos financieros verificados"): la
+     simulacion manual NUNCA se bloquea (a diferencia del precargado
+     automatico de Base, ver guard arriba y goSimBtn) — pero mientras dependa
+     de un supuesto sin confirmar (LM sin verificar, precio LM fijo activo, o
+     un dato de negocio del canal elegido sin verificar), el resultado debe
+     etiquetarse EXPLICITAMENTE como no confiable, para que no se use como si
+     fuera una recomendacion automatica. */
+  const chReadyForSim = !model.readiness || !model.readiness.byChannel[chId] || model.readiness.byChannel[chId].ready;
+  const simUnverified = [];
+  /* BLOQUEANTE 1 (auditoria externa, ronda 4): la simulacion manual NUNCA se
+     bloquea (mismo principio de siempre), pero si la unidad "requiere
+     revision manual" por moneda, el resultado tampoco es una recomendacion
+     — se etiqueta igual que los demas supuestos sin confirmar. */
+  if(model.currencyBlocked) simUnverified.push('la unidad requiere revisión manual por moneda (ver aviso en Resumen)');
+  if(model.lmBlocked) simUnverified.push('Last-Minute sin verificar');
+  if(model.baseBlocked) simUnverified.push('precio LM fijo activo en el día de referencia');
+  if(!chReadyForSim) model.readiness.byChannel[chId].missing.forEach(m=>simUnverified.push(m.label));
+  const simCaveat = simUnverified.length
+    ? `<div class="alert warn" style="margin-bottom:10px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Simulación con supuestos no verificados; no uses este resultado como recomendación automática — depende de: ${escapeHtml(simUnverified.join('; '))}.</span></div>`
+    : '';
   let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
-  const afterLm=running*(1-lm/100);
-  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(afterLm)}</span></div>`;
-  running=afterLm;
-  const off=pct2(ch.offsetPct);
+  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
   if(off!==0){
-    const afterOff=running*(1+off/100);
-    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${ch.name} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Hospy que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
-    running=afterOff;
+    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${escapeHtml(ch.name)} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Hospy que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
   }
-  html+=`<div class="sim-group">2 · Lo que descuenta ${ch.name}</div>`;
-  r.applied.forEach(a=>{
-    const nx=running*(1-a.pct/100);
-    html+=`<div class="wf-line"><span>− ${a.name} ${fP(a.pct)}</span><span class="why">${a.why}</span><span class="amt">${f$(nx)}</span></div>`;
-    running=nx;
+  html+=`<div class="sim-group">2 · Lo que descuenta ${escapeHtml(ch.name)}</div>`;
+  s.appliedSteps.forEach(a=>{
+    html+=`<div class="wf-line"><span>− ${escapeHtml(a.name)} ${fP(a.pct)}</span><span class="why">${escapeHtml(a.why)}</span><span class="amt">${f$(a.after)}</span></div>`;
   });
-  if(!r.applied.length) html+=`<div class="wf-line"><span class="why" style="padding-left:0;">ningún descuento nativo activo aplica en esta ventana/duración</span></div>`;
-  const guest=running;
+  if(!s.applied.length) html+=`<div class="wf-line"><span class="why" style="padding-left:0;">ningún descuento nativo activo aplica en esta ventana/duración</span></div>`;
   html+=`<div class="wf-line total"><span>Precio que ve el huésped</span><span class="amt">${f$(guest)}</span></div>`;
   /* Tarifa de aseo: fija por reserva en Airbnb (no la tocan los descuentos de noche),
      se prorratea por noche aquí para poder compararla contra tu costo/noche. La
      comisión y la comisión bancaria SÍ se cobran sobre ella (modelo Host-Only Fee). */
-  let guestForFees=guest, feeTotal=0;
-  if(chId==='airbnb'){
-    feeTotal = nights<=2 ? (parseFloat(ch.cleanFeeShort)||0) : (parseFloat(ch.cleanFeeLong)||0);
-    if(feeTotal>0){
-      const feePerNight=feeTotal/nights;
-      guestForFees=guest+feePerNight;
-      html+=`<div class="wf-line"><span>+ Tarifa de aseo (${f$(feeTotal)} fijo ÷ ${nights} noche${nights===1?'':'s'})</span><span class="why">no se descuenta; se prorratea por noche para comparar contra tu costo</span><span class="amt">${f$(guestForFees)}</span></div>`;
-    }
+  if(chId==='airbnb' && feeTotal>0){
+    html+=`<div class="wf-line"><span>+ Tarifa de aseo (${f$(feeTotal)} fijo ÷ ${nights} noche${nights===1?'':'s'})</span><span class="why">no se descuenta; se prorratea por noche para comparar contra tu costo</span><span class="amt">${f$(guestForFees)}</span></div>`;
   }
   const feeNote = feeTotal>0 ? ' + aseo prorrateado' : '';
   html+=`<div class="sim-group">3 · Lo que te queda a ti</div>`;
-  const commAmt = guestForFees*pct(ch.comm)/100;
-  const afterComm = guestForFees - commAmt;
-  html+=`<div class="wf-line"><span>− Comisión ${ch.name} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
-  let afterBank=afterComm;
+  html+=`<div class="wf-line"><span>− Comisión ${escapeHtml(ch.name)} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
   if(pct(ch.bankFeePct)>0){
-    const bankAmt = guestForFees*pct(ch.bankFeePct)/100; /* también sobre el precio del huésped, no sobre afterComm */
-    afterBank = afterComm - bankAmt;
     html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
-  const margin=afterBank-cost;
   html+=`<div class="wf-line ${afterBank>=cost?'net':'netbad'}"><span>Neto para ti (vs costo ${f$(cost)})</span><span class="amt">${f$(afterBank)} · margen ${f$(margin)}</span></div>`;
-  const totalDisc=100*(1-guest/price);
+  html+=`<div class="wf-line"><span class="hint"><span class="term" title="Margen: que fraccion de lo que COBRAS (el neto) es ganancia. Formula: margen/neto.">Margen sobre venta</span>: ${fP(marginPct)} · <span class="term" title="Markup: cuanto subes el precio POR ENCIMA de tu costo. Formula: margen/costo. No es lo mismo que el margen — un markup de 100% es solo 50% de margen.">Markup sobre costo</span>: ${fP(markupPct)}</span></div>`;
   html+=`<div class="wf-line"><span class="hint">Descuento total visto por el huésped: ${fP(totalDisc)} · techo de la ventana: ${fP(ceil)} ${totalDisc>ceil+0.5?'⚠ EXCEDIDO':''}</span></div>`;
   const summary = afterBank>=cost
     ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
     : `⚠ De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
-  simResult.innerHTML=`<div class="sim-summary">${summary}</div>${html}`;
-  simIgnored.innerHTML=r.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+r.ignored.map(i=>`${i.name} — ${i.reason}`).join(' · ')):'';
+  simResult.innerHTML=`${simCaveat}<div class="sim-summary">${summary}</div>${html}`;
+  simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${escapeHtml(i.name)} — ${escapeHtml(i.reason)}`).join(' · ')):'';
 }
 const TABS = [
   {id:'resumen', label:'Resumen'},
@@ -835,7 +984,10 @@ function buildTabbar(){
 }
 function renderAll(){
   const model=compute();
+  renderValidation(model); renderDataProvenance();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderLmConfig(); renderVerification(); renderMonthlyIncomeFields(); renderMonthlyDistFields(); renderMonthlyResult(model);
+  renderCurrencyReviewBanner(model); renderReconcileResult(model); renderReconciliationsList(model); renderAuditChecklist(model);
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -844,124 +996,945 @@ function renderAll(){
    directo, sin dividir — meterlo en el mismo balde que limpieza lo distorsiona en ambos
    extremos (lo infla en estadías cortas, lo diluye de más en las largas). */
 function costCalcTotals(){
-  const cb=state.costBreakdown;
-  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(state.avgNights)||1);
-  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
-  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
-  const turnoPerNight=turnoSum/avgN;
-  const consumptionPerNight=parseFloat(cb.consumables)||0;
-  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
+  return costCalcTotalsBase(state.costBreakdown, state.avgNights);
 }
 function renderCostCalc(){
   const t=costCalcTotals();
   if(cbFixedResult) cbFixedResult.textContent='= '+f$(t.fixedPerNight)+'/noche';
   if(cbTurnoResult) cbTurnoResult.textContent='= '+f$(t.turnoPerNight)+'/noche';
   if(cbVarResult) cbVarResult.textContent='= '+f$(t.varPerNight)+'/noche (turno + consumos)';
+  /* La casilla de confirmacion no pasa por hydrate() en cada render (solo al
+     cargar/importar una unidad) — sin esto, desmarcar `state.costBreakdownConfirmed`
+     programaticamente (ej. al editar cualquier campo del desglose) dejaba el
+     DOM visualmente marcado aunque el estado real ya fuera `false`. */
+  const confirmChk = document.getElementById('costBreakdownConfirmedChk');
+  if(confirmChk) confirmChk.checked = !!state.costBreakdownConfirmed;
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): estado explicito y visible del
+     contrato de costos (ver src/domain/cost-mode.js) — no solo el banner
+     global (#dataProvenanceBanner), tambien aqui mismo, junto a la casilla. */
+  const hint = document.getElementById('costBreakdownStatusHint');
+  if(hint){
+    const cg = costGateNow();
+    hint.textContent = cg.mode==='detailed_confirmed'
+      ? 'Confirmado — este desglose alimenta Piso/Base/Offset/Matriz/Alertas/planificación mensual.'
+      : cg.mode==='detailed_incomplete'
+        ? 'Sin confirmar todavía — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba), no este desglose.'
+        : '';
+  }
 }
+/* Fase 4 — UI de configuracion de PriceLabs Last-Minute (5 modos). Solo arma el
+   HTML segun el modo activo; el calculo real vive en src/domain/pricelabs-lm.js,
+   consumido por quoteScenario() — esta funcion nunca decide ningun numero, solo
+   lee/escribe state.lmConfig. */
+function renderLmConfig(){
+  const modeSel = document.querySelector('[data-lm="mode"]');
+  const verChk = document.querySelector('[data-lm="verified"]');
+  if(!modeSel) return;
+  modeSel.value = state.lmConfig.mode;
+  verChk.checked = !!state.lmConfig.verified;
+  const box = document.getElementById('lmModeFields');
+  const cfg = state.lmConfig;
+  if(cfg.mode==='flat'){
+    const f=cfg.flat;
+    box.innerHTML = `
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="flat.on" ${f.on?'checked':''}><span>Activo</span></label></div>
+      <div class="field"><span>% de descuento</span><input type="number" data-lmf="flat.pct" value="${escapeHtml(f.pct)}" step="1"></div>
+      <div class="field"><span>Desde día</span><input type="number" data-lmf="flat.fromDay" value="${escapeHtml(f.fromDay)}" step="1" min="0"></div>
+      <div class="field"><span>Hasta día</span><input type="number" data-lmf="flat.toDay" value="${escapeHtml(f.toDay)}" step="1" min="0"></div>`;
+  } else if(cfg.mode==='gradual'){
+    const g=cfg.gradual;
+    const curve = gradualCurve(g);
+    box.innerHTML = `
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="gradual.on" ${g.on?'checked':''}><span>Activo</span></label></div>
+      <div class="field"><span>% máximo (día 0)</span><input type="number" data-lmf="gradual.maxPct" value="${escapeHtml(g.maxPct)}" step="1"></div>
+      <div class="field"><span>Días hasta llegar a 0%</span><input type="number" data-lmf="gradual.days" value="${escapeHtml(g.days)}" step="1" min="1"></div>
+      ${curve.length ? `<p class="hint" style="margin-top:8px;">Curva día a día: ${curve.map(p=>`día ${p.day}: ${fP(p.pct)}`).join(' · ')}</p>` : ''}`;
+  } else if(cfg.mode==='fixed_price'){
+    const fp=cfg.fixedPrice;
+    box.innerHTML = `
+      <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lmf="fixedPrice.on" ${fp.on?'checked':''}><span>Activo</span></label></div>
+      <div class="field"><span>Precio fijo</span><input type="number" data-lmf="fixedPrice.price" value="${escapeHtml(fp.price)}" step="1"></div>
+      <div class="field"><span>Desde día</span><input type="number" data-lmf="fixedPrice.fromDay" value="${escapeHtml(fp.fromDay)}" step="1" min="0"></div>
+      <div class="field"><span>Hasta día</span><input type="number" data-lmf="fixedPrice.toDay" value="${escapeHtml(fp.toDay)}" step="1" min="0"></div>`;
+  } else if(cfg.mode==='tiers'){
+    box.innerHTML = `
+      <p class="hint" style="margin-bottom:6px;">Se resuelven POR ORDEN: si un día cae en varios tramos, gana el PRIMERO de la lista (no se suman). Usa ↑/↓ para reordenar.</p>
+      ${cfg.tiers.map((t,i)=>`
+        <div class="d-item ${t.on?'on':''}" style="flex-wrap:wrap;">
+          <input type="checkbox" data-tier="on" data-tier-idx="${i}" ${t.on?'checked':''} aria-label="Activar tramo ${i+1}">
+          <input type="text" data-tier="label" data-tier-idx="${i}" value="${escapeHtml(t.label||'')}" placeholder="nombre" style="width:110px;" aria-label="Nombre del tramo ${i+1}">
+          <span class="d-win">día <input type="number" data-tier="fromDay" data-tier-idx="${i}" value="${escapeHtml(t.fromDay)}" style="width:50px;" aria-label="Tramo ${i+1}: desde día">–<input type="number" data-tier="toDay" data-tier-idx="${i}" value="${escapeHtml(t.toDay)}" style="width:50px;" aria-label="Tramo ${i+1}: hasta día"></span>
+          <input type="number" data-tier="pct" data-tier-idx="${i}" value="${escapeHtml(t.pct)}" style="width:60px;" aria-label="Tramo ${i+1}: porcentaje de descuento"><span class="hint">%</span>
+          <button type="button" class="ghost" data-tier-up="${i}" ${i===0?'disabled':''} aria-label="Mover tramo ${i+1} hacia arriba">↑</button>
+          <button type="button" class="ghost" data-tier-down="${i}" ${i===cfg.tiers.length-1?'disabled':''} aria-label="Mover tramo ${i+1} hacia abajo">↓</button>
+          <button type="button" class="ghost" data-tier-del="${i}" aria-label="Eliminar tramo ${i+1}">✕</button>
+        </div>`).join('') || '<p class="hint">Sin tramos todavía.</p>'}
+      <button type="button" class="ghost" id="addTierBtn" style="margin-top:8px;">+ Agregar tramo</button>`;
+  } else {
+    box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Comparación, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
+  }
+}
+function verifEntryHTML(key, chId, entry){
+  const chAttr = chId ? ` data-verif-ch="${escapeHtml(chId)}"` : '';
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+    <select data-verif-status="${key}"${chAttr}>
+      <option value="no_verificado" ${entry.status==='no_verificado'?'selected':''}>No verificado</option>
+      <option value="verificado" ${entry.status==='verificado'?'selected':''}>Verificado</option>
+      <option value="no_aplica" ${entry.status==='no_aplica'?'selected':''}>No aplica</option>
+    </select>
+    <input type="text" data-verif-source="${key}"${chAttr} value="${escapeHtml(entry.source||'')}" placeholder="fuente (extranet, factura, soporte...)" style="min-width:170px;">
+    <input type="date" data-verif-date="${key}"${chAttr} value="${escapeHtml(entry.date||'')}">
+    <input type="text" data-verif-note="${key}"${chAttr} value="${escapeHtml(entry.note||'')}" placeholder="nota" style="flex:1;min-width:160px;">
+  </div>`;
+}
+function verifEntryRef(key, chId){
+  const meta = VERIFICATION_KEYS[key];
+  if(!meta) return null;
+  if(meta.scope==='channel'){
+    if(!state.verification[key]) state.verification[key]={};
+    if(!state.verification[key][chId]) state.verification[key][chId]={status:'no_verificado', source:'', date:'', note:''};
+    return state.verification[key][chId];
+  }
+  if(!state.verification[key]) state.verification[key]={status:'no_verificado', source:'', date:'', note:''};
+  return state.verification[key];
+}
+function renderVerification(){
+  const box = document.getElementById('verificationList');
+  if(!box) return;
+  box.innerHTML = Object.entries(VERIFICATION_KEYS).map(([key,meta])=>{
+    if(meta.scope==='channel'){
+      const rows = state.channels.map(c=>{
+        const entry = (state.verification[key]||{})[c.id] || {status:'no_verificado', source:'', date:'', note:''};
+        return `<div style="margin:8px 0 8px 12px;"><strong>${escapeHtml(c.name)}</strong>${verifEntryHTML(key, c.id, entry)}</div>`;
+      }).join('');
+      return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
+        <span>${escapeHtml(meta.label)}</span>
+        ${rows}
+      </div>`;
+    }
+    const entry = state.verification[key] || {status:'no_verificado', source:'', date:'', note:''};
+    return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
+      <span>${escapeHtml(meta.label)}</span>
+      ${verifEntryHTML(key, null, entry)}
+    </div>`;
+  }).join('');
+}
+/* PLANIFICACIÓN MENSUAL — punto de equilibrio. Estas tres funciones
+   SOLO arman HTML/leen-escriben `state.monthlyIncomeScenario`/
+   `state.monthlyDistribution` — el cálculo real vive en
+   src/domain/monthly-economics.js (computeMonthlyEconomics), consumido via
+   computeMonthly() arriba. Cero fórmula financiera aquí. */
+function renderMonthlyIncomeFields(){
+  const box = document.getElementById('monthlyIncomeFields');
+  const sel = document.querySelector('[data-mon="incomeType"]');
+  if(!box || !sel) return;
+  const sc = state.monthlyIncomeScenario;
+  sel.value = sc.type;
+  if(sc.type==='manual'){
+    box.innerHTML = `<div class="field"><label for="mon-manualNetPerNight">Neto por noche (después de comisiones — dato directo, tú lo defines)</label><input type="number" id="mon-manualNetPerNight" data-mon="manualNetPerNight" value="${escapeHtml(sc.manualNetPerNight)}"></div>`;
+  } else if(sc.type==='channel'){
+    const ch = sc.channel;
+    box.innerHTML = `<div class="row">
+      <div class="field"><label for="mon-channelChId">Canal</label><select id="mon-channelChId" data-mon="channelChId">${state.channels.map(c=>`<option value="${c.id}" ${c.id===ch.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="mon-channelDays">Días de anticipación</label><input type="number" id="mon-channelDays" data-mon="channelDays" value="${escapeHtml(ch.days)}"></div>
+      <div class="field"><label for="mon-channelNights">Noches</label><input type="number" id="mon-channelNights" data-mon="channelNights" value="${escapeHtml(ch.nights)}" min="1"></div>
+      <div class="field"><label for="mon-channelPrice">Precio PriceLabs (antes de LM/Offset/descuentos)</label><input type="number" id="mon-channelPrice" data-mon="channelPrice" value="${escapeHtml(ch.price)}"></div>
+    </div>`;
+  } else if(sc.type==='mix'){
+    box.innerHTML = `<p class="hint">Marca los canales que quieres mezclar y su % de peso — deben sumar 100%.</p>` +
+      sc.mix.map(m=>{
+        const c = state.channels.find(x=>x.id===m.chId);
+        return `<div class="row" style="align-items:center;">
+          <label style="display:flex;gap:6px;align-items:center;min-width:110px;"><input type="checkbox" data-mon-mix="on" data-mon-ch="${m.chId}" ${m.on?'checked':''}><span>${escapeHtml(c?c.name:m.chId)}</span></label>
+          <div class="field"><label for="mon-weightPct-${m.chId}">% peso</label><input type="number" id="mon-weightPct-${m.chId}" data-mon-mix="weightPct" data-mon-ch="${m.chId}" value="${escapeHtml(m.weightPct)}"></div>
+          <div class="field"><label for="mon-days-${m.chId}">Días</label><input type="number" id="mon-days-${m.chId}" data-mon-mix="days" data-mon-ch="${m.chId}" value="${escapeHtml(m.days)}"></div>
+          <div class="field"><label for="mon-nights-${m.chId}">Noches</label><input type="number" id="mon-nights-${m.chId}" data-mon-mix="nights" data-mon-ch="${m.chId}" value="${escapeHtml(m.nights)}" min="1"></div>
+          <div class="field"><label for="mon-price-${m.chId}">Precio</label><input type="number" id="mon-price-${m.chId}" data-mon-mix="price" data-mon-ch="${m.chId}" value="${escapeHtml(m.price)}"></div>
+        </div>`;
+      }).join('');
+  }
+}
+function renderMonthlyDistFields(){
+  const box = document.getElementById('monthlyDistFields');
+  const chk = document.querySelector('[data-mon="distConfigured"]');
+  if(!box || !chk) return;
+  const d = state.monthlyDistribution;
+  chk.checked = !!d.configured;
+  if(!d.configured){ box.innerHTML=''; return; }
+  box.innerHTML = `<div class="row">
+    <div class="field"><label for="mon-ownerTargetPct">Propietario % <span class="hint">de la utilidad distribuible</span></label><input type="number" id="mon-ownerTargetPct" data-mon="ownerTargetPct" value="${escapeHtml(d.ownerTargetPct)}"></div>
+    <div class="field"><label for="mon-managerTargetPct">Administrador/PM % <span class="hint">de la utilidad distribuible</span></label><input type="number" id="mon-managerTargetPct" data-mon="managerTargetPct" value="${escapeHtml(d.managerTargetPct)}"></div>
+    <div class="field"><label for="mon-reservePct">Reserva % <span class="hint">del ingreso neto mensual</span></label><input type="number" id="mon-reservePct" data-mon="reservePct" value="${escapeHtml(d.reservePct)}"></div>
+    <div class="field"><label for="mon-taxReservePct">Impuestos % <span class="hint">del ingreso neto mensual</span></label><input type="number" id="mon-taxReservePct" data-mon="taxReservePct" value="${escapeHtml(d.taxReservePct)}"></div>
+  </div>`;
+}
+function renderMonthlyResult(model){
+  const box = document.getElementById('monthlyResult');
+  if(!box) return;
+  const m = computeMonthly(model);
+  if(!m.ok){
+    box.innerHTML = `<div class="alert warn" style="margin-top:12px;"><span class="tag">NO CALCULABLE</span><span>${escapeHtml(m.reason)}</span></div>`;
+    return;
+  }
+  const distBlock = m.distribution.configured
+    ? `<div class="kpi"><span class="l">Propietario</span><span class="v">${f$(m.distribution.ownerAmt)}</span></div>
+       <div class="kpi"><span class="l">Administrador/PM</span><span class="v">${f$(m.distribution.managerAmt)}</span></div>
+       ${Math.abs(m.distribution.undistributedAmt)>0.005 ? `<div class="kpi"><span class="l">Utilidad no distribuida</span><span class="v">${f$(m.distribution.undistributedAmt)}</span></div>` : ''}`
+    : '';
+  const sensRows = m.sensitivity.map(s=>`<tr>
+      <td>${s.nights}</td><td class="out">${s.estimatedReservations.toFixed(1)}</td><td class="out">${f$(s.netIncomeMonthly)}</td>
+      <td class="out">${f$(s.variableCostsMonthly)}</td><td class="out" style="${s.profitMonthly<0?'color:var(--accent);font-weight:600;':''}">${f$(s.profitMonthly)}</td>
+    </tr>`).join('');
+  box.innerHTML = `
+    ${m.incomeSource.unverified ? `<div class="alert warn" style="margin-top:12px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Este resultado mensual depende de datos sin confirmar: ${escapeHtml(m.incomeSource.unverifiedReasons.join('; '))}. No lo trates como una recomendación automática hasta confirmarlos.</span></div>` : ''}
+    <div class="kpis" style="margin-top:12px;">
+      <div class="kpi"><span class="l">Reservas estimadas/mes</span><span class="v">${m.estimatedReservations.toFixed(1)}</span></div>
+      <div class="kpi"><span class="l">Ingreso neto mensual</span><span class="v">${f$(m.netIncomeMonthly)}</span></div>
+      <div class="kpi"><span class="l">Costos fijos mensuales</span><span class="v">${f$(m.fixedCostsMonthly)}</span></div>
+      <div class="kpi"><span class="l">Costos variables mensuales</span><span class="v">${f$(m.variableCostsMonthly)}</span></div>
+      ${m.reserveAmt>0 ? `<div class="kpi"><span class="l">Reserva</span><span class="v">${f$(m.reserveAmt)}</span></div>` : ''}
+      ${m.taxAmt>0 ? `<div class="kpi"><span class="l">Impuestos</span><span class="v">${f$(m.taxAmt)}</span></div>` : ''}
+      <div class="kpi accent"><span class="l">Utilidad distribuible</span><span class="v">${f$(m.profitMonthly)}</span><span class="s">${m.marginMonthlyPct!=null?'margen '+fP(m.marginMonthlyPct):'ingreso neto = 0'}</span></div>
+      <div class="kpi accent"><span class="l">Noches de equilibrio</span><span class="v">${m.breakeven.reachable ? m.breakeven.nightsCeil : '—'}</span><span class="s">${m.breakeven.reachable ? 'exacto '+m.breakeven.nightsExact.toFixed(1) : 'no alcanzable'}</span></div>
+      ${distBlock}
+    </div>
+    ${!m.breakeven.reachable ? `<div class="alert bad" style="margin-top:8px;"><span class="tag">EQUILIBRIO NO ALCANZABLE</span><span>${escapeHtml(m.breakeven.reason)}</span></div>` : ''}
+    <h3 style="margin-top:16px;">Sensibilidad por ocupación</h3>
+    <div class="table-wrap"><table><thead><tr><th>Noches ocupadas</th><th>Reservas est.</th><th>Ingreso neto</th><th>Costos variables</th><th>Utilidad</th></tr></thead>
+    <tbody>${sensRows}</tbody></table></div>
+    ${m.assumptions.length ? `<p class="hint" style="margin-top:10px;">${m.assumptions.map(a=>escapeHtml(a)).join('<br>')}</p>` : ''}
+    <p class="hint" style="margin-top:6px;">${escapeHtml(m.incomeSource.description)}</p>
+  `;
+}
+/* ================== MONEDA — simplificación a USD único (revision externa) ================
+   Esta version SOLO opera en USD (ver src/domain/currency.js: el modulo de
+   FX se conserva internamente para una fase multimoneda futura, pero NADA
+   en index.html lo llama). `state.currency` casi siempre es 'USD' — la unica
+   forma de que sea otra cosa es una unidad VIEJA cargada desde localStorage/
+   import que se guardo en otra moneda (COP, de la fase multimoneda que se
+   revirtio) — normalizeUnit() la PRESERVA tal cual (nunca la convierte ni la
+   reinterpreta como USD), y esta funcion la muestra como "requiere revision
+   manual", excluida de toda recomendacion global (ver engine.js: `currencyBlocked`). */
+/* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): este banner ya no
+   mira solo `state.currency` — usa evaluateUsdOnlyReadiness() (src/domain/
+   usd-only.js, la MISMA fuente que engine.js/reconciliation.js/
+   monthly-economics.js) para detectar TAMBIEN un canal historico con
+   settlementCurrency distinta de USD, no solo la moneda de la unidad.
+
+   BLOQUEANTE 3 (auditoria externa, ronda 5): ahora TAMBIEN pasa
+   `usdManualReviewPending` — una copia USD recien creada desde una unidad en
+   otra moneda (ver el boton "Crear copia en USD" mas abajo) arranca
+   bloqueada por esta bandera aunque su `currency` YA sea 'USD', porque
+   ningun valor fue convertido. Cuando esta bandera es la UNICA razon del
+   bloqueo, el banner ofrece el flujo de "Finalizar revision manual"
+   (confirmacion fuerte + nota de auditoria persistida) en vez del boton de
+   "Crear copia" (que no aplica: la copia ya existe, lo que falta es
+   revisarla). `#usdReviewTrail` (fuera de esta caja, siempre visible aunque
+   la unidad ya este desbloqueada) muestra la bitacora completa — la nota de
+   que fue una copia sin convertir NUNCA desaparece, ni siquiera despues de
+   confirmar la revision (requisito explicito de la auditoria: "no borres la
+   nota historica"). */
+function renderCurrencyReviewBanner(model){
+  const display = document.getElementById('currencyDisplay');
+  const notice = document.getElementById('usdOnlyNotice');
+  const box = document.getElementById('currencyReviewBanner');
+  const trail = document.getElementById('usdReviewTrail');
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: state.currency, channels: state.channels, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog});
+  const needsReview = usdGate.blocked;
+  const unitCurrencyWrong = state.currency !== 'USD';
+  const pendingReview = state.usdManualReviewPending === true;
+  if(display) display.textContent = unitCurrencyWrong ? `${state.currency} (requiere revisión manual)` : (pendingReview ? 'USD (copia pendiente de revisión manual)' : 'USD');
+  if(notice) notice.style.display = needsReview ? 'none' : '';
+  if(trail){
+    const log = Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : [];
+    if(log.length){
+      trail.style.display = '';
+      trail.innerHTML = 'Historial de revisión manual (esta unidad es o fue una copia sin conversión automática — esta nota nunca se borra):<br>'
+        + log.map(e=>{
+            const label = e.event==='copy_created' ? 'Copia creada' : 'Revisión confirmada';
+            return `• ${escapeHtml(label)} — ${escapeHtml(e.at)}${e.text ? ': '+escapeHtml(e.text) : ''}`;
+          }).join('<br>');
+    } else {
+      trail.style.display = 'none';
+      trail.innerHTML = '';
+    }
+  }
+  if(!box) return;
+  if(!needsReview){ box.innerHTML = ''; return; }
+  /* Recuperación segura de una unidad no-USD (auditoria externa, ronda 4):
+     "editar el JSON exportado a mano" ya NO es la única vía — el botón crea
+     una COPIA nueva directamente en USD, sin convertir ningún valor (los
+     números quedan exactamente como están hoy), marcada "pendiente de
+     revisión manual" (`usdManualReviewPending:true` — BLOQUEANTE 3, ronda 5
+     — más `costBreakdownConfirmed` reseteado a false a propósito, para
+     forzar revisar también los costos) — la unidad ORIGINAL nunca se toca
+     ni se borra. Solo tiene sentido si la unidad MISMA está en otra moneda
+     (un canal en otra moneda no tiene botón de copia — no hay forma de
+     crear/editar un canal desde la UI, solo de corregir el JSON); tampoco
+     tiene sentido si la unidad YA es una copia pendiente (no hay "unidad
+     original en otra moneda" que copiar de nuevo). */
+  const copyBtn = (unitCurrencyWrong && !pendingReview)
+    ? `<button type="button" id="createUsdCopyBtn" style="margin-top:8px;">Crear copia en USD (pendiente de revisión manual) →</button>`
+    : '';
+  /* BLOQUEANTE 3 (ronda 5): el UNICO camino para apagar `usdManualReviewPending`
+     — exige la confirmacion fuerte (dialogo con el texto exacto pedido en la
+     auditoria) del listener global mas abajo (`#confirmUsdReviewBtn`), nunca
+     un toggle silencioso. */
+  const finalizeBtn = pendingReview
+    ? `<button type="button" id="confirmUsdReviewBtn" style="margin-top:8px;">Ya revisé manualmente todos los valores en USD →</button>`
+    : '';
+  box.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" — ${escapeHtml(usdGate.reason||'')} Esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, Matriz, Alertas, planificación mensual y conciliación quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, corrige el dato manualmente en el archivo exportado y vuelve a importarlo, usa el botón de abajo para crear una copia nueva directamente en USD (sin conversión automática, pendiente de revisión), o si esta unidad YA es esa copia, confírmala una vez hayas revisado tú mismo cada valor monetario.${copyBtn}${finalizeBtn}</span></div>`;
+}
+
+/* ================== RECONCILIACIÓN (datos reales, revision externa) ====== */
+/* Lee los inputs del formulario (mismo patron que el Simulador: ids globales
+   via `id=`, no `state`) y arma el objeto `real` que espera reconciliation.js.
+   Campos opcionales vacios se pasan como null — reconcileReservation() los
+   ignora (no inventa un "real" para un campo que Dani no escribió). */
+function readReconcileForm(){
+  /* Simplificacion a USD unico (revision externa): el formulario ya NO
+     ofrece un selector de moneda — esta version solo admite USD, asi que
+     `currency` ni se lee del DOM (reconciliation.js trata la ausencia como
+     'USD' explicitamente). Un registro VIEJO guardado con otra moneda sigue
+     bloqueandose al recomputarse (ver renderReconciliationsList()), pero no
+     hay forma de CREAR uno nuevo en otra moneda desde la UI. */
+  const opt = (el)=> el && el.value.trim()!=='' ? parseFloat(el.value) : null;
+  return {
+    chId: recChId.value,
+    price: parseFloat(recPrice.value)||0,
+    nights: parseFloat(recNights.value)||0,
+    days: parseFloat(recDays.value)||0,
+    otaCommissionPct: opt(recOtaCommissionPct),
+    bankFeePct: opt(recBankFeePct),
+    cleaningFeeCharged: opt(recCleaningFeeCharged),
+    nativeDiscountPct: opt(recNativeDiscountPct),
+    payoutReceived: recPayoutReceived.value.trim()!=='' ? parseFloat(recPayoutReceived.value) : NaN,
+    reference: recReference.value
+  };
+}
+function reconcileResultHTML(r){
+  if(!r.ok) return `<div class="alert warn"><span class="tag">FALTA UN DATO</span><span>${escapeHtml(r.reason)}</span></div>`;
+  if(r.currencyBlocked) return `<div class="alert bad"><span class="tag">MONEDA SIN CONVERSIÓN — BLOQUEADO</span><span>${escapeHtml(r.currencyBlockedReason)}</span></div>`;
+  const sevTag = {ok:'OK', warn:'AVISO', bad:'ALERTA'}[r.severity] || 'AVISO';
+  const sevCls = {ok:'ok', warn:'warn', bad:'bad'}[r.severity] || 'warn';
+  const rows = r.breakdown.map(b=>`<tr><td>${escapeHtml(b.component)}</td><td class="out">${typeof b.configured==='number'?b.configured.toFixed(2):b.configured}</td><td class="out">${typeof b.real==='number'?b.real.toFixed(2):b.real}</td></tr>`).join('');
+  /* Correcciones adicionales (auditoria externa, ronda 4): "CONFIABLE" ya no
+     es un solo estado — coincidir en el numero (numericMatch) NO es lo
+     mismo que un estimado con el modelo verificado (modelVerified). Ver
+     src/domain/reconciliation.js. */
+  const trustTag = r.reliable ? ' — CONCILIACIÓN CONFIABLE'
+    : r.numericMatch ? ' — COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES'
+    : '';
+  return `
+    <div class="alert ${sevCls}"><span class="tag">${sevTag}${trustTag}</span><span>Estimado ${f$(r.estimate.payout)} · Recibido ${f$(r.real.payoutReceivedInBase)}${r.real.currency!==state.currency?` (convertido desde ${escapeHtml(r.real.currency)})`:''} · Diferencia ${f$(r.diff.absolute)} (${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'})</span></div>
+    ${r.conversionCaveat ? `<p class="hint">${escapeHtml(r.conversionCaveat)}</p>` : ''}
+    ${rows ? `<div class="table-wrap"><table><thead><tr><th>Componente</th><th>Configurado</th><th>Real</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+    ${r.causes.length ? `<p class="hint" style="margin-top:6px;"><strong>Posibles causas:</strong><br>${r.causes.map(c=>escapeHtml(c)).join('<br>')}</p>` : ''}
+    ${r.unverifiedAssumptions.length ? `<p class="hint" style="margin-top:6px;"><strong>El estimado ya dependía de supuestos sin confirmar:</strong><br>${r.unverifiedAssumptions.map(a=>escapeHtml(a)).join('<br>')}</p>` : ''}
+  `;
+}
+function renderReconcileResult(model){
+  const box = document.getElementById('reconcileResult');
+  if(!box || typeof recChId==='undefined') return;
+  const real = readReconcileForm();
+  if(!real.chId || (!real.price && !real.payoutReceived)){ box.innerHTML=''; return; } // formulario vacio: no mostrar nada todavia
+  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness});
+  box.innerHTML = reconcileResultHTML(r);
+}
+function renderReconciliationsList(model){
+  const box = document.getElementById('reconciliationsList');
+  if(!box) return;
+  if(!state.reconciliations.length){ box.innerHTML = '<p class="hint">Todavía no has guardado ninguna conciliación.</p>'; return; }
+  box.innerHTML = state.reconciliations.map(rec=>{
+    const ch = state.channels.find(c=>c.id===rec.chId);
+    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness});
+    const summary = !r.ok ? 'no calculable con la config actual'
+      : r.currencyBlocked ? 'bloqueada por moneda'
+      : `diferencia ${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'} (${r.severity})`;
+    return `<div class="d-item" style="flex-wrap:wrap;">
+      <span class="d-name">${escapeHtml(ch?ch.name:rec.chId)} · ${escapeHtml(rec.savedAt?new Date(rec.savedAt).toLocaleDateString('es-CO'):'')}${rec.reference?' · '+escapeHtml(rec.reference):''}<span class="d-meta">${escapeHtml(summary)}</span></span>
+      <button type="button" class="ghost" data-rec-del="${escapeHtml(rec.id)}" aria-label="Eliminar esta conciliación">✕</button>
+    </div>`;
+  }).join('');
+}
+
+/* ================== AUDITORÍA DE DATOS REALES (revision externa) ========= */
+function renderAuditChecklist(model){
+  const box = document.getElementById('auditChecklist');
+  if(!box) return;
+  /* BLOQUEANTE 2 (auditoria externa, ronda 4): el item "costs" del checklist
+     ahora refleja el gate REAL (costGateNow().blocked) — antes solo miraba
+     si los campos seguian en el valor de ejemplo, asi que un desglose
+     detallado editado-pero-sin-confirmar pasaba como "costos reales
+     cargados" incorrectamente. */
+  const usingExampleCosts = costGateNow().blocked;
+  const lastReconciliation = state.reconciliations.length
+    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness})
+    : null;
+  const audit = buildAuditChecklist({
+    usingExampleCosts, readiness: model.readiness, lmBlocked: model.lmBlocked,
+    channels: state.channels, currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, lastReconciliation
+  });
+  const STATUS_CLS = {simulacion:'warn', datos_parciales:'warn', listo_supervisado:'ok'};
+  box.innerHTML = `
+    <div class="alert ${STATUS_CLS[audit.status]}"><span class="tag">${audit.status.toUpperCase().replace('_',' ')}</span><span>${escapeHtml(audit.statusLabel)}</span></div>
+    <div class="kpis" style="margin-top:10px;">
+      ${audit.items.map(i=>`<div class="kpi"><span class="l">${i.ok?'✓':'—'} ${escapeHtml(i.label)}</span><span class="s">${escapeHtml(i.detail)}</span></div>`).join('')}
+    </div>
+  `;
+}
+
 function hydrate(){
   document.querySelectorAll('[data-k]').forEach(el=>el.value=state[el.dataset.k]);
   document.querySelectorAll('[data-cb]').forEach(el=>el.value=state.costBreakdown[el.dataset.cb]);
-  simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  const cbConfirmChk = document.getElementById('costBreakdownConfirmedChk');
+  if(cbConfirmChk) cbConfirmChk.checked = !!state.costBreakdownConfirmed;
+  simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  if(typeof recChId!=='undefined') recChId.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 buildTabbar();
 
 /* ================== EVENTS / STORAGE ================== */
+/* Bloqueante MEDIO (revision externa, ronda 2): unico punto de lectura de un
+   input numerico editado a mano en TODA la app (descuentos, canales, techos,
+   costos, LM, tramos). Antes cada handler hacia `parseFloat(t.value)||0` —
+   un valor invalido (texto, vacio, NaN) se convertia SILENCIOSAMENTE en 0. Con
+   esto: un valor invalido NUNCA se escribe a `state` — el input vuelve a
+   mostrar el ultimo valor valido y aparece un aviso explicito (#inputErrorToast,
+   visible en cualquier pestaña) con el motivo exacto. parseValue() (pura,
+   testeada en tests/fase-input-validation.test.js) hace la validacion real;
+   esta funcion solo conecta esa validacion con el DOM. */
+function showInputError(msg){
+  const box = document.getElementById('inputErrorToast');
+  if(!box) return;
+  box.innerHTML = `<span class="tag">VALOR INVÁLIDO</span><span>${escapeHtml(msg)}</span><button type="button" id="inputErrorClose" aria-label="Cerrar aviso">✕</button>`;
+  box.style.display='flex';
+}
+function clearInputError(){
+  const box = document.getElementById('inputErrorToast');
+  if(box) box.style.display='none';
+}
+function readNumField(t, current, opts={}){
+  const r = parseValue(t.value, opts);
+  if(!r.ok){ t.value = current; showInputError(r.reason); return {ok:false, value: current}; }
+  clearInputError();
+  return r;
+}
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset.k!==undefined){state[t.dataset.k]=t.value;renderAll();}
+  if(t.dataset.k!==undefined){
+    const key=t.dataset.k;
+    const KEY_OPTS = {
+      fixedCost:{min:0,max:1e7,label:'Costo fijo por noche'},
+      varCost:{min:0,max:1e7,label:'Costo variable por noche'},
+      margin:{min:0,max:99.999,label:'Margen objetivo'},
+      marketWindow:{min:0,max:9999,integer:true,label:'Ventana de reserva del mercado'},
+      avgNights:{min:1,max:365,integer:true,label:'Estadía promedio (noches)'},
+      marketBase:{min:0,max:1e7,label:'Base de mercado'},
+      matrixNights:{min:1,max:365,integer:true,label:'Noches a evaluar'}
+    };
+    const r = readNumField(t, state[key], KEY_OPTS[key]||{label:key});
+    if(!r.ok) return;
+    state[key]=r.value;
+    renderAll();
+  }
   else if(t.dataset.did){
     const d=state.discounts.find(x=>x.id===t.dataset.did);
     if(!d)return;
     const f=t.dataset.f;
-    if(f==='on'){d.on=t.checked;}
-    else if(f==='to'){d.to=t.value===''?9999:(parseFloat(t.value)||0);}
-    else d[f]=parseFloat(t.value)||0;
+    if(f==='on'){d.on=t.checked; renderAll(); return;}
+    if(f==='pct'){
+      const r = readNumField(t, d.pct, {min:0, max:99.999, label:`${d.name} — %`});
+      if(!r.ok) return;
+      d.pct=r.value;
+    } else if(f==='from'){
+      const r = readNumField(t, d.from, {min:0, max:9999, integer:true, label:`${d.name} — desde (días)`});
+      if(!r.ok) return;
+      const chk = validateRange(r.value, d.to??9999, `${d.name} — desde/hasta`);
+      if(!chk.ok){ t.value=d.from; showInputError(chk.reason); return; }
+      d.from=r.value;
+    } else if(f==='to'){
+      const current = d.to>=9999 ? '' : d.to;
+      const r = readNumField(t, current, {min:0, max:9999, integer:true, allowEmpty:true, emptyValue:9999, label:`${d.name} — hasta (días)`});
+      if(!r.ok) return;
+      const chk = validateRange(d.from??0, r.value, `${d.name} — desde/hasta`);
+      if(!chk.ok){ t.value=current; showInputError(chk.reason); return; }
+      d.to=r.value;
+    } else if(f==='minN'){
+      const r = readNumField(t, d.minN, {min:0, max:9999, integer:true, label:`${d.name} — noches mínimas`});
+      if(!r.ok) return;
+      d.minN=r.value;
+    }
     renderAll();
   }
   else if(t.dataset.chid){
     const c=state.channels.find(x=>x.id===t.dataset.chid);
-    if(c){ c[t.dataset.chf]=parseFloat(t.value)||0; renderAll(); }
+    if(!c) return;
+    const f=t.dataset.chf;
+    const CH_FIELD_OPTS = {
+      comm:{min:0,max:99.999,label:`${c.name} — comisión`},
+      bankFeePct:{min:0,max:99.999,label:`${c.name} — comisión bancaria`},
+      offsetPct:{min:-99.999,max:1000,label:`${c.name} — Offset`},
+      cleanFeeShort:{min:0,max:1e6,label:`${c.name} — aseo (1–2 noches)`},
+      cleanFeeLong:{min:0,max:1e6,label:`${c.name} — aseo (3+ noches)`}
+    };
+    const r = readNumField(t, c[f]||0, CH_FIELD_OPTS[f]||{min:0,max:1e7,label:`${c.name} — ${f}`});
+    if(!r.ok) return;
+    c[f]=r.value;
+    renderAll();
   }
-  else if(t.dataset.ceil){state.ceilings[t.dataset.ceil]=parseFloat(t.value)||0;renderAll();}
+  else if(t.dataset.ceil){
+    const w=t.dataset.ceil;
+    const r = readNumField(t, state.ceilings[w], {min:0, max:100, label:'Techo de la ventana'});
+    if(!r.ok) return;
+    state.ceilings[w]=r.value;
+    renderAll();
+  }
   else if(t.dataset.cb){
-    state.costBreakdown[t.dataset.cb]=parseFloat(t.value)||0;
-    const tot=costCalcTotals();
-    state.fixedCost=Math.round(tot.fixedPerNight);
-    state.varCost=Math.round(tot.varPerNight);
-    const fcEl=document.querySelector('[data-k="fixedCost"]'); if(fcEl) fcEl.value=state.fixedCost;
-    const vcEl=document.querySelector('[data-k="varCost"]'); if(vcEl) vcEl.value=state.varCost;
+    /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): ya NO se
+       sincroniza automaticamente fixedCost/varCost desde el desglose parcial
+       — ese auto-sync era el otro vector del mismo bug (un campo suelto como
+       "Consumos: 5" contaminaba tambien el modelo simple, ver cost-mode.js).
+       El desglose detallado, una vez CONFIRMADO, alimenta el motor
+       directamente (costBreakdown) — no necesita mezclarse con fixedCost/
+       varCost, que quedan como el modelo simple independiente de siempre.
+       Cualquier edicion aqui invalida una confirmacion previa. */
+    const key=t.dataset.cb;
+    const opts = key==='occNights' ? {min:1, max:31, integer:true, label:'Noches ocupadas al mes'} : {min:0, max:1e7, label:'Calculadora de costos — '+key};
+    const r = readNumField(t, state.costBreakdown[key], opts);
+    if(!r.ok) return;
+    state.costBreakdown[key]=r.value;
+    state.costBreakdownConfirmed = false;
+    renderAll();
+  }
+  else if(t.dataset.cbConfirm!==undefined){
+    /* La casilla "Revisé estos costos reales..." es la UNICA forma de pasar
+       a 'detailed_confirmed' (ver src/domain/cost-mode.js) — nunca se marca
+       sola con datos, siempre requiere esta accion explicita del usuario. */
+    state.costBreakdownConfirmed = t.checked;
     renderAll();
   }
   else if(['simPrice','simDays','simNights','simChannel'].includes(t.id)){renderSim(compute());}
+  else if(t.dataset.lm){
+    if(t.dataset.lm==='mode') state.lmConfig.mode=t.value;
+    else if(t.dataset.lm==='verified') state.lmConfig.verified=t.checked;
+    renderAll();
+  }
+  else if(t.dataset.lmf){
+    const [group, field] = t.dataset.lmf.split('.');
+    const target = state.lmConfig[group];
+    if(!target) return;
+    if(t.type==='checkbox'){ target[field]=t.checked; renderAll(); return; }
+    const LM_FIELD_OPTS = {
+      'flat.pct':{min:0,max:99.999,label:'LM plano — %'},
+      'flat.fromDay':{min:0,max:9999,integer:true,label:'LM plano — desde día'},
+      'flat.toDay':{min:0,max:9999,integer:true,label:'LM plano — hasta día'},
+      'gradual.maxPct':{min:0,max:99.999,label:'LM gradual — % máximo (día 0)'},
+      'gradual.days':{min:1,max:9999,integer:true,label:'LM gradual — días hasta llegar a 0%'},
+      'fixedPrice.price':{min:0.01,max:1e7,label:'LM precio fijo'},
+      'fixedPrice.fromDay':{min:0,max:9999,integer:true,label:'LM precio fijo — desde día'},
+      'fixedPrice.toDay':{min:0,max:9999,integer:true,label:'LM precio fijo — hasta día'}
+    };
+    const key = `${group}.${field}`;
+    const opts = LM_FIELD_OPTS[key] || {min:0,max:1e9,label:key};
+    const r = readNumField(t, target[field], opts);
+    if(!r.ok) return;
+    if(field==='fromDay' && target.toDay!=null){
+      const chk = validateRange(r.value, target.toDay, opts.label.replace(/ — .*/,'')+' — desde/hasta');
+      if(!chk.ok){ t.value=target[field]; showInputError(chk.reason); return; }
+    }
+    if(field==='toDay' && target.fromDay!=null){
+      const chk = validateRange(target.fromDay, r.value, opts.label.replace(/ — .*/,'')+' — desde/hasta');
+      if(!chk.ok){ t.value=target[field]; showInputError(chk.reason); return; }
+    }
+    target[field]=r.value;
+    renderAll();
+  }
+  else if(t.dataset.tierIdx!==undefined){
+    const idx=parseInt(t.dataset.tierIdx,10);
+    const tier=state.lmConfig.tiers[idx];
+    if(!tier) return;
+    const f=t.dataset.tier;
+    if(f==='on'){ tier.on=t.checked; renderAll(); return; }
+    if(f==='label'){ tier.label=t.value; renderAll(); return; }
+    const label = `Tramo "${tier.label||'sin nombre'}"`;
+    const opts = f==='pct' ? {min:0,max:99.999,label:`${label} — %`} : {min:0,max:9999,integer:true,label:`${label} — ${f==='fromDay'?'desde día':'hasta día'}`};
+    const r = readNumField(t, tier[f], opts);
+    if(!r.ok) return;
+    if(f==='fromDay'){
+      const chk = validateRange(r.value, tier.toDay??9999, `${label} — desde/hasta`);
+      if(!chk.ok){ t.value=tier[f]; showInputError(chk.reason); return; }
+    }
+    if(f==='toDay'){
+      const chk = validateRange(tier.fromDay??0, r.value, `${label} — desde/hasta`);
+      if(!chk.ok){ t.value=tier[f]; showInputError(chk.reason); return; }
+    }
+    tier[f]=r.value;
+    renderAll();
+  }
+  else if(t.dataset.verifStatus){
+    /* Fase 5 (revision externa — "datos financieros verificados"): a
+       diferencia de source/date/note (abajo, puramente informativos), el
+       status SI cambia el bloqueo de Piso/Base/Offset/Matriz para el canal
+       afectado (ver src/domain/readiness.js) — necesita renderAll() para que
+       el resto de la app refleje el cambio de inmediato. */
+    const entry = verifEntryRef(t.dataset.verifStatus, t.dataset.verifCh);
+    if(entry) entry.status = t.value;
+    renderAll();
+  }
+  else if(t.dataset.verifSource!==undefined){
+    const entry = verifEntryRef(t.dataset.verifSource, t.dataset.verifCh);
+    if(entry) entry.source = t.value;
+  }
+  else if(t.dataset.verifDate!==undefined){
+    const entry = verifEntryRef(t.dataset.verifDate, t.dataset.verifCh);
+    if(entry) entry.date = t.value;
+  }
+  else if(t.dataset.verifNote!==undefined){
+    const entry = verifEntryRef(t.dataset.verifNote, t.dataset.verifCh);
+    if(entry) entry.note = t.value;
+  }
+  /* PLANIFICACIÓN MENSUAL: mismo patrón que todo lo demás (Bloqueante
+     MEDIO ronda 2) — cero `parseFloat(t.value)||0` silencioso, siempre
+     readNumField()/parseValue() con rango y motivo explícito. */
+  else if(t.dataset.mon){
+    const key = t.dataset.mon;
+    const sc = state.monthlyIncomeScenario;
+    if(key==='incomeType'){ sc.type = t.value; renderAll(); return; }
+    if(key==='manualNetPerNight'){
+      /* P2 (revision externa): vacio es un estado VALIDO ("todavia no lo
+         configuraste"), no un error — allowEmpty/emptyValue:null en vez de
+         revertir al valor anterior o forzar un 0 silencioso. */
+      const r = readNumField(t, sc.manualNetPerNight, {min:-1e7, max:1e7, allowEmpty:true, emptyValue:null, label:'Neto por noche (planificación mensual)'});
+      if(!r.ok) return;
+      sc.manualNetPerNight = r.value; renderAll();
+    }
+    else if(key==='channelChId'){ sc.channel.chId = t.value; renderAll(); }
+    else if(key==='channelDays'){
+      const r = readNumField(t, sc.channel.days, {min:0, max:9999, integer:true, label:'Días de anticipación (planificación mensual)'});
+      if(!r.ok) return;
+      sc.channel.days = r.value; renderAll();
+    }
+    else if(key==='channelNights'){
+      const r = readNumField(t, sc.channel.nights, {min:1, max:365, integer:true, label:'Noches del escenario (planificación mensual)'});
+      if(!r.ok) return;
+      sc.channel.nights = r.value; renderAll();
+    }
+    else if(key==='channelPrice'){
+      const r = readNumField(t, sc.channel.price, {min:0, max:1e7, label:'Precio PriceLabs del escenario (planificación mensual)'});
+      if(!r.ok) return;
+      sc.channel.price = r.value; renderAll();
+    }
+    else if(key==='distConfigured'){ state.monthlyDistribution.configured = t.checked; renderAll(); }
+    else if(['ownerTargetPct','managerTargetPct','reservePct','taxReservePct'].includes(key)){
+      const LABELS = {ownerTargetPct:'Propietario %', managerTargetPct:'Administrador/PM %', reservePct:'Reserva %', taxReservePct:'Impuestos %'};
+      const r = readNumField(t, state.monthlyDistribution[key], {min:0, max:100, label:LABELS[key]+' (reparto mensual)'});
+      if(!r.ok) return;
+      state.monthlyDistribution[key] = r.value; renderAll();
+    }
+  }
+  else if(t.dataset.monMix){
+    const chId = t.dataset.monCh;
+    const row = state.monthlyIncomeScenario.mix.find(m=>m.chId===chId);
+    if(!row) return;
+    const f = t.dataset.monMix;
+    const chName = (state.channels.find(c=>c.id===chId)||{}).name || chId;
+    if(f==='on'){ row.on = t.checked; renderAll(); }
+    else if(f==='weightPct'){
+      const r = readNumField(t, row.weightPct, {min:0, max:100, label:`${chName} — % peso (mezcla mensual)`});
+      if(!r.ok) return;
+      row.weightPct = r.value; renderAll();
+    }
+    else if(f==='days'){
+      const r = readNumField(t, row.days, {min:0, max:9999, integer:true, label:`${chName} — días (mezcla mensual)`});
+      if(!r.ok) return;
+      row.days = r.value; renderAll();
+    }
+    else if(f==='nights'){
+      const r = readNumField(t, row.nights, {min:1, max:365, integer:true, label:`${chName} — noches (mezcla mensual)`});
+      if(!r.ok) return;
+      row.nights = r.value; renderAll();
+    }
+    else if(f==='price'){
+      const r = readNumField(t, row.price, {min:0, max:1e7, label:`${chName} — precio (mezcla mensual)`});
+      if(!r.ok) return;
+      row.price = r.value; renderAll();
+    }
+  }
+  /* Validar contra una reserva real: los campos viven fuera de `state` (mismo
+     patron que el Simulador: ids globales via `id=`) — cualquier cambio solo
+     tiene que re-pintar el resultado en vivo, no tocar `state`/renderAll()
+     completo (nada mas depende de estos valores hasta que se guarden). */
+  else if(t.id && t.id.startsWith('rec') && t.id!=='recSaveBtn'){
+    renderReconcileResult(compute());
+  }
 });
 document.addEventListener('click',e=>{
+  if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
   const goto=e.target.closest('[data-goto]');
   if(goto){ goToTab(goto.dataset.goto); return; }
   if(e.target.id==='goSimBtn'){
     const model=compute();
-    simPrice.value=Math.round(model.base||model.effBase||0);
+    /* Bloqueante P2 (revision externa, ronda 3): este boton precargaba
+       Math.round(model.base||model.effBase||0) sin condicion — si Base
+       estaba bloqueado (LM sin verificar, o precio LM fijo activo en el dia
+       de referencia), igual escribia ese numero bloqueado en el Simulador,
+       revelandolo como si fuera una recomendacion valida. Ahora, si esta
+       bloqueado, NO se precarga nada (el campo queda vacio — renderSim()
+       explica el motivo en vez de simular con un numero inventado) y se
+       muestra el mismo aviso en el toast global. */
+    /* Refactor de cierre: `model.baseReadinessBlocked` ya es la union de los
+       tres motivos (LM/precio fijo/datos de negocio) — no se vuelve a armar
+       ese `||` aqui. */
+    if(model.baseReadinessBlocked){
+      simPrice.value='';
+      const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
+        : model.lmBlocked ? 'Last-Minute sin verificar'
+        : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+        : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
+        : 'un dato financiero del canal que fija Base sigue sin confirmar (ver Verificación de datos financieros)';
+      showInputError('Base Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confírmalo primero.');
+    } else {
+      simPrice.value=Math.round(model.base||model.effBase||0);
+    }
     goToTab('simulador');
     renderSim(model);
   }
+  if(e.target.id==='addTierBtn'){
+    state.lmConfig.tiers.push({id:'t'+Date.now(), label:'Tramo nuevo', fromDay:0, toDay:1, pct:0, on:false});
+    renderAll();
+  }
+  const up=e.target.closest('[data-tier-up]');
+  if(up){ const i=parseInt(up.dataset.tierUp,10); const arr=state.lmConfig.tiers; if(i>0){[arr[i-1],arr[i]]=[arr[i],arr[i-1]]; renderAll();} }
+  const down=e.target.closest('[data-tier-down]');
+  if(down){ const i=parseInt(down.dataset.tierDown,10); const arr=state.lmConfig.tiers; if(i<arr.length-1){[arr[i+1],arr[i]]=[arr[i],arr[i+1]]; renderAll();} }
+  const del=e.target.closest('[data-tier-del]');
+  if(del){ const i=parseInt(del.dataset.tierDel,10); state.lmConfig.tiers.splice(i,1); renderAll(); }
+  /* Validar contra una reserva real: "Guardar" solo agrega a
+     `state.reconciliations` si reconcileReservation() confirma que hay algo
+     calculable (evita guardar un registro roto que despues se muestre como
+     "no calculable" en la lista) — nunca cambia comisiones/descuentos, solo
+     archiva el dato real que Dani ingreso. */
+  if(e.target.id==='recSaveBtn'){
+    const real = readReconcileForm();
+    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: compute().readiness});
+    if(!check.ok){ showInputError('No se pudo guardar la conciliación: ' + check.reason); return; }
+    state.reconciliations.push({...real, id:'rec'+Date.now(), savedAt:new Date().toISOString()});
+    renderAll();
+  }
+  const recDel=e.target.closest('[data-rec-del]');
+  if(recDel){ state.reconciliations = state.reconciliations.filter(r=>r.id!==recDel.dataset.recDel); renderAll(); }
 });
 const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
+/* Fase 6: guardar SIEMPRE escribe formato v3 (clave = UUID estable en state.id,
+   nunca el slug del nombre) — dos unidades con el mismo nombre ya no colisionan,
+   y renombrar una unidad no le cambia la identidad de guardado. Si es la
+   PRIMERA vez que se guarda esta unidad (state.id todavia no existe) y ya hay
+   una unidad guardada con el mismo nombre, se confirma antes de crear una
+   segunda con el mismo nombre — para que no sea un duplicado accidental. */
 saveUnit.addEventListener('click',async()=>{
   const n=unitName.value.trim(); if(!n){alert('Nombre de unidad primero.');return;}
-  try{const r=await window.storage.set('v2:'+slug(n),JSON.stringify({...state,name:n}),false);
-    if(r){status('Guardado ✓');refreshList();}else status('Error');}catch(e){console.error(e);status('Error al guardar');}
+  try{
+    if(!state.id){
+      const r3 = await window.storage.list('v3:', false);
+      const keys = (r3&&r3.keys)||[];
+      let nameCollision = false;
+      for(const k of keys){
+        const v = await window.storage.get(k, false);
+        if(v&&v.value){ try{ if(JSON.parse(v.value).name===n){ nameCollision=true; break; } }catch(e){} }
+      }
+      if(nameCollision && !confirm(`Ya existe una unidad guardada con el nombre "${n}". ¿Guardar esta de todas formas como una unidad NUEVA (no reemplaza la existente)?`)) return;
+    }
+    /* Normalizar tambien al guardar (no solo al importar/migrar): defensa en
+       profundidad — si algo en memoria llego a tener una forma inesperada
+       (ej. un bug futuro en un handler), lo que se persiste sigue siendo
+       siempre la version segura y completa, nunca datos a medio normalizar. */
+    const {state: normalized} = normalizeUnit({...state, name:n, id: state.id});
+    const record = buildV3Record(normalized);
+    state.id = record.id;
+    const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    if(r){status('Guardado ✓');refreshList();}else status('Error');
+  }catch(e){console.error(e);status('Error al guardar');}
 });
 deleteUnit.addEventListener('click',async()=>{
   const k=unitList.value; if(!k){alert('Selecciona una unidad.');return;}
+  const label = unitList.options[unitList.selectedIndex]?.textContent || k;
+  if(!confirm(`¿Eliminar "${label}"? Esta acción no se puede deshacer.`)) return;
   try{await window.storage.delete(k,false);refreshList();status('Eliminado');}catch(e){status('Error');}
 });
+/* Recuperación segura de una unidad no-USD (auditoria externa, ronda 4 —
+   "Recuperación segura de una unidad COP"; BLOQUEANTE 3 corregido en ronda
+   5): delegado en `document` (el botón se re-crea en cada render de
+   renderCurrencyReviewBanner()) — crea una COPIA nueva directamente en USD,
+   SIN convertir ningún valor (se preserva exactamente lo que ya estaba
+   configurado), marcada "pendiente de revisión manual":
+   `usdManualReviewPending:true` (BLOQUEANTE 3 — antes NO existía este campo,
+   así que la copia quedaba lista para producir Piso/Base en cuanto se
+   resolvían LM/verificaciones, aunque nadie hubiera revisado un solo número
+   copiado) más `costBreakdownConfirmed` reseteado a false a propósito
+   (fuerza revisar también los costos, no solo la moneda) y el nombre deja
+   explícito que es una copia sin revisar. Se agrega la primera entrada de
+   `usdManualReviewLog` (`event:'copy_created'`) — bitácora append-only, ver
+   src/domain/persistence.js. La unidad ORIGINAL (bloqueada) nunca se toca
+   ni se borra — sigue disponible en la lista, tal cual estaba. */
+document.addEventListener('click', async e=>{
+  if(e.target.id!=='createUsdCopyBtn') return;
+  if(state.currency==='USD') return; // defensivo — el boton solo deberia existir si la unidad no esta en USD
+  if(!confirm(`Se creará una COPIA nueva de "${state.name||'esta unidad'}" directamente en USD, marcada "pendiente de revisión manual". NO se convierte ningún valor — los números quedan EXACTAMENTE como están hoy en ${state.currency}, así que debes revisarlos y corregirlos tú mismo (incluyendo los costos) antes de confiar en cualquier recomendación. Mientras no confirmes esa revisión, Piso/Base/Offset/Matriz/Alertas/planificación mensual/conciliación seguirán BLOQUEADOS en la copia, aunque su moneda ya diga USD. La unidad original en ${state.currency} NO se toca ni se borra. ¿Continuar?`)) return;
+  try{
+    const {state: copy} = normalizeUnit({
+      ...state,
+      currency: 'USD',
+      id: undefined,
+      name: (state.name||'Unidad') + ' (copia USD — pendiente de revisión manual)',
+      costBreakdownConfirmed: false,
+      usdManualReviewPending: true,
+      usdManualReviewLog: [
+        ...(Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : []),
+        {at: new Date().toISOString(), event:'copy_created', text:`Copia creada desde "${state.name||'unidad sin nombre'}" (${state.currency}) — ningún valor fue convertido automáticamente.`}
+      ]
+    });
+    const record = buildV3Record(copy);
+    await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    await refreshList();
+    unitList.value = v3Key(record.id);
+    state = copy; state.id = record.id;
+    unitName.value = state.name;
+    hydrate(); renderAll();
+    status('Copia en USD creada ✓ — pendiente de revisión manual');
+  }catch(err){ console.error(err); status('Error al crear la copia'); }
+});
+/* BLOQUEANTE 3 (auditoria externa, ronda 5) — flujo de finalización de la
+   revisión manual: exige una confirmación FUERTE (texto exacto pedido en el
+   encargo) antes de apagar `usdManualReviewPending`. Nunca un toggle
+   silencioso — es el único punto de todo el código donde ese campo puede
+   pasar a `false`. Agrega la entrada `event:'review_confirmed'` a la
+   bitácora (nunca borra `copy_created`) y persiste inmediatamente.
+
+   BLOQUEANTE (auditoria externa, ronda 6) — orden de operaciones corregido:
+   antes, `state.usdManualReviewPending`/`state.usdManualReviewLog` se
+   mutaban DIRECTO sobre el objeto `state` en memoria ANTES de que
+   `window.storage.set()` confirmara nada — si el guardado fallaba (devolvía
+   falsy o lanzaba), el `catch`/`else` mostraba un error, pero `state` ya
+   había quedado con la revisión "confirmada" en memoria (incluida la
+   entrada `review_confirmed` en la bitácora), lista para filtrarse al
+   siguiente render sin que el guardado real hubiera ocurrido. Ahora se
+   arma un CANDIDATO aparte (nunca `state` mismo) y `state` solo se
+   reasigna DESPUÉS de una escritura exitosa confirmada — si
+   `window.storage.set()` falla o lanza, `state` queda exactamente como
+   estaba (bloqueado), no se llama a `renderAll()`, y el mensaje de error es
+   explícito. */
+document.addEventListener('click', async e=>{
+  if(e.target.id!=='confirmUsdReviewBtn') return;
+  if(state.usdManualReviewPending!==true) return; // defensivo — el boton solo deberia existir mientras este pendiente
+  const confirmedText = 'Revisé manualmente todos los valores monetarios copiados y confirmo que ahora están expresados correctamente en USD. Entiendo que no hubo conversión automática.';
+  if(!confirm(`${confirmedText}\n\n¿Confirmas que ya hiciste esta revisión, campo por campo (costos, tarifas, comisiones, precios), y que los números de esta unidad SÍ representan USD reales?`)) return;
+  try{
+    const candidate = {
+      ...state,
+      usdManualReviewPending: false,
+      usdManualReviewLog: [
+        ...(Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : []),
+        {at: new Date().toISOString(), event:'review_confirmed', text: confirmedText}
+      ],
+      id: state.id
+    };
+    const {state: normalized} = normalizeUnit(candidate);
+    /* Defensa en profundidad: si por lo que sea normalizeUnit() NO logra
+       reflejar la confirmación (ej. evaluateUsdManualReviewState() sigue
+       viendo la bitácora como pendiente por alguna inconsistencia), NUNCA
+       continuar como si estuviera confirmada ni tocar `state`/`storage`. */
+    if(normalized.usdManualReviewPending !== false){
+      status('No se pudo confirmar la revisión — la bitácora sigue indicando que falta revisión. No se guardó ningún cambio.');
+      return;
+    }
+    const record = buildV3Record(normalized, {id: state.id});
+    const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    if(!r){
+      status('Error al guardar la confirmación — la unidad sigue marcada como pendiente de revisión, no se aplicó ningún cambio.');
+      return; // `state` NUNCA se toca si el guardado no fue exitoso
+    }
+    state = normalized; state.id = record.id;
+    renderAll();
+    status('Revisión manual confirmada ✓');
+  }catch(err){
+    console.error(err);
+    status('Error al confirmar la revisión — la unidad sigue marcada como pendiente de revisión, no se aplicó ningún cambio.');
+  }
+});
+migrateV2Btn.addEventListener('click', async()=>{
+  try{
+    const r2 = await window.storage.list('v2:', false);
+    const v2Keys = (r2&&r2.keys)||[];
+    if(!v2Keys.length){ alert('No hay unidades en formato antiguo (v2) para migrar.'); return; }
+    const r3 = await window.storage.list('v3:', false);
+    const v3Keys = (r3&&r3.keys)||[];
+    const alreadyMigrated = new Set();
+    for(const k of v3Keys){
+      const v = await window.storage.get(k, false);
+      if(v&&v.value){ try{ const d=JSON.parse(v.value); if(d.migratedFromV2Key) alreadyMigrated.add(d.migratedFromV2Key); }catch(e){} }
+    }
+    const pending = v2Keys.filter(k=>!alreadyMigrated.has(k));
+    if(!pending.length){ alert('Todas las unidades v2 ya tienen su copia v3. No se creó nada nuevo.'); return; }
+    if(!confirm(`Se copiarán ${pending.length} unidad(es) del formato antiguo a identificadores nuevos (v3). Las originales (v2) NO se tocan ni se borran. ¿Continuar?`)) return;
+    let done=0, skipped=0;
+    for(const k of pending){
+      const v = await window.storage.get(k, false);
+      if(!v || !v.value) continue;
+      let d; try{ d=JSON.parse(v.value); }catch(e){ skipped++; continue; }
+      /* Bloqueante 5: normalizar SIEMPRE al migrar — un v2 viejo puede traer
+         campos con forma inesperada; la migracion nunca debe propagar eso a v3. */
+      const {state: normalized, warnings} = normalizeUnit(d);
+      if(!normalized){ skipped++; continue; }
+      if(warnings.length) console.warn(`Migración ${k} — campos ajustados:`, warnings);
+      const record = buildV3Record(normalized, {migratedFromV2Key:k});
+      await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+      done++;
+    }
+    refreshList();
+    status(`${done} unidad(es) migradas a v3 ✓${skipped?` (${skipped} omitida(s), ver consola)`:''}`);
+  }catch(e){console.error(e); status('Error al migrar');}
+});
+/* Bloqueante 5 (revision externa): un solo camino de carga, normalizeUnit()
+   (src/domain/persistence.js) — reemplaza toda la logica de merge ad hoc que
+   vivia aqui (que asumia que discounts/channels/costBreakdown/lmConfig
+   siempre eran arreglos/objetos bien formados). Un registro v2/v3 con
+   discounts ausente, channels no-array, lmConfig a medias o tramos
+   malformados ya NO rompe render/map/find — normalizeUnit() produce un estado
+   completo y seguro basado en defaults, y reporta en `warnings` que se
+   descarto. Si el archivo no se puede normalizar en absoluto (no es un
+   objeto), se avisa y no se toca `state`. */
 unitList.addEventListener('change',async e=>{
   const k=e.target.value; if(!k)return;
-  try{const r=await window.storage.get(k,false);
-    if(r&&r.value){const d=JSON.parse(r.value);
-      state={...state,...d};
-      /* merge new catalog entries added after save */
-      const defaults=defaultDiscounts();
-      const defById=Object.fromEntries(defaults.map(x=>[x.id,x]));
-      const have=new Set(state.discounts.map(x=>x.id));
-      defaults.forEach(x=>{if(!have.has(x.id))state.discounts.push(x);});
-      /* re-sincroniza el umbral de los descuentos bloqueados (lockN) al valor del catálogo:
-         si se guardaron antes de que existiera el candado, podían traer un minN/from viejo
-         que ya no es editable en la UI y se quedaría mostrando un número incorrecto para siempre */
-      state.discounts.forEach(x=>{
-        const def=defById[x.id];
-        if(def && def.lockN){
-          if(def.kind==='los') x.minN=def.minN;
-          else if(def.kind==='window'){ x.from=def.from; x.to=def.to; }
-        }
-      });
-      /* merge new channel fields (offsetPct, bankFeePct) added after save */
-      state.channels = CHANNELS.map(def=>{
-        const saved = (d.channels||[]).find(x=>x.id===def.id);
-        return saved ? {...def, ...saved} : {...def};
-      });
-      /* garantizar techos por ventana */
-      if(!state.ceilings) state.ceilings={};
-      WINDOWS.forEach(w=>{ if(state.ceilings[w.id]===undefined) state.ceilings[w.id]=w.ceil; });
-      /* merge campo por campo contra defaults — unidades guardadas antes de la calculadora no la traen */
-      state.costBreakdown = {...defaultCostBreakdown(), ...(d.costBreakdown||{})};
-      unitName.value=d.name||''; hydrate(); renderAll(); status('Cargado ✓');}
-  }catch(e){console.error(e);status('No encontrado');}
+  try{
+    const r=await window.storage.get(k,false);
+    if(!r||!r.value){ status('No encontrado'); return; }
+    let raw;
+    try{ raw = JSON.parse(r.value); }catch(err){ status('Registro dañado (JSON inválido)'); return; }
+    const {state: normalized, warnings} = normalizeUnit(raw);
+    if(!normalized){ status('Registro dañado'); return; }
+    state = normalized;
+    unitName.value = state.name||'';
+    hydrate(); renderAll();
+    if(warnings.length){ console.warn('normalizeUnit — campos descartados al cargar:', warnings); status(`Cargado ✓ (${warnings.length} campo(s) invalido(s) ignorados, ver consola)`); }
+    else status('Cargado ✓');
+  }catch(e){console.error(e);status('Error al cargar');}
 });
 /* Respaldo real: localStorage vive solo en este navegador/computador — no hay nube,
    no hay sync entre dispositivos, se pierde si se borra caché o se reinstala el
    navegador. Exportar/Importar es la forma de sacar copia y restaurar si se pierde. */
 exportUnits.addEventListener('click', async()=>{
   try{
-    const r = await window.storage.list('v2:', false);
-    const keys = (r && r.keys) || [];
+    const [r2, r3] = await Promise.all([window.storage.list('v2:', false), window.storage.list('v3:', false)]);
+    const keys = [...((r2&&r2.keys)||[]), ...((r3&&r3.keys)||[])];
     if(!keys.length){ alert('No hay unidades guardadas todavía.'); return; }
     const items = [];
     for(const k of keys){
       const v = await window.storage.get(k, false);
       if(v && v.value) items.push({key:k, value:v.value});
     }
-    const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), units:items}, null, 2)], {type:'application/json'});
+    const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), schemaVersion:SCHEMA_VERSION, units:items}, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = 'revenue-ops-backup-' + new Date().toISOString().slice(0,10) + '.json';
@@ -971,22 +1944,56 @@ exportUnits.addEventListener('click', async()=>{
   }catch(e){console.error(e); status('Error al exportar');}
 });
 importUnitsBtn.addEventListener('click', ()=>{ importUnitsFile.value=''; importUnitsFile.click(); });
+/* Bloqueante 4/5 (revision externa) — importacion SEGURA en DOS capas:
+   1) validateImportFile() valida la FORMA del archivo completo (arreglo
+      units[], key/value string, JSON parseable, "name" presente) — un
+      archivo malformado se rechaza entero.
+   2) CADA unidad que pasa esa forma se re-normaliza con normalizeUnit() y se
+      RE-SERIALIZA — lo que se escribe a storage es la version SANITIZADA
+      (tipos correctos, ids conocidos, rangos validos), nunca el JSON crudo
+      del archivo importado. Esto es lo que realmente cierra el vector XSS:
+      un payload como pct:'"onmouseover="alert(1)' nunca llega a storage como
+      string, sale de normalizeUnit() convertido a un numero (o al default). */
 importUnitsFile.addEventListener('change', async e=>{
   const file = e.target.files[0]; if(!file) return;
   try{
     const data = JSON.parse(await file.text());
-    const items = Array.isArray(data.units) ? data.units : [];
-    if(!items.length){ alert('El archivo no tiene unidades reconocibles.'); return; }
-    if(!confirm('Vas a restaurar '+items.length+' unidad(es). Las que ya existan con el mismo nombre se van a SOBRESCRIBIR. ¿Continuar?')) return;
-    for(const it of items){ if(it.key && it.value) await window.storage.set(it.key, it.value, false); }
+    const {valid, errors, items} = validateImportFile(data);
+    if(!valid){
+      alert('El archivo no se pudo importar:\n' + errors.slice(0,5).join('\n') + (errors.length>5?`\n...y ${errors.length-5} más`:''));
+      return;
+    }
+    const sanitized = [];
+    let normWarnings = 0;
+    items.forEach(it=>{
+      const parsed = JSON.parse(it.value); // ya validado como JSON parseable en validateImportFile
+      const {state: normalized, warnings} = normalizeUnit(parsed);
+      if(!normalized) return;
+      if(warnings.length){ normWarnings += warnings.length; console.warn(`Import ${it.key} — campos ajustados:`, warnings); }
+      sanitized.push({key: it.key, value: JSON.stringify(normalized)});
+    });
+    if(errors.length || normWarnings) console.warn('Importación — elementos/campos descartados:', errors);
+    if(!sanitized.length){ alert('Ninguna unidad del archivo se pudo normalizar a una forma valida.'); return; }
+    if(!confirm(`Vas a restaurar ${sanitized.length} unidad(es)${errors.length?` (${errors.length} elemento(s) del archivo descartados)`:''}${normWarnings?`, con ${normWarnings} campo(s) invalido(s) corregidos a su default (ver consola)`:''}. Las que ya existan con la MISMA clave se van a SOBRESCRIBIR. ¿Continuar?`)) return;
+    for(const it of sanitized){ await window.storage.set(it.key, it.value, false); }
     refreshList();
-    status(items.length + ' unidad(es) importadas ✓');
+    status(sanitized.length + ' unidad(es) importadas ✓');
   }catch(e){console.error(e); status('Archivo inválido');}
 });
 async function refreshList(){
-  try{const r=await window.storage.list('v2:',false);
-    const keys=(r&&r.keys)||[];
-    unitList.innerHTML='<option value="">Cargar unidad…</option>'+keys.map(k=>`<option value="${k}">${k.replace('v2:','')}</option>`).join('');
+  try{
+    const [r2, r3] = await Promise.all([window.storage.list('v2:', false), window.storage.list('v3:', false)]);
+    const keys = [...((r2&&r2.keys)||[]), ...((r3&&r3.keys)||[])];
+    const opts = [];
+    for(const k of keys){
+      let label = k.replace(/^v[23]:/,'');
+      try{
+        const v = await window.storage.get(k, false);
+        if(v&&v.value){ const d=JSON.parse(v.value); if(d && typeof d.name==='string' && d.name) label=d.name; }
+      }catch(err){/* deja el fallback (nombre derivado de la clave) */}
+      opts.push(`<option value="${escapeHtml(k)}">${escapeHtml(label)}${k.startsWith('v2:')?' (formato antiguo)':''}</option>`);
+    }
+    unitList.innerHTML='<option value="">Cargar unidad…</option>'+opts.join('');
   }catch(e){unitList.innerHTML='<option value="">Cargar unidad…</option>';}
 }
 hydrate(); renderAll(); refreshList();

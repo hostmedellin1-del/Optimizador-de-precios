@@ -174,7 +174,7 @@ califica, y la tarifa de aseo de Airbnb (fija por reserva) se diluye correctamen
 noche vía `cleanFeePerNight(c, nights)`. Sin `avgNights`, el offset sugerido para Airbnb
 salía más alto de lo necesario (ignoraba que el aseo ya aporta ingreso).
 
-### El Piso SÍ debe incluir el Offset por canal — el Base NO (jul 2026, corregido)
+### El Piso Y el Base incluyen el Offset y el LM por canal (jul 2026; Base corregido en ronda 2 de revisión externa)
 `compute()` calcula el `floor` (Min Price) con el offset de cada canal en el denominador:
 `cost / ((1+offset)*(1-nativoPeor)*payoutFactor)`. Antes NO lo incluía — con offset
 positivo eso solo sobre-protegía (inofensivo), pero con offset **negativo** (bajar precio
@@ -183,11 +183,60 @@ bajo costo estando "sobre el piso" en apariencia. Verificado: Booking con offset
 neteaba 46 contra costo 54 antes del fix; después, el piso sube a 103 y netea exacto 54.
 Offset ≤ −100% da `Infinity` (se muestra "—", no rompe).
 
-El `base` (Base Price) NO debe llevar el offset — es intencional, no un descuido: el Base
-es "el precio uniforme SIN offsets"; `suggestedOffset` es justamente lo que dice cuánto
-offset poner ENCIMA de ese Base. Meter el offset en el Base duplicaría el concepto y
-rompería la separación Base/Offset que es la razón de ser de esta herramienta (ver
-sección 2, "Offset por canal").
+**Decisión revertida en ronda 2 (revisión externa) — el `base` (Base Price) SÍ incluye
+ahora el Offset y el LM REALES de cada canal.** La decisión original ("Base es el precio
+uniforme SIN offsets") quedaba matemáticamente falsa en cuanto Dani configuraba un offset
+real (ej. Booking −15% para competir) o un LM verificado: el texto "netea tu objetivo"
+dejaba de ser cierto para la config real, aunque siguiera siendo cierto para la config
+hipotética de offset=0. Un revisor externo marcó esto como bloqueante ALTO: "no acepto
+mantener el nombre actual con una garantía que el cálculo no cumple". Se eligió la opción
+de incorporar Offset/LM (en vez de renombrar Base a "referencia teórica") porque hace que
+la garantía sea cierta AHORA MISMO, sin perder la separación conceptual: Base sigue siendo
+UN punto de referencia único (día 45, fuera de ventanas tácticas, nativos constantes —
+nunca una búsqueda exhaustiva de peor caso, esa sigue siendo tarea exclusiva del Piso), y
+`suggestedOffset` sigue existiendo para ELEGIR o AJUSTAR el offset de un canal — solo que
+ahora, una vez que Dani pone un offset real (por sugerencia o a mano), Base se recalcula
+solo para reflejarlo, en vez de quedar basado en un offset=0 que ya no es la realidad.
+`lmPctAtDay45()` (`engine.js`) es la única fórmula que resuelve LM a día 45 — la usan
+`compute().base` y `suggestedOffset()`, para no duplicarla (antes cada uno la
+reimplementaba por su cuenta). Tests: `tests/fase-base-property.test.js` (con offset
+negativo/positivo y LM activo, sin neutralizar nada).
+
+### Contrato definitivo — Base Price, Offset y `fixed_price` (ronda 3, revisión externa)
+Una tercera revisión encontró que el fix de la ronda 2 (arriba) tenía un hueco: cuando
+`lmConfig.mode==='fixed_price'` y el rango activo cubre el día 45, `lmPctAtDay45()`
+devolvía `priceOverride` pero `compute().base`/`suggestedOffset()` lo IGNORABAN (trataban
+el override como 0% de LM) — Base seguía calculando un número (`≈219.78` en el caso
+reportado: Directo, costo 100, margen 50%) que no tenía ningún efecto real, porque
+PriceLabs iba a publicar el precio fijo (150) sin importar Base. `suggestedOffset()`
+daba 0% cuando el offset REAL necesario era +46.5%.
+
+**El contrato quedó así, explícito y con tests (`tests/fase-base-fixedprice.test.js`,
+`e2e/base-fixedprice.spec.js`):**
+- `lmPctAtDay45()` devuelve `{lmPct, priceOverride}` — nunca colapsa el override a un
+  número silencioso.
+- **Base Price**: si `priceOverride!=null` en el día 45, Base es irrelevante para ese
+  escenario (PriceLabs no lo va a usar) → `compute()` devuelve `baseBlocked:true` +
+  `baseBlockedReason` (explica, por canal, si el precio fijo alcanza o no el objetivo).
+  La UI oculta el KPI ("—"), la Matriz oculta el número, y `#validationBanner` muestra
+  el motivo exacto con el mismo patrón que `lmBlocked`. El campo `base` interno se sigue
+  calculando (ignorando el override) solo como ancla numérica de `effBase` para el resto
+  de la app — nunca se presenta como recomendación cuando `baseBlocked` es true.
+- **Offset**: a diferencia de Base, el Offset SÍ puede seguir controlando el resultado —
+  se aplica DESPUÉS del precio (fijo o no), mismo orden que `quoteScenario()`
+  (`priceAfterOffset = priceAfterLm*(1+off)`). `suggestedOffset()` ahora resuelve sobre
+  `priceOverride` cuando existe, en vez de `effBase*(1-lm/100)` — nunca se bloquea, se
+  RECALCULA correctamente. La UI muestra el número corregido con una nota explícita
+  ("se recalculó sobre ese precio fijo real") en vez de fingir que viene de Base.
+- **Bordes probados**: día 45 exactamente en `fromDay`, exactamente en `toDay`, y justo
+  fuera del rango por ambos lados — solo bloquea cuando el día 45 realmente cae dentro.
+- **Bloqueante P2 (bypass del Simulador)**: el botón "Ver el paso a paso" (`goSimBtn`)
+  precargaba `Math.round(model.base||model.effBase||0)` sin condición — revelaba el
+  Base bloqueado por la puerta de atrás. `renderSim()` ahora también se niega a caer en
+  `model.effBase` cuando el campo de precio está vacío Y el modelo está bloqueado
+  (`lmBlocked`/`baseBlocked`): muestra la explicación en vez de un waterfall con un
+  número inventado. Escribir un precio a mano sigue funcionando siempre — la simulación
+  manual nunca se bloquea, solo el atajo automático. Tests: `e2e/sim-blocked-bypass.spec.js`.
 
 ---
 
@@ -338,6 +387,16 @@ sección 2, "Offset por canal").
 
 ## 5. Pendiente real — son decisiones de negocio de Dani, no técnicas. NO inventar valores.
 
+**FASE 5: los puntos 2, 3, 6 y 7 de abajo ya NO son solo "pendientes documentados" — desde
+`src/domain/readiness.js`, mientras sigan sin confirmarse en Resumen → "Verificación de
+datos financieros", BLOQUEAN activamente Piso/Base/Offset/"Rentable" de los canales que
+afectan (ver tabla en sección 9). Confirmarlos ahí (marcar "Verificado" con fuente/fecha,
+o "No aplica" si Dani confirma que no corresponde a esta unidad) es lo único que los
+desbloquea — nunca se infieren ni se asumen. Corrección P1 (revisión externa): como Min
+Price/Base Price son números GLOBALES (un solo valor para los 4 canales), basta que
+CUALQUIERA de los puntos 2/3/6/7 esté pendiente en CUALQUIER canal activo para que el
+número global quede bloqueado — no solo el canal que hoy resulta ser el más ajustado.**
+
 1. Costos reales de la unidad 902 (Alcázar de Oviedo). Hoy el modelo usa el ejemplo
    genérico del webinar de Kunas ($54 costo/noche, $98 neto objetivo, margen 45%) — son
    ilustrativos, NO son los costos reales de Dani. Todo lo demás depende de esto.
@@ -347,16 +406,29 @@ sección 2, "Offset por canal").
    cargue el dato real de cada unidad.
 2. Confirmar en la extranet real de Booking.com: ¿Genius y Mobile Rate están AMBOS
    activos hoy? Se asumió que sí (10% + 10%) — cambia cuál canal termina fijando el piso.
+   **(clave `bookingGeniusMobileBoth` — bloquea Booking mientras esté pendiente.)**
 3. % real de comisión bancaria por canal. Hoy: Booking 6%, Directo 6%, Airbnb 0%,
    Expedia 0% — son estimados de Dani a falta de revisar facturas, no verificados.
-4. Multi-moneda: existe el campo `currency` (USD/COP) pero es solo una etiqueta de
-   visualización, no convierte tasas. Varias unidades reales de Dani están en COP
-   (Distrito Primavera, Casa Río Adentro, Villa Juliana, El Refugio).
+   **(clave `bankFeePctByChannel`, POR CANAL — bloquea cada canal con comisión > 0%
+   mientras esté pendiente; Airbnb/Expedia en 0% no lo necesitan.)**
+4. **[Actualizado de nuevo — multimoneda DESACTIVADA a propósito]** Esta versión
+   opera **exclusivamente en USD** — la app NUNCA convierte, suma ni compara
+   valores de monedas distintas (ver "Contrato de moneda" arriba). El módulo
+   `src/domain/currency.js` (conversión manual verificada) se construyó y
+   luego se desactivó deliberadamente: la prioridad pasó a que los cálculos en
+   una sola moneda sean correctos y claros antes de reabrir multimoneda. Varias
+   unidades reales de Dani están en COP (Distrito Primavera, Casa Río Adentro,
+   Villa Juliana, El Refugio) — **cárgalas como unidades nuevas en USD**
+   (convirtiendo tú los valores reales con tu propia fuente confiable antes de
+   escribirlos) hasta que exista una fase multimoneda real. No existe ningún
+   camino en la UI para configurar una moneda distinta.
 5. Multi-unidad simultánea: el sistema permite guardar/cargar unidades por nombre, pero
    no comparar varias a la vez en una sola vista (portafolio). No construir esto sin que
    Dani lo pida — es una función nueva, no un arreglo.
 6. Verificar en Hospy si el Offset por canal de PriceLabs realmente se aísla por canal o
    se distribuye a todos los conectados (ver advertencia sección 2).
+   **(clave `hospyOffsetIsolated` — bloquea cualquier canal con Offset ≠ 0% mientras esté
+   pendiente.)**
 8. Revisar los Techos por ventana en Comparación ahora que la Oferta VIP de Expedia es
    real (20%, siempre activa, no editable) — varias ventanas (8-14/15-29/30+ días) tienen
    techo por defecto (8%/0%/15%) más bajo que ese 20%, así que Expedia sale "TECHO
@@ -364,6 +436,21 @@ sección 2, "Offset por canal").
    Expedia siempre trae 20% mínimo, o acepta que en esas ventanas Expedia va a estar
    siempre marcado como excedido (y competir menos ahí)? No es un bug, es una decisión de
    negocio que depende de qué tanto peso le da Dani a Expedia en esas ventanas.
+   **(la mezcla VIP real, clave `expediaVipTierMix`, bloquea Expedia por separado —
+   confirmar el % del techo no reemplaza confirmar la mezcla real de huéspedes.)**
+9. % exacto del descuento no reembolsable de Airbnb, si este listing lo tiene activo.
+   Hoy apagado en 0% por defecto (nadie inventó un 10%). **(clave `airbnbNonRefundable` —
+   solo bloquea Airbnb si Dani activa este descuento sin confirmar el % real.)**
+10. **[Actualizado de nuevo]** Moneda real y tipo de cambio por canal — la UI para
+    configurar esto (`channel.settlementCurrency`, `state.fxRates`) se **eliminó**
+    de `index.html` en la simplificación a USD único; los campos siguen
+    existiendo en el modelo de datos/persistencia (para no romper unidades
+    viejas) pero ya no son editables ni afectan ningún cálculo. Ver punto 4.
+11. **[Nuevo]** Reconciliar reservas reales: la herramienta existe (Resumen → "Validar
+    contra una reserva real") pero no se ha cargado ninguna conciliación real de ninguna
+    unidad todavía — el checklist de auditoría de cada unidad seguirá en "simulación"/
+    "datos parciales" hasta que Dani compare al menos una reserva real reciente por canal
+    contra el estimado del motor.
 
 ---
 
@@ -435,3 +522,1162 @@ por bueno un cambio en el motor — así se hizo todo el desarrollo hasta ahora:
 `<script>`, correr casos de prueba concretos con `node -e "..."`, y solo después dar el
 archivo por validado. No asumas que un cambio en el motor de combinación es correcto sin
 probarlo numéricamente primero.
+
+---
+
+## 9. Auditoría técnica jul 2026 (Fases 1-7) — arquitectura modular, motor, seguridad
+
+Trabajo hecho en la rama `fix/motor-financiero-auditoria` (NO mergeado a `main`, sin
+push) contra el hallazgo de una auditoría técnica independiente. Ver `CHANGELOG.md`
+para el resumen fase por fase y `RUNBOOK.md` para QA manual/rollback/despliegue.
+
+### Arquitectura: de un solo `<script>` a módulos ES puros
+`index.html` ahora es un `<script type="module">` que importa de `src/catalog/` (datos)
+y `src/domain/*.js` (funciones puras, sin DOM, todas con parámetros explícitos — nada
+lee un `state` global implícito). `index.html` solo arma wrappers delgados que cierran
+sobre el `state` mutable de la UI y funciones de render. Corolario práctico: **abrir el
+archivo con doble-clic (`file://`) ya no funciona** — Chrome bloquea `import` por CORS
+bajo `file://`. Para probar local: `npm run dev` (servidor estático propio en
+`scripts/dev-server.js`, cero dependencias, ver RUNBOOK.md "Desarrollo local")
+— `python3 -m http.server`/`npx serve` siguen funcionando igual si los
+prefieres. GitHub Pages (https) no tiene este problema, el deploy sigue
+siendo automático sin build.
+
+`package.json` es nuevo pero **no es un build step**: solo habilita `"type":"module"` y
+los scripts `npm test` (`node --test`, cero dependencias) / `npm run lint`
+(`node --check`). `engines.node >= 20.0.0`. CI en `.github/workflows/ci.yml` corre ambos
+en cada push/PR — no toca el despliegue de Pages.
+
+### `quoteScenario()` — fuente única de verdad (`src/domain/quote.js`)
+Cualquier vista que necesite cotizar UN escenario concreto (canal + días + noches +
+precio) pasa por aquí — Piso (indirectamente, vía `worstNative()`/`payoutFactor()`
+compartidos), alertas (TECHO/PISO/DURACIÓN), Simulador, matriz y "neto estimado" por
+canal. Ninguna vista debe reimplementar el pipeline LM→Offset→nativos→aseo→comisiones.
+Devuelve, entre otros: `factor`/`nativoFactor` (exacto, para matemática financiera),
+`nativoPct`/`totalPct` (redondeado, SOLO para texto/UI — nunca para calcular),
+`marginPct` (ganancia sobre venta) vs `markupPct` (ganancia sobre costo, número
+distinto), y `assumptions[]` (lo que el resultado da por sentado y aún no está
+verificado).
+
+**Regla dura, no violar en cambios futuros**: si una fórmula financiera nueva necesita
+`totalPct`, es un error — usar `factor` (o `nativoFactor` desde `quoteScenario()`).
+`totalPct` existe solo porque se redondea a 1 decimal para que se vea bien en pantalla;
+usarlo en un cálculo reintroduce el bug de Fase 2.1 (Genius 0.1% + Mobile 50% = 50.05%
+exacto, pero `Math.round((1-0.4995)*1000)/10` da 50.0 por ruido de punto flotante — un
+Piso dimensionado con eso netea por debajo del costo real).
+
+### Enumeración exhaustiva de críticos, no muestreo (`src/domain/thresholds.js`)
+`combineChannel()` es piecewise-constante en días/noches enteros — el máximo real
+siempre vive en una frontera exacta (`from`, `to`, `from-1`, `to+1`, `minN`, día 0).
+`criticalDays()`/`criticalNights()` enumeran esas fronteras para `worstNative()`;
+`criticalDaysInWindow()` hace lo mismo pero recortado a una ventana UI concreta, para
+que las alertas y la matriz ya NO usen un punto medio (`Math.min(w.lo+1,w.hi)`) — ese
+punto medio podía dejar invisible, dentro de su propia ventana, un early-bird que solo
+arranca a los 90 días.
+
+### Costo por reserva, no por promedio (`src/domain/costs.js`)
+`reservationCost()`/`reservationCostBreakdown()` cargan limpieza/lavandería/insumos UNA
+VEZ por reserva (usando las noches REALES de ese escenario), nunca diluidos por una
+estadía promedio fija — ese era el bug P5/P13 (`costs-legacy.js`, que se deja intacto
+como registro histórico del bug, ya no lo usa nada). `compute()`/`quoteScenario()` usan
+esto automáticamente SI `config.costBreakdown` está presente Y tiene algo cargado
+(`costBreakdownIsFilled()` en index.html) — si Dani nunca toca la calculadora detallada,
+cae al modelo simple `fixedCost+varCost` de siempre, cero regresión.
+
+### PriceLabs Last-Minute configurable (`src/domain/pricelabs-lm.js`)
+5 modos por unidad (`state.lmConfig`): automático (el techo-por-ventana de siempre, se
+marca explícitamente "no verificable matemáticamente sin precio diario real"), plano,
+gradual (decae día a día, NO aplica el máximo a todos los días), precio fijo (avisa si
+cae bajo el Piso), tramos (política de solape EXPLÍCITA: gana el PRIMER tramo activo del
+arreglo en orden, nunca se suman — si Dani confirma que PriceLabs combina distinto, esta
+política se ajusta en un solo lugar). Se despacha DENTRO de `quoteScenario()`, antes del
+Offset y de los descuentos nativos OTA, como pedía el encargo original.
+
+### Descuento no reembolsable de Airbnb (`ab_nonref`, catálogo)
+Capa apilable POST-promo en `combineChannel()` — se aplica DESPUÉS de que gana la promo
+del grupo `'promo'`, no compite dentro de ese grupo. Apagado, en 0% y `verified:false`
+por defecto: nadie inventó un 10%, Dani debe confirmar por listing si aplica y el % real.
+
+### Verificado / No-verificado (`src/domain/verification.js`) y bloqueo real por canal (`src/domain/readiness.js`, FASE 5)
+Registro por unidad para hechos que la app NUNCA puede confirmar sola (Genius+Mobile
+ambos activos en Booking, aislamiento real del Offset en Hospy, comisión bancaria real
+por canal, mezcla de niveles VIP de Expedia, modo real de Last-Minute, no-reembolsable de
+Airbnb). Cada clave declara un `scope`: `'global'` (un registro para toda la unidad) o
+`'channel'` (un registro POR CANAL — hoy solo `bankFeePctByChannel`, porque la comisión
+bancaria real puede confirmarse en un canal y no en otro). Cada registro guarda
+`{status, source, date, note}` — no solo `status/note` como antes. `status` puede ser
+`'no_verificado'` (pendiente, bloquea), `'verificado'` (confirmado, no bloquea) o
+`'no_aplica'` (Dani confirmó explícitamente que ese dato no es relevante para esta
+unidad/canal — tampoco bloquea, pero es una resolución explícita, distinta de "pendiente").
+Todo arranca en `'no_verificado'` — pasar a otro estado es una acción explícita de Dani,
+nunca automática ni asumida al cargar una unidad vieja que no tenía esta clave (ni al
+importar un archivo con un `status` desconocido o con forma inválida — se descarta a favor
+de `'no_verificado'`, ver `src/domain/persistence.js`).
+
+**FASE 5 (revisión externa — "datos financieros verificados"): esto dejó de ser una
+etiqueta visual y pasó a ser una regla real de bloqueo.** Antes, el código ya sabía que
+estos datos estaban "no verificados", pero ninguna vista lo usaba para impedir nada —
+Piso/Base/Offset/"Rentable" se mostraban igual de confiados. `evaluateRecommendationReadiness()`
+(`src/domain/readiness.js`, función pura, la única fuente de esta regla) recibe
+`{channels, discounts, verification}` y decide, **por canal**, qué dato pendiente lo
+afecta:
+
+| Dato (`VERIFICATION_KEYS`) | Alcance | Afecta a... | Cuándo aplica |
+|---|---|---|---|
+| `hospyOffsetIsolated` | global | cualquier canal con Offset ≠ 0% | siempre que ese canal tenga Offset configurado |
+| `bankFeePctByChannel` | **por canal** | el canal cuya comisión bancaria/pasarela > 0% | por defecto Booking y Directo (6%); Airbnb/Expedia en 0% no lo necesitan |
+| `bookingGeniusMobileBoth` | global | Booking | solo si Genius Y Mobile Rate están AMBOS activos |
+| `expediaVipTierMix` | global | Expedia | solo si la Oferta VIP (`ex_mod`) está activa |
+| `airbnbNonRefundable` | global | Airbnb | solo si el no-reembolsable (`ab_nonref`) está activo |
+| `priceLabsLmMode` | global | (informativo) | el bloqueo real de LM ya vive en `lmConfig.verified`/`isLmBlocked()` — esta clave es solo para dejar nota/fuente/fecha de esa confirmación, nunca una segunda fuente de verdad |
+
+`compute()` expone `readiness` (el resultado completo, por canal) y
+`floorReadinessBlocked`/`baseReadinessBlocked` — el gate GLOBAL para Min Price/Base Price.
+
+**Corrección P1 (revisión externa — "Min Price/Base Price globales siguen siendo
+inseguros"): `floorReadinessBlocked`/`baseReadinessBlocked` bloquean si CUALQUIER canal
+ACTIVO tiene un dato pendiente — no solo el canal que HOY fija el Piso/Base
+(`floorChId`/`baseChId`).** Min Price y Base Price son números **GLOBALES**: un solo valor
+que se lleva a PriceLabs y rige los 4 canales a la vez. Caso real que esto corrige: Airbnb
+fija hoy el Piso (su comisión efectiva es la más alta con el catálogo de fábrica); Directo
+NO lo fija hoy (comisión más baja), pero tiene su comisión bancaria real sin confirmar — si
+esa comisión real resulta más alta de lo asumido, Directo podría pasar a ser el canal que
+fija el Piso. Mientras eso siga sin confirmarse, Min Price/Base Price no se pueden tratar
+como recomendación confiable, **aunque el canal que manda hoy (Airbnb) esté perfectamente
+verificado**.
+
+**Refactor de cierre — `evaluateGlobalRecommendationReadiness()` (`src/domain/readiness.js`),
+la ÚNICA fuente de verdad, y `engine.js` la consume directamente (ya no hay una segunda
+copia de la regla).** Contrato exacto — `evaluateGlobalRecommendationReadiness({readiness,
+channels, lmBlocked, baseBlocked})` devuelve:
+
+| Campo | Regla |
+|---|---|
+| `floorReady` | `true` **solo si** todos los canales activos tienen sus datos financieros resueltos (`unreadyChannels(...).length===0`) **y** `lmBlocked===false`. |
+| `baseReady` | `true` **solo si** `floorReady===true` **y** `baseBlocked===false`. |
+| `unreadyChannels` | lista de canales (`{id,name,...}`) con al menos un dato pendiente. |
+| `reasons` | frases reusables (datos de negocio + LM + precio fijo, las que apliquen). |
+| `floorReason`/`baseReason` | texto listo para mostrar, o `null` si está `ready`. |
+
+Puntos del contrato que NO deben revertirse sin querer:
+- **`baseBlocked` (precio LM fijo activo en el día 45) NUNCA bloquea `floorReady`** — el
+  Piso sigue protegiendo de verdad porque evalúa el **peor escenario real** (LM incluido,
+  vía `worstScenarioFactor()`), a diferencia de Base, que solo evalúa el día de referencia
+  45 (y por eso SÍ queda irrelevante cuando ese día tiene un precio fijo).
+- **`lmBlocked` bloquea AMBOS** — un LM sin verificar hace que cualquier número global
+  (Piso incluido) sea una proyección no verificable.
+- **Un dato de negocio pendiente en CUALQUIER canal activo bloquea AMBOS** — el mismo
+  razonamiento del caso Airbnb/Directo de arriba aplica igual a Base.
+
+`engine.js` deriva `floorReadinessBlocked = !floorReady`, `floorReadinessBlockedReason =
+floorReason`, `baseReadinessBlocked = !baseReady`, `baseReadinessBlockedReason = baseReason`
+— **nunca recalcula `unreadyChannels()` ni arma su propio texto de motivo**; ese fue
+exactamente el bug de arquitectura que este refactor cierra (existía una
+`globalRecommendationReady()` documentada y con tests, pero `engine.js` no la consumía —
+calculaba su propia versión inline, con riesgo real de desalinearse). Hay un test dedicado
+(`tests/fase5-financial-readiness.test.js`, "engine.js consume
+evaluateGlobalRecommendationReadiness() como UNICA fuente...") que compara campo por campo
+el resultado de `compute()` contra una llamada directa a la función central con los mismos
+insumos — si alguien reimplementa la lógica inline en `engine.js`, ese test falla.
+
+`unreadyChannels(readiness, channels)` (el bloque de construcción interno, también
+exportado) es la función que responde "¿qué canales, de la lista dada, siguen con algo
+pendiente?" — la reusan `matrix.js` (veredicto "RENTABLE EN TODOS" por ventana) y
+`alerts.js` (fallback "Sin conflictos") para su propia pregunta, legítimamente distinta
+("¿esta ventana/alerta puntual es confiable?", no "¿el número GLOBAL lo es?") — ninguno de
+los dos llama a `evaluateGlobalRecommendationReadiness()`, y `engine.js` no reimplementa el
+filtro de `matrix.js`/`alerts.js`.
+
+La Matriz (`buildMatrixVerdict()`) nunca dice "RENTABLE EN TODOS" si CUALQUIERA de los 4
+canales de esa ventana depende de un dato pendiente (no solo el más ajustado) — el
+veredicto cambia a "DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN". Igual la alerta
+"Sin conflictos" (`buildAlerts()`) de Resumen. El Simulador NUNCA bloquea la simulación
+manual por canal (diagnóstico/simulación individual sigue disponible aunque el global esté
+bloqueado por OTRO canal), pero la etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal
+elegido dependa de algo pendiente (LM incluido). El botón "Ver el paso a paso" tampoco
+precarga Base cuando `baseReadinessBlocked` es true — y nunca sugiere "configura este
+precio global en PriceLabs" mientras esté bloqueado. En `index.html`, todo consumidor
+(KPIs, intro de Matriz, botón "Ir al simulador", precarga del Simulador) lee directamente
+`model.floorReadinessBlocked`/`model.baseReadinessBlocked` como el ÚNICO booleano de
+bloqueo — `model.lmBlocked`/`model.baseBlocked` solo se leen ahí para elegir CUÁL texto
+corto mostrar (el motivo más específico primero), nunca para volver a unir los tres gates
+con `||` (esa unión ya la hizo `evaluateGlobalRecommendationReadiness()`).
+
+### Planificación mensual y reparto de utilidad (`src/domain/monthly-economics.js`)
+Responde lo que `compute()`/`quoteScenario()` (rentabilidad de UNA reserva concreta)
+no responden: ¿la unidad es rentable al final del mes?, ¿cuántas noches hay que
+vender para no perder plata?, ¿qué le queda al propietario y al administrador/PM?
+Dos conceptos separados a propósito, no los mezcles:
+- **Rentabilidad por RESERVA** (`compute()`/`quoteScenario()`): costo real de una
+  reserva concreta de N noches, `reservationCostBreakdown()` sin diluir
+  limpieza/lavandería/insumos por promedio. Sin cambios.
+- **Planificación MENSUAL** (`monthly-economics.js`): costos fijos mensuales
+  completos + una estimación de cuántas reservas caben en el mes. Es una
+  PROYECCIÓN de planificación, nunca el costo exacto de cada reserva real.
+
+**Fuente de costos — reutiliza `state.costBreakdown` tal cual, cero campo nuevo:**
+costos fijos mensuales = `rent+admin+utilities+insurance+tech` (ya eran montos
+mensuales completos, ver `costs.js`); variable/noche = `consumables`; costo por
+reserva (una vez, no diluido) = `cleaning+laundry+supplies`; noches ocupadas
+planeadas = `occNights` (ya significaba "noches ocupadas al mes"). Si la
+calculadora detallada no está llena, el módulo se niega a inventar un total
+mensual desde el modelo simple `fixedCost`/`varCost` por noche —
+`computeMonthlyEconomics()` devuelve `{ok:false, reason}`, nunca un número
+fabricado. Lo mismo si falta la Estadía promedio o el escenario de ingreso.
+
+**Reservas estimadas = noches ocupadas planeadas ÷ estadía promedio.** El costo
+por reserva (turno) se multiplica por ESTE número, nunca por las noches ocupadas
+directamente — evita reintroducir el bug P5/P13 (diluir el turno por promedio) a
+nivel mensual.
+
+**Punto de equilibrio** — contribución REAL por noche ocupada:
+`neto/noche − consumo/noche − costo por reserva ÷ estadía promedio`. Si esa
+contribución es `<= 0`, el equilibrio es explícitamente `{reachable:false}` —
+NUNCA `Infinity` ni un número falso: ningún volumen de ventas cubre los fijos con
+ese precio/costo. Los costos fijos mensuales NUNCA desaparecen con cero reservas
+(probado: 0 noches ocupadas → pérdida exacta = costos fijos mensuales, ni un peso
+menos).
+
+**Reparto Propietario/Administrador (PM) — política única, documentada aquí, no
+la reinventes en otro lado:**
+- `reservePct`/`taxReservePct` son % del **ingreso neto mensual** (retención tipo
+  impuesto, sobre lo facturado, antes de repartir utilidad).
+- `ownerTargetPct`/`managerTargetPct` son % de la **utilidad distribuible** (lo
+  que queda DESPUÉS de costos fijos+variables+reserva+impuestos).
+- Los cuatro viven bajo un único interruptor, `distribution.configured` — si está
+  en `false` (default de fábrica, y de cualquier unidad vieja que no lo tenía),
+  NINGUNO de los cuatro aplica, ni siquiera si quedó un valor viejo en `state`
+  (bug real encontrado y corregido durante el desarrollo: desactivar el reparto
+  debe volver EXACTAMENTE al mismo resultado que nunca haberlo configurado).
+- El `margin` existente (objetivo total sin repartir, usado en Piso/Base/Offset
+  por-reserva) **NUNCA** se reparte automáticamente entre Propietario/PM —
+  `computeMonthlyEconomics()` no lee ese campo en absoluto. Activar el reparto
+  detallado es una acción explícita de Dani, con aviso mientras esté apagado.
+
+**Tres escenarios de ingreso mensual** (`incomeScenario.type`):
+- `'manual'`: neto/noche que Dani escribe directo — nunca se marca "no
+  verificado" (es un dato que Dani ya confirmó al escribirlo, no una proyección
+  del motor). **Corrección P2 (revisión externa):** el default de fábrica es
+  `manualNetPerNight: null` ("todavía no lo escribiste"), **nunca `0`** — un `0`
+  es un ingreso real de cero, no la ausencia del dato, y el bug real era que el
+  default viejo (`0`) pasaba la validación de "es un número finito" y una
+  unidad nueva (donde nadie tocó este campo) mostraba una proyección de
+  PÉRDIDA mensual completa basada en un ingreso que nadie configuró.
+  `null`/`undefined`/`''`/`0`/negativo devuelven `{ok:false, reason:'Falta
+  ingresar neto manual por noche...'}` explícito — solo un número `> 0` calcula.
+  No existe (a propósito) una vía para "simular en 0" sin escribir un número
+  real: nadie lo pidió y abriría el mismo hueco por otra puerta.
+  `src/domain/persistence.js` preserva `null` exactamente (sin generar un
+  warning falso positivo — `null` es un estado válido, no un dato inválido) vía
+  `nullableNumField()`, y migra cualquier unidad vieja sin este campo al mismo
+  default seguro (`null`, nunca `0`).
+- `'channel'`: cotiza con `quoteScenario()` REAL (misma fuente única que Piso/
+  Base/Matriz/Simulador) — cero fórmula de comisiones/descuentos/LM/Offset
+  paralela en este archivo.
+- `'mix'`: promedio ponderado de varios canales cotizados con `quoteScenario()`;
+  los pesos deben sumar 100% exacto — nunca se normaliza en silencio si suman
+  otra cosa.
+
+Si el escenario `'channel'`/`'mix'` depende de LM sin verificar (`quoteScenario().lmBlocked`)
+o de un dato de negocio pendiente (Fase 5, `readiness.byChannel[chId]`), el
+resultado se etiqueta `incomeSource.unverified:true` — la UI muestra
+"SIMULACIÓN NO CONFIABLE" pero SIGUE calculando: nunca se bloquea la simulación
+manual/exploratoria, solo se etiqueta como no confiable para no usarla como
+recomendación automática.
+
+Persistencia: `monthlyIncomeScenario`/`monthlyDistribution` siguen la misma
+disciplina que el resto de `normalizeUnit()` — solo canales conocidos
+(whitelist contra `CHANNELS`), porcentajes fuera de `[0,100]` se descartan a
+favor del default, un `type` desconocido cae a `'manual'` (el más seguro — nunca
+calcula sin que Dani escriba un número él mismo), una unidad vieja sin estos
+campos recibe el default seguro (reparto apagado, escenario manual SIN
+CONFIGURAR — `manualNetPerNight:null`, nunca `0`, ver corrección P2 más abajo).
+
+### Preparación para datos reales: reconciliación de reservas, contrato de moneda y auditoría (`src/domain/reconciliation.js`, `src/domain/currency.js`, `src/domain/audit.js`)
+
+El motor es matemáticamente correcto dado lo que Dani configura — pero eso NO
+prueba que la configuración represente su cuenta real. Esta sección responde
+"¿cómo sé si el modelo se está desviando de lo que de verdad pasa en mis
+reservas?" sin inventar ningún dato nuevo (comisión, impuesto, tipo de cambio,
+promoción o regla de plataforma).
+
+**Reconciliar una reserva** = comparar el estimado que da `quoteScenario()`
+(el mismo motor que ya usan Piso/Base/Matriz/Simulador, nunca una fórmula
+paralela) contra los datos REALES de una reserva/liquidación ya cerrada que
+Dani escribe a mano: canal, precio publicado, noches, días de anticipación,
+comisión OTA real, comisión bancaria real, tarifa de aseo cobrada, payout
+recibido, moneda, y una referencia de reserva opcional (nunca datos del
+huésped — nombre/email/teléfono no se piden ni se guardan).
+
+**Diferencia entre estimado y liquidación real**: `reconcileReservation()`
+(`src/domain/reconciliation.js`) calcula `payoutReceivedEnMonedaBase −
+estimate.payout`, en absoluto y en %. Severidad — umbral fijo, documentado en
+el código, no lo reinventes en otro lado:
+- `|diff%| <= 3%` → `'ok'` (ruido normal, confiable).
+- `real > estimado` y `|diff%| > 3%` → `'warn'` (mejor de lo esperado —
+  informativo, no una alarma).
+- `real < estimado` y `|diff%| > 10%` → `'bad'` (alerta clara: estás
+  recibiendo menos de lo que el modelo asume, revisa qué cambió).
+Si Dani escribió comisión OTA/bancaria/tarifa de aseo/descuento nativo
+reales, cada uno se compara contra lo configurado y aparece en el desglose
+con una causa explícita; si no escribió ninguno, la causa queda genérica
+("ingresa comisiones/tarifas reales para acotar el motivo"). **La
+reconciliación NUNCA cambia `channels`/`discounts` automáticamente** — solo
+sugiere qué revisar; confirmar un valor real sigue siendo 100% manual en
+Resumen → "Verificación de datos financieros".
+
+**`numericMatch` / `modelVerified` / `reliable` (corrección adicional,
+auditoría externa, ronda 4)**: `reliable` NO puede ser `true` solo porque la
+diferencia caiga dentro del umbral (`severity==='ok'`) si el estimado
+depende de supuestos sin confirmar (LM sin verificar, datos de negocio
+pendientes por canal) — coincidir en el número por casualidad (o porque dos
+errores se cancelan) no es lo mismo que un estimado con el modelo realmente
+verificado. `reconcileReservation()` separa dos preguntas independientes:
+`numericMatch` (¿la diferencia cae dentro del umbral? — un hecho puramente
+numérico) y `modelVerified` (¿TODOS los supuestos de los que depende el
+estimado están confirmados? — exactamente `unverifiedAssumptions.length===0`).
+`reliable` sigue existiendo (por compatibilidad — `audit.js` y la UI lo
+siguen leyendo) pero ahora es la conjunción `numericMatch && modelVerified`.
+En la UI (`reconcileResultHTML()`), el tag "CONFIABLE" se reemplazó por dos
+estados distintos: **"COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES"**
+(`numericMatch` true, `modelVerified` false — el caso típico de una unidad
+nueva con LM sin verificar) y **"CONCILIACIÓN CONFIABLE"** (ambos true).
+
+**Contrato de moneda — VERSIÓN ACTUAL: SOLO USD (revisión externa,
+simplificación posterior).** El soporte multimoneda (USD/COP con conversión
+manual verificada) que se construyó en la ronda anterior se **desactivó
+deliberadamente** — la prioridad pasó a ser que todos los cálculos
+financieros reales sean correctos, claros y seguros en **una sola moneda**.
+La multimoneda se implementará en una fase posterior; hasta entonces:
+
+- Toda la aplicación opera en **USD**: moneda de la unidad, precio publicado
+  por PriceLabs, payout real recibido, costos, Min Price, Base Price, Offset,
+  Simulador, Matriz, Alertas, planificación mensual, punto de equilibrio,
+  reparto y conciliación. `quoteScenario()` devuelve `currency: 'USD'`
+  explícito en su resultado — cualquier consumidor puede afirmarlo sin
+  adivinar.
+- **No existe ningún camino que convierta, sume o compare valores de monedas
+  distintas.** `src/domain/currency.js` (`resolveConversion()`) se
+  **conserva en el código** (para no destruir el trabajo de la fase
+  multimoneda futura), pero **ningún flujo activo lo llama** — ni la UI, ni
+  `reconciliation.js`, ni `monthly-economics.js`. La UI ya no ofrece ningún
+  selector de moneda, tasa FX, ni moneda de liquidación por canal.
+- **Unidades nuevas** se crean directamente en USD, sin configuración
+  adicional (`state.currency` siempre `'USD'` por defecto).
+- **Datos viejos en otra moneda (de la fase multimoneda revertida) NUNCA se
+  convierten ni se reinterpretan como USD.** `normalizeUnit()`
+  (`src/domain/persistence.js`) preserva `state.currency` TAL CUAL si el
+  valor guardado no es exactamente `'USD'` (COP, o cualquier otro valor), con
+  un warning explícito — nunca lo fuerza a USD en silencio. Esa unidad queda
+  marcada **"requiere revisión manual"** y **excluida de toda recomendación
+  global**. **Corrección BLOQUEANTE 1 (auditoría externa, ronda 4):**
+  `evaluateUsdOnlyReadiness()` (`src/domain/usd-only.js`) es ahora la ÚNICA
+  fuente que decide esto — mira TANTO la moneda guardada de la unidad COMO
+  la de cada canal (`channels[].settlementCurrency`); antes, `engine.js` solo
+  miraba `state.currency`, así que una unidad guardada en USD pero con un
+  canal histórico marcado `settlementCurrency:'COP'` pasaba el gate sin
+  bloquear nada (Piso/Base se mostraban igual), aunque
+  `monthly-economics.js`/`audit.js` SÍ lo detectaban — tres lugares
+  respondiendo la misma pregunta de tres formas distintas, con riesgo real de
+  desalinearse (que es justo lo que pasó). `engine.js`/`compute()`,
+  `reconciliation.js` y `monthly-economics.js` llaman los tres a esta MISMA
+  función (nunca reimplementan el chequeo) para derivar
+  `currencyBlocked`/`currencyBlockedReason` — un cuarto gate en
+  `evaluateGlobalRecommendationReadiness()` (junto a los datos de negocio
+  pendientes y `lmBlocked`) que bloquea **tanto Piso como Base** (igual que
+  `lmBlocked`, no como `baseBlocked`, que solo afecta a Base). `index.html`
+  además corta explícitamente Matriz (`renderMatrix()`) y Alertas
+  (`renderAlerts()`) antes de calcular ninguna fila/veredicto si
+  `model.currencyBlocked` — ninguna de las dos conoce este gate internamente
+  (es ortogonal, igual que `lmBlocked` lo es de `readiness`), así que el
+  corte vive en el único lugar que ya sabe que la unidad está bloqueada. El
+  Offset sugerido por canal (`renderChannelPages()`) y el precargado
+  automático del Simulador (`goSimBtn`) también respetan este gate con máxima
+  prioridad; la simulación MANUAL (precio escrito a mano) nunca se bloquea,
+  pero se etiqueta "SIMULACIÓN NO CONFIABLE" mientras la unidad esté marcada
+  así. `#currencyReviewBanner` (`renderCurrencyReviewBanner()`) es el banner
+  ÚNICO y SIEMPRE VISIBLE para este estado — ya no depende de
+  `state.currency` solamente, sino del mismo `evaluateUsdOnlyReadiness()`, e
+  incluye un botón **"Crear copia en USD (pendiente de revisión manual)"**
+  (ver "Recuperación segura de una unidad no-USD" más abajo) cuando la unidad
+  MISMA (no solo un canal) está en otra moneda. `channels[].settlementCurrency`
+  y `state.fxRates` (de la ronda anterior) se siguen normalizando/preservando
+  en `persistence.js` — nunca se borran datos existentes — pero ya no se
+  editan desde la UI ni afectan ningún cálculo activo.
+
+**Recuperación segura de una unidad no-USD (BLOQUEANTE, auditoría externa,
+ronda 4; corregida de fondo en ronda 5 — BLOQUEANTE 3)**: editar el JSON
+exportado a mano ya NO es la única vía de recuperación. El botón del banner
+crea una **copia nueva directamente en USD**, SIN convertir ningún valor (los
+números quedan exactamente como estaban), marcada "pendiente de revisión
+manual" — `state.costBreakdownConfirmed` se resetea a `false` a propósito en
+la copia (fuerza revisar también los costos, no solo la moneda) y el nombre
+deja explícito que es una copia sin revisar. La unidad ORIGINAL (bloqueada)
+nunca se toca ni se borra — sigue disponible tal cual estaba.
+
+**BLOQUEANTE 3 (auditoría externa, ronda 5) — "la recuperación segura no era
+segura"**: la ronda 4 dejaba la copia con `currency:'USD'` desde el instante
+en que se creaba — nada más la distinguía de una unidad USD real y
+verificada. Caso reproducido: unidad COP con `fixedCost:40`/`varCost:25` →
+crear copia USD → confirmar LM y verificaciones de negocio → el Piso/Base
+GLOBALES se mostraban disponibles (el encargo reporta Piso USD 108,33 y Base
+USD 196,97) aunque NADIE hubiera revisado si esos números copiados
+representaban de verdad USD, o seguían siendo COP con la etiqueta encima.
+`usdManualReviewPending` (`src/domain/usd-only.js`, un tercer motivo de
+bloqueo dentro de `evaluateUsdOnlyReadiness()`, evaluado ANTES que
+`unitCurrency`) cierra ese hueco: la copia arranca con esta bandera en
+`true`, y bloquea GLOBALMENTE — Piso, Base, Offset, KPIs, Matriz, Alertas,
+Simulador precargado, planificación mensual, conciliación y el checklist de
+auditoría — exactamente igual que un `currency!=='USD'` real, sin importar
+que la moneda GUARDADA ya diga `'USD'`. Es la MISMA función que consumen
+`engine.js`/`reconciliation.js`/`monthly-economics.js`/`audit.js` (ningún
+módulo reimplementa el chequeo), así que no puede evadirse resolviendo LM,
+comisiones, promociones o costos por su cuenta — solo un flujo explícito
+puede apagarla:
+- El banner, mientras `usdManualReviewPending` sea `true`, muestra el botón
+  **"Ya revisé manualmente todos los valores en USD →"** (`#confirmUsdReviewBtn`)
+  en vez del de "Crear copia" (no aplica: la copia ya existe, lo que falta es
+  revisarla). Requiere una confirmación FUERTE (`confirm()` con el texto
+  exacto: *"Revisé manualmente todos los valores monetarios copiados y
+  confirmo que ahora están expresados correctamente en USD. Entiendo que no
+  hubo conversión automática."*) — es el ÚNICO punto de todo el código donde
+  `usdManualReviewPending` puede pasar a `false`.
+- Cada transición (creación de la copia, confirmación de revisión) agrega una
+  entrada a `state.usdManualReviewLog` (`{at, event, text}`,
+  `src/domain/persistence.js` la normaliza con la misma disciplina estricta
+  que `reconciliations[]` — una entrada malformada se descarta ENTERA, nunca
+  se repara a medias) — es **append-only desde la UI**: la nota de que la
+  unidad fue/es una copia sin convertir nunca se borra, ni siquiera después
+  de confirmar la revisión. `#usdReviewTrail` (Resumen, junto al campo de
+  moneda) la muestra SIEMPRE, esté o no la unidad bloqueada — es la
+  trazabilidad permanente que pide la auditoría.
+- Persistencia (`normalizeUnit()`): `usdManualReviewPending` es tri-estado
+  estricto como `costBreakdownConfirmed` — solo `true`/`false` EXPLÍCITO
+  sobrevive; ausente o cualquier valor no-booleano cae a `false` (una unidad
+  normal preexistente NUNCA queda bloqueada por una regla que no le aplica,
+  y un import malformado NUNCA puede marcar una copia como revisada sin el
+  booleano correcto).
+- La copia sigue sujeta a los demás gates (LM, datos de negocio, costos)
+  exactamente igual que cualquier otra unidad — confirmar la revisión de
+  moneda no salta ninguno de esos.
+- **Reconciliación**: `reconcileReservation()` exige `real.currency==='USD'`
+  (o ausente/vacío, que se asume USD porque el formulario ya no ofrece otra
+  moneda) — un valor explícito distinto bloquea con
+  `currencyBlocked:true`, sin calcular diferencia ni severidad. Una
+  conciliación VIEJA guardada con otra moneda (dato de la fase anterior)
+  también se bloquea igual al recomputarse — nunca muestra un % de
+  diferencia falso.
+- Advertencia visible en la UI: "Todos los valores deben ingresarse en USD."
+  (`#usdOnlyNotice`, junto al campo de moneda en Resumen).
+
+**Contrato de costos — simple / detailed_incomplete / detailed_confirmed
+(BLOQUEANTE 2, auditoría externa, ronda 4)**: `evaluateCostReadiness()`
+(`src/domain/cost-mode.js`) es la ÚNICA fuente de verdad de si el desglose
+detallado de costos (Resumen → "Costos por noche → calcular a partir de
+costos detallados") puede alimentar una recomendación. Corrige un bug real
+confirmado: `costBreakdownIsFilled()` (index.html) trataba CUALQUIER campo
+del desglose con un valor > 0 como "modo detallado ya activo", así que
+escribir solo "Consumos: 5" (con Arriendo/Limpieza/etc todavía en 0 porque
+Dani no había llegado a esos campos) hacía que el costo real (32+22=54,
+Piso≈90) cayera a un costo de 5 (Piso≈8.33) — los ceros de los campos sin
+tocar se trataban como datos reales confirmados, no como "todavía no los he
+escrito". Tres estados, nunca inferidos de "algún campo > 0" para decidir si
+el desglose ALIMENTA el cálculo (esa heurística — `costBreakdownIsFilled()`,
+se conserva — solo decide si mostrar la ETIQUETA "tocado"):
+- `'simple'`: el desglose nunca se tocó — se usa `fixedCost`/`varCost`. Si
+  esos dos siguen en el valor ilustrativo de fábrica (32/22 exactos, nunca
+  tocados), el modo es `'simple_example'` y **BLOQUEA** Piso/Base/Offset/
+  Matriz/Alertas/planificación mensual — antes esto solo mostraba un aviso
+  pasivo ("EJEMPLO") sin bloquear nada; ahora un costo de ejemplo nunca puede
+  alimentar una recomendación real, tiene que confirmarse.
+- `'detailed_incomplete'`: se editó al menos un campo del desglose, pero
+  `state.costBreakdownConfirmed` no es `true` — el desglose NUNCA alimenta el
+  costo real mientras tanto (el motor sigue usando el modelo simple,
+  `fixedCost`/`varCost`, exactamente como si el desglose no existiera) y
+  Piso/Base/Offset/Matriz/Alertas/planificación mensual quedan bloqueados con
+  el motivo exacto.
+- `'detailed_confirmed'`: el usuario marcó explícitamente la casilla "Revisé
+  estos costos reales en USD, incluidos los valores en cero"
+  (`#costBreakdownConfirmedChk`, dentro del propio `<details>` de la
+  calculadora) — es el ÚNICO estado que puede alimentar el costo real
+  (`reservationCostBreakdown()`) a Piso/Base/Offset/Matriz/Alertas/
+  planificación mensual. Un cero real y confirmado es válido (la
+  confirmación explícita manda sobre la heurística de "tocado": un desglose
+  totalmente en cero pero con `costBreakdownConfirmed:true` SÍ se usa,
+  cost=0). **Cualquier edición posterior de cualquier campo del desglose
+  invalida la confirmación** (`state.costBreakdownConfirmed` vuelve a
+  `false` en el handler de `data-cb`) — nunca se reutiliza una confirmación
+  vieja sobre datos que ya cambiaron. Ya NO existe el auto-sync que copiaba
+  el resultado de la calculadora detallada a los campos `fixedCost`/`varCost`
+  simples (`data-k`) — ese auto-sync era el OTRO vector del mismo bug: un
+  campo suelto contaminaba también el modelo "simple" de respaldo.
+
+Integración en el motor: `compute()` (`engine.js`) y `quoteScenario()`
+(`quote.js`) reciben SIEMPRE `config.costBreakdown` (aunque esté vacío o sin
+confirmar) más `config.costBreakdownConfirmed` — deciden internamente si es
+usable (`costBreakdownConfirmed!==false`, con `undefined` tratado como "no
+aplica esta regla", para no romper ningún test existente que pasa
+`costBreakdown` directo sin conocer este contrato). `costBlocked`/
+`costBlockedReason` es un QUINTO gate en `evaluateGlobalRecommendationReadiness()`
+(mismo nivel que `lmBlocked`/`currencyBlocked` — bloquea Piso Y Base).
+`buildMatrixVerdict()`/`buildAlerts()` degradan el veredicto "RENTABLE EN
+TODOS"/"OK: sin conflictos" a "COSTOS SIN CONFIRMAR" cuando `model.costBlocked`
+— los veredictos NEGATIVOS (TECHO EXCEDIDO/BAJO COSTO/CUBRE COSTO, alertas
+PISO/DURACIÓN/etc.) NO se suprimen (son advertencias reales, no una
+afirmación de "todo bien", mismo principio ya establecido para `lmBlocked`).
+`computeMonthlyEconomics()` (planificación mensual) NUNCA recibe el desglose
+a menos que el modo sea exactamente `'detailed_confirmed'` — en cualquier
+otro caso recibe `costBreakdown:undefined`, que ya produce su "NO CALCULABLE
+— falta la calculadora de costos detallada" existente (sin cambios en ese
+módulo). `#dataProvenanceBanner` (`renderDataProvenance()`) es el banner
+ÚNICO y SIEMPRE VISIBLE para el estado de costos (igual que
+`#currencyReviewBanner` lo es para moneda) — muestra "EJEMPLO" o "COSTOS SIN
+CONFIRMAR" según el modo.
+
+**Auditoría de datos reales** (`src/domain/audit.js`, `buildAuditChecklist()`)
+— rollup puro de señales que YA calculan otros módulos (nunca reimplementa
+qué está pendiente): costos reales cargados, comisiones por canal
+verificadas, Last-Minute verificado, Offset verificado, promociones
+verificadas (Booking Genius+Mobile, Expedia VIP, Airbnb no-reembolsable),
+moneda en USD (item `currency`: falla si `state.currency!=='USD'` o si algún
+canal quedó marcado con una moneda de liquidación distinta de USD — dato
+viejo de la fase multimoneda anterior, ya no hay ningún camino para
+"resolverlo" salvo corregir el dato, ver contrato de moneda arriba), y la
+última reserva conciliada con su diferencia. Estado final — **SOLO 3
+valores, NUNCA "producción"**:
+- `'simulacion'`: los costos siguen en el valor ilustrativo de fábrica.
+- `'datos_parciales'`: hay costos reales pero falta confirmar algo, o no se
+  ha conciliado ninguna reserva, o la última conciliación no fue confiable.
+- `'listo_supervisado'` ("listo para uso interno supervisado"): costos
+  reales, TODO el negocio confirmado, LM confirmado, moneda resuelta si
+  aplica, y al menos una reconciliación reciente dentro de lo esperado.
+  Sigue sin ser "producción" — esa palabra la usa Dani, nunca la herramienta.
+
+**Qué revisar antes de confiar en una recomendación de precio** (checklist
+recomendado, en orden):
+1. Airbnb: comisión real (Host-Only o Split-Fee), tarifa de aseo por listing,
+   si el descuento no reembolsable está activo y su % exacto.
+2. Booking.com: extranet → confirma si Genius y Mobile Rate están AMBOS
+   activos hoy (cambia cuál canal fija el Piso).
+3. Expedia: mezcla real de niveles VIP de tus huéspedes (hoy se asume el
+   peor caso, 20%).
+4. Hospy/PriceLabs: si el Offset por canal se aísla de verdad por canal o se
+   distribuye a todos los conectados; el modo real de Last-Minute que usa la
+   cuenta.
+5. Extractos bancarios/pasarela: comisión real por transacción. **[Esta
+   versión solo admite USD — si tu unidad real liquida en otra moneda, no
+   ingreses valores convertidos por tu cuenta en los campos de esta app;
+   espera a la fase multimoneda o consulta antes de usar esta unidad para
+   recomendaciones.]**
+6. Guarda una conciliación real por canal periódicamente — un solo dato
+   verificado en el formulario no reemplaza revisar reservas de verdad.
+
+**Limitaciones explícitas de esta herramienta**: no llama a ninguna API
+(PriceLabs, bancos, tipo de cambio) — todo dato real lo escribe Dani a mano;
+no detecta automáticamente cuándo una comisión configurada quedó desactualizada
+(solo lo hace evidente si Dani concilia una reserva); las conciliaciones
+guardadas viven SOLO en este navegador (`localStorage`, mismo mecanismo que
+el resto de la app) — no hay respaldo en la nube más allá de Exportar/Importar
+manual; el checklist de auditoría es un resumen, no un sustituto de revisar
+la cuenta real periódicamente.
+
+### Validación y bloqueo (`src/domain/validate.js`)
+El motor nunca lanza (`compute()`/`quoteScenario()` siempre devuelven algo), pero
+`compute()` ahora también devuelve `valid`/`errors`. Un resultado no confiable (margen
+≥100%, comisión+bancaria ≥100%, costos negativos, NaN/Infinity) se BLOQUEA en la UI
+(banner rojo + KPIs en "—" con el motivo) en vez de mostrarse como si fuera una
+recomendación real. Aviso aparte (`#dataProvenanceBanner`) mientras `fixedCost`/`varCost`
+sigan exactamente en 32/22 — el ejemplo ilustrativo del webinar de Kunas, NUNCA los
+costos reales de una unidad (ver sección 5, punto 1).
+
+### Persistencia: UUID, migración no destructiva, XSS (`src/domain/persistence.js`,
+`src/domain/sanitize.js`)
+- **Guardar ahora escribe siempre a `v3:<uuid>`** (`state.id`, generado en el primer
+  guardado) — ya no colisiona si dos unidades comparten nombre o si se renombra una.
+  `v2:<slug-del-nombre>` (formato viejo) se sigue pudiendo cargar/exportar, pero ya no
+  recibe escrituras nuevas.
+- **Migración v2→v3 es un botón explícito** ("Migrar unidades antiguas"), nunca
+  automática al cargar la página — copia cada `v2:*` a un `v3:<uuid>` nuevo con
+  `migratedFromV2Key` de rastro, y **jamás borra ni toca los `v2:*` originales**.
+- **Eliminar pide confirmación** (`confirm()`) — antes no pedía ninguna, un click
+  borraba sin aviso.
+- **Importar valida la FORMA del archivo** (`validateImportFile()`) antes de escribir
+  nada a storage — un archivo malformado se rechaza entero; elementos individuales
+  inválidos dentro de un archivo por lo demás válido se descartan y se listan, no se
+  escriben a ciegas.
+- **XSS corregido**: un nombre de descuento/canal/unidad con HTML/JS embebido (ej. vía un
+  archivo de "respaldo" importado, no necesariamente por Dani) se ejecutaba al
+  renderizarse en el catálogo de descuentos, la matriz, el Simulador, las alertas y la
+  lista de unidades — `escapeHtml()` se aplica en TODOS esos puntos ahora. Cualquier
+  interpolación NUEVA de un campo de texto proveniente de `state`/`discounts`/`channels`
+  dentro de un `innerHTML` DEBE pasar por `escapeHtml()` — no asumir que el dato es
+  confiable solo porque hoy lo escribe la propia UI (mañana puede venir de un import).
+
+### Actualización (revisión externa) — LM integrado en Piso/Base-offset/Matriz, XSS/import endurecidos, E2E
+Una revisión posterior encontró que `compute()`/`suggestedOffset()` nunca recibían
+`lmConfig`/`ceilings` — el Piso ignoraba Last-Minute por completo aunque hubiera un
+modo VERIFICADO configurado (caso reproducido: Directo, costo 100, LM flat 50%
+verificado → Piso viejo 109.89 neteaba 50 real, no 100). Corregido en
+`src/domain/worstcase.js` (enumeración exhaustiva canal×día×noche×OTA×LM×offset,
+usada por `compute().floor`) y `src/domain/matrix.js` (la fila de la matriz ahora
+elige el escenario de PEOR PAYOUT real, no el de mayor descuento nativo). El
+descuento por defecto (`ceiling_auto`, modo de todas las unidades hasta que Dani
+confirme otro) ahora SÍ protege el Piso — el Piso base pasó de USD 90 a USD 111 en
+el estado por defecto, un cambio de número esperado y correcto, no una regresión.
+`quoteScenario()` expone `lmMode`/`lmVerified`/`lmBlocked`; los veredictos
+"RENTABLE EN TODOS" que dependen de LM automático sin confirmar ahora se marcan
+"⚠ LM SIN VERIFICAR" explícitamente. `src/domain/persistence.js` ganó
+`normalizeUnit()` — normalización estricta y única para cualquier registro v2/v3
+(guardar/cargar/importar/migrar todos pasan por ahí): todo campo numérico se
+coerciona con validación explícita (nunca `Math.max(0,x)` ni `parseFloat(x)||0`
+silenciosos — un valor inválido se descarta a favor del default y se reporta en
+`warnings`), ids desconocidos de descuentos/canales se descartan, tramos LM
+malformados no rompen la UI. Esto cierra en la raíz el vector XSS que quedaba en
+atributos "numéricos" (`pct`, `comm`, `offsetPct`, etc.) — el import ahora
+re-serializa la versión normalizada antes de escribir a storage, no el JSON crudo.
+La alerta REALIDAD también migró a `worstScenarioFactor()`+`quoteScenario()` (antes
+tenía su propia fórmula sin LM ni aseo) — cero fórmula financiera duplicada en todo
+`alerts.js`. Se agregó E2E automatizado real (Playwright, `e2e/smoke.spec.js`,
+corre en CI job `e2e`) cubriendo carga limpia, Simulador, bloqueo de validación,
+guardar/cargar/eliminar con confirmación, importación con payload XSS real
+(confirma que no se ejecuta), y la matriz.
+
+### Actualización (revisión externa, RONDA 2) — LM bloqueante propagado a la UI, Base incorpora Offset/LM real, fin de las coerciones silenciosas en edición manual, fix día/noche en Matriz
+Una segunda revisión encontró cuatro bloqueantes sobre la ronda anterior:
+
+1. **CRÍTICO** — `quoteScenario()` ya calculaba `lmBlocked` por escenario, pero
+   `compute()` seguía devolviendo `valid:true` y la UI mostraba Min Price/Base Price
+   como si fueran confiables, incluso con la CONFIGURACIÓN POR DEFECTO (LM automático,
+   sin verificar). `compute()` ahora devuelve `lmBlocked`/`lmBlockedReason`
+   (`isLmBlocked()`, `src/domain/pricelabs-lm.js` — fuente única, la comparten
+   `compute()`, `quoteScenario()`, `alerts.js` y `matrix.js`). `ceiling_auto` bloquea
+   SIEMPRE, incluso marcado "verificado" (es una proyección matemática, no un hecho
+   confirmable). Con la config por defecto de una unidad nueva, Min Price, Base Price y
+   el Offset sugerido de cada canal arrancan en "—" con un aviso que dice EXACTAMENTE
+   qué falta confirmar y en qué pantalla (`Resumen → "Last-Minute de PriceLabs"`, con
+   botón directo). La Matriz ya no agrega "⚠ LM SIN VERIFICAR" como texto suelto sobre
+   un veredicto que sigue diciendo "RENTABLE EN TODOS" (`vLvl:'ok'`) — ahora
+   `buildMatrixVerdict()` (`src/domain/matrix.js`, extraída de `renderMatrix()` para
+   ser testeable sin DOM) cambia el veredicto ENTERO a un estado propio
+   ("LM SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN") cuando el único motivo por el que
+   la ventana sale bien es un LM no verificable. Los veredictos negativos (TECHO
+   EXCEDIDO/BAJO COSTO/CUBRE COSTO) NO se bloquean — son advertencias, no una
+   afirmación de que todo está bien. La alerta "Sin conflictos" (fallback `OK` cuando
+   `buildAlerts()` no encuentra nada que reportar) tiene el mismo tratamiento.
+2. **ALTO** — el Base Price excluía Offset y LM por diseño ("Base es el precio uniforme
+   SIN offsets"), pero eso volvía el texto "netea tu objetivo" matemáticamente falso en
+   cuanto Dani configuraba un offset real o un LM verificado. Se optó por la opción
+   recomendada por el revisor (en vez de renombrar Base a "referencia teórica"):
+   `compute().base` ahora incorpora el Offset y el LM REALMENTE configurados de cada
+   canal en su escenario de referencia (día 45) — sigue siendo un PUNTO ÚNICO, nunca una
+   búsqueda exhaustiva (eso sigue siendo tarea exclusiva del Piso). `lmPctAtDay45()`
+   (`engine.js`) es la única fórmula que resuelve LM a día 45 — la comparten
+   `compute().base` y `suggestedOffset()` (antes cada uno la reimplementaba). Ver
+   `tests/fase-base-property.test.js`, reescrito para probar offset negativo/positivo y
+   LM activo SIN neutralizar nada (antes el test ponía `offsetPct:0` a propósito, lo que
+   el revisor señaló como una prueba que no prueba el comportamiento real).
+3. **MEDIO** — la edición MANUAL (no solo la importación) seguía usando
+   `parseFloat(t.value)||0` en cada handler de `change` de `index.html`: un valor
+   inválido se volvía 0 en silencio. `src/domain/input-parse.js` (`parseValue`,
+   `parsePct`, `validateRange` — puras, testeadas) es ahora la fuente única que usan
+   TODOS los campos numéricos editables a mano (descuentos, canales, techos, costos,
+   LM, tramos). Un valor inválido NUNCA se escribe a `state`: el input vuelve a mostrar
+   el último valor válido y aparece `#inputErrorToast` (visible en cualquier pestaña,
+   posición fija) con el motivo exacto. Se agregó `validateLmTiersOverlap()`
+   (`src/domain/validate.js`) — advertencia (no bloqueante) cuando dos tramos LM activos
+   se solapan, explicando cuál gana con la política "primero del arreglo" ya existente.
+4. **BAJO** — `worstScenariosInWindow()` devuelve `day`/`night` (`src/domain/matrix.js`),
+   pero `renderMatrix()` leía `worstPayoutRow.d`/`.n` (nunca existieron) — la fila
+   "Peor payout real detectado" siempre mostraba "día undefined". Corregido a
+   `worstPayoutRow.day`/`.night`.
+
+Tests nuevos: `tests/fase-lm-blocking.test.js`, `tests/fase-input-validation.test.js`,
+`tests/fase-base-property.test.js` (reescrito), guardia de nombres de campo en
+`tests/fase-matrix-worstcase.test.js`. E2E nuevos: `e2e/lm-blocking.spec.js`,
+`e2e/manual-input-validation.spec.js`, `e2e/matrix-detail.spec.js`; `e2e/smoke.spec.js`
+actualizado (la carga limpia ahora arranca bloqueada por diseño).
+
+### Actualización (revisión externa, FASE 5) — verificación de datos financieros como regla real, no etiqueta
+La revisión externa señaló que el registro de `verification.js` reconocía datos "no
+verificados" pero ningún cálculo se bloqueaba por eso — el motor podía estar
+matemáticamente correcto y aun así dar una recomendación incorrecta si esos datos no
+representaban la cuenta real. Se agregó `src/domain/readiness.js`
+(`evaluateRecommendationReadiness()`), la única fuente que decide, por canal, qué dato
+pendiente lo afecta (ver tabla en la sección "Verificado / No-verificado" arriba). Cambios:
+
+1. `verification.js`: cada registro guarda `status`/`source`/`date`/`note` (antes solo
+   `status`/`note`); nuevo estado `'no_aplica'` (resuelto, no bloquea, distinto de
+   `'no_verificado'`); `bankFeePctByChannel` pasó de un registro plano a uno POR CANAL.
+2. `engine.js`: `compute()` rastrea `floorChId`/`baseChId` (qué canal fija cada número) y
+   expone `readiness`/`floorReadinessBlocked`/`floorReadinessBlockedReason`/
+   `baseReadinessBlocked`/`baseReadinessBlockedReason` — ortogonales a `lmBlocked`/
+   `baseBlocked`, sin tocarlos. Solo se activa si `config.verification` viene explícito
+   (mismo patrón que `lmConfig` — callers de test que no lo pasan no ven un bloqueo nuevo
+   que no pidieron; en producción `state.verification` siempre está presente).
+3. `matrix.js`/`alerts.js`: "RENTABLE EN TODOS" y "Sin conflictos" ya no se sostienen si
+   CUALQUIER canal de esa ventana depende de un dato pendiente (no solo el más ajustado).
+4. `persistence.js`: `normalizeVerification()` migra unidades viejas (incluido el formato
+   plano pre-Fase-5 de `bankFeePctByChannel`) siempre a `'no_verificado'` por canal —
+   JAMÁS hereda `'verificado'` de un registro que no era por canal. Un payload malformado
+   (status inventado, campos no-string, objetos rotos) nunca se acepta como verificado.
+5. `index.html`: KPIs/pestañas de canal/Matriz bloquean por canal con una explicación
+   específica de qué falta y dónde confirmarlo; el Simulador etiqueta la simulación
+   manual como "SIMULACIÓN NO CONFIABLE" (nunca la bloquea); el formulario de
+   verificación ahora captura fuente/fecha/nota, con sub-filas por canal donde aplica.
+   Prioridad de avisos en la pestaña de cada canal: `lmBlocked` > `baseBlocked` > dato de
+   negocio pendiente > normal (el aviso de datos pendientes se agrega como nota, nunca
+   reemplaza la explicación más específica de LM/precio fijo).
+
+Tests nuevos: `tests/fase5-financial-readiness.test.js` (20),
+`tests/fase5-verification-persistence.test.js` (8), `e2e/financial-readiness.spec.js` (9).
+Tres E2E preexistentes (`e2e/lm-blocking.spec.js` ×2, `e2e/sim-blocked-bypass.spec.js` ×1)
+asumían que verificar LM bastaba para desbloquear con el catálogo de fábrica — ya no es
+cierto (los datos de negocio son un gate ortogonal nuevo); se ajustaron con un helper
+`resolveAllFinancialFacts()` que aísla específicamente el comportamiento de LM que esos
+tests prueban, sin cambiar lo que verifican.
+
+### Actualización — Planificación mensual y reparto de utilidad
+Nuevo `src/domain/monthly-economics.js` (contrato completo documentado arriba, sección
+"Planificación mensual y reparto de utilidad") para responder rentabilidad de MES
+completo (no solo de una reserva): ingreso neto mensual, costos fijos+variables,
+utilidad distribuible, punto de equilibrio (nunca `Infinity`, "no alcanzable" explícito
+si la contribución por noche es `<=0`), y reparto Propietario/Administrador (apagado
+por defecto, política única documentada, nunca reparte el `margin` viejo
+automáticamente). Reutiliza `state.costBreakdown` existente (cero campo de costos
+nuevo) y `quoteScenario()` para cualquier ingreso modelado por canal (cero fórmula
+financiera paralela). Nueva sección en Resumen: "Rentabilidad mensual y punto de
+equilibrio" — KPIs del mes, tabla de sensibilidad por ocupación (0/5/10/15/20/25/30
+noches), explicación textual de los supuestos. Se etiqueta "SIMULACIÓN NO CONFIABLE"
+(reutilizando `readiness`/`lmBlocked` de Fase 5, sin reimplementar esa regla) cuando el
+escenario de ingreso depende de un dato sin confirmar — nunca se bloquea, nunca se
+presenta como recomendación automática.
+
+Bug real encontrado y corregido durante el desarrollo (antes de cualquier commit):
+`reservePct`/`taxReservePct` seguían aplicándose aunque `distribution.configured`
+pasara a `false` (un valor viejo quedaba en `state` y el módulo lo aplicaba igual) —
+corregido para que los cuatro porcentajes del reparto vivan bajo el mismo interruptor.
+
+Tests: `tests/monthly-economics.test.js` (29, con fórmulas calculadas a mano en
+comentarios — reconciliación exacta, punto de equilibrio en el borde de contribución
+cero, reparto que suma exacto, `quoteScenario()` real para canal/mezcla, moneda que
+nunca se mezcla), `e2e/monthly-economics.spec.js` (8). 155/155 unitarios, 42/42 e2e
+(incluye rondas 2/3 y Fase 5, sin regresión).
+
+### Pendiente explícito de esta ronda (no completado, no ocultado)
+- **Accesibilidad**: se corrigieron los controles nuevos sin texto visible (editor de
+  tramos). El resto del formulario (pre-existente, antes de esta auditoría) usa `<span>`
+  en vez de `<label for>` — auditoría completa queda pendiente si se prioriza.
+- Todo lo de la sección 5 (costos reales, comisión bancaria real, multi-moneda,
+  multi-unidad, verificación real en Hospy/Booking/PriceLabs) sigue exactamente igual de
+  pendiente — esta auditoría (y la Fase 5) construyeron la INFRAESTRUCTURA para que esos
+  datos entren sin inventar nada, y AHORA ADEMÁS bloquean la recomendación de los canales
+  afectados mientras sigan pendientes — pero ningún dato de negocio real fue inventado ni
+  cargado; eso solo lo puede hacer Dani desde sus extranets/facturas/reportes reales.
+- **Multi-moneda por canal (COP/USD) sigue sin convertir tasas** — fuera de alcance de
+  esta ronda, no se tocó.
+- **Reparto Propietario/PM real**: el módulo mensual construyó el mecanismo (política
+  documentada, validación, apagado por defecto) pero los % reales de
+  `ownerTargetPct`/`managerTargetPct`/`reservePct`/`taxReservePct` son una decisión de
+  negocio 100% de Dani — nadie inventó un split (ni siquiera 50/50). Actívalo en
+  Resumen → "Reparto Propietario/Administrador" cuando tengas esos números reales.
+
+### Actualización (revisión externa) — P1: Min Price/Base Price globales inseguros; P2: neto manual mensual en 0 aceptado como dato real
+Revisión independiente encontró dos fallos que los 155/42 tests anteriores no cubrían:
+
+**P1 — el gate de Fase 5 solo miraba el canal que fija el número hoy, no todos los
+canales activos.** `floorReadinessBlocked`/`baseReadinessBlocked` (`src/domain/engine.js`)
+comparaban `channelReady(floorChId)`/`channelReady(baseChId)` — si el canal que hoy fija
+Min Price/Base Price estaba confirmado, el número global se mostraba aunque OTRO canal
+(que no fija el número hoy) tuviera un dato pendiente que podría hacerlo pasar a fijarlo
+en cuanto se conociera su valor real (comisión bancaria, Offset, etc.). Corregido: nueva
+función pura `unreadyChannels(readiness, channels)` (`src/domain/readiness.js`) — "¿qué
+canales, de TODOS los activos, siguen con algo pendiente?" — y `globalRecommendationReady
+({readiness, channels, lmBlocked, baseBlocked})`, la regla combinada documentada (datos de
+negocio + LM + precio fijo) para cualquier consumidor que necesite una sola respuesta.
+**[Nota: `globalRecommendationReady()` existió con esta firma solo en esta ronda —
+`engine.js` todavía NO la consumía (calculaba su propio `unreadyChannels()` inline), lo cual
+se corrigió en el refactor de cierre siguiente, que la reemplazó por
+`evaluateGlobalRecommendationReadiness()` con el contrato definitivo `floorReady`/`baseReady`
+— ver esa sección más arriba, es la que describe el comportamiento ACTUAL.]**
+`floorReadinessBlocked`/`baseReadinessBlocked` ahora se derivan de `unreadyChannels(...)`
+sobre TODOS los canales, no solo el que fija el número hoy — y el motivo (`...Reason`)
+lista explícitamente qué canales y qué datos faltan. `matrix.js`/`alerts.js` se
+refactorizaron para reusar la misma `unreadyChannels()` en vez de reimplementar el mismo
+filtro cada uno por su cuenta (ya lo hacían correctamente para sus propios veredictos —
+ahora comparten la función con `engine.js`). Ningún texto de la UI sugiere "configura este
+precio global en PriceLabs" mientras esté bloqueado (ya no lo hacía; se verificó
+explícitamente). Las simulaciones/diagnósticos POR CANAL (pestaña de cada canal, Simulador)
+siguen disponibles sin cambios — el bloqueo es solo sobre el número GLOBAL.
+
+**P2 — `manualNetPerNight:0` (el default de fábrica) pasaba como ingreso mensual válido.**
+`defaultMonthlyIncomeScenario()` arrancaba en `manualNetPerNight: 0`, y
+`computeMonthlyEconomics()` solo validaba "es un número finito" — `0` lo es, así que una
+unidad nueva (donde Dani nunca tocó ese campo) mostraba una PROYECCIÓN DE PÉRDIDA mensual
+completa basada en un ingreso que nadie configuró. Corregido: el default pasa a `null`
+("todavía no lo escribiste", nunca `0` como sustituto silencioso de "sin dato");
+`resolveIncomeScenario()` en modo manual rechaza `null`/`undefined`/`''`/`0`/negativo con
+`{ok:false, reason:'Falta ingresar neto manual por noche...'}` explícito — solo un número
+`> 0` calcula. `src/domain/persistence.js` gana `nullableNumField()` para que `null`
+sobreviva el ciclo de guardado/importación exactamente, sin generar un warning falso
+positivo (es un estado válido, no inválido). La UI (`index.html`) usa
+`allowEmpty:true, emptyValue:null` en el campo — borrar el campo vuelve a "sin configurar",
+nunca revierte a un `0` silencioso.
+
+Regresión encontrada y corregida en el mismo commit: `e2e/base-fixedprice.spec.js` (test
+"día 45 no cubierto, Base Price vuelve a mostrarse normal") asumía que el mecanismo de LM
+`fixed_price` era el único gate en juego, pero con el catálogo de fábrica Booking y Directo
+siempre tienen comisión bancaria real sin confirmar — con el fix de P1, eso ahora bloquea
+el Base global independientemente del rango de `fixed_price`. Se aisló con el mismo patrón
+ya usado en `lm-blocking.spec.js`/`sim-blocked-bypass.spec.js` (`resolveAllFinancialFacts()`
+antes de mover el rango), para que el test siga probando específicamente el mecanismo de
+precio fijo, no el gate de datos financieros.
+
+Tests nuevos: `tests/fase5-financial-readiness.test.js` (+6, caso obligatorio Airbnb-fija-hoy/
+Directo-pendiente, `unreadyChannels()`/`globalRecommendationReady()` directos, Matriz),
+`tests/monthly-economics.test.js` (+9, `manualNetPerNight` en `0`/`''`/`null`/negativo/
+positivo, a nivel `computeMonthlyEconomics()` y a nivel `normalizeUnit()`),
+`e2e/financial-readiness.spec.js` (+4), `e2e/monthly-economics.spec.js` (+4). **170/170
+unitarios, 50/50 e2e, sin regresión** (incluye el fix del test de `base-fixedprice.spec.js`
+arriba).
+
+### Actualización (revisión externa) — refactor de cierre: `evaluateGlobalRecommendationReadiness()` como única fuente de verdad de los bloqueos globales
+
+Problema encontrado por revisión independiente: `globalRecommendationReady()` (arriba)
+existía, estaba documentada como fuente única de verdad y tenía tests propios — pero
+`engine.js` **no la consumía**. El motor seguía calculando `floorReadinessBlocked`/
+`baseReadinessBlocked` con su propio `unreadyChannels()` inline, y la UI combinaba por
+separado `lmBlocked`/`baseBlocked`/`baseReadinessBlocked` con `||` en varios lugares
+(`renderKpis`, intro de Matriz, botón "Ir al simulador", precarga del Simulador). El
+resultado funcional YA era correcto, pero la regla vivía duplicada en cuatro sitios
+distintos, con riesgo real de desalinearse en un cambio futuro.
+
+Corrección: `globalRecommendationReady()` se **reemplazó** (no se mantuvo en paralelo) por
+`evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked})` — ver
+el contrato completo (`floorReady`/`baseReady`/`unreadyChannels`/`reasons`/`floorReason`/
+`baseReason`) en la sección "Verificado / No-verificado..." de arriba. Cambio de fondo en el
+contrato, no solo de nombre: la versión vieja ataba `baseBlocked` al `ready` GLOBAL (un solo
+booleano para Piso y Base), lo cual era incorrecto — un precio LM fijo (`baseBlocked`) hace
+irrelevante a Base, pero el Piso sigue protegiendo con el peor escenario real y NUNCA debe
+bloquearse por eso. La versión nueva separa `floorReady`/`baseReady` explícitamente, con
+`baseReady` dependiendo de `floorReady` pero no al revés.
+
+`engine.js` ahora deriva los cuatro campos que expone `compute()` directamente de esta
+función, sin recalcular nada. `index.html` (`renderKpis`, intro de Matriz, botón "Ir al
+simulador", precarga del Simulador) lee `model.floorReadinessBlocked`/
+`model.baseReadinessBlocked` como el ÚNICO booleano de gate — los `||` manuales con
+`lmBlocked`/`baseBlocked` se eliminaron; esas dos banderas solo se leen ahora para elegir
+qué texto corto mostrar. `#validationBanner` gana un ajuste para no duplicar el aviso de
+"dato financiero sin verificar" cuando el único motivo real es LM/precio fijo (esos ya
+tienen su propio aviso separado) — se muestra solo si además hay un dato de NEGOCIO
+pendiente (`model.readiness.ready===false`).
+
+Guarda anti-regresión: nuevo test en `tests/fase5-financial-readiness.test.js` que llama a
+`evaluateGlobalRecommendationReadiness()` directamente con los mismos insumos que ya usó
+`compute()`, y exige una igualdad EXACTA (booleans y texto) — verificado manualmente
+revirtiendo `engine.js` a una reimplementación inline: el test (y otros 3) fallan como se
+espera, confirmando que la guarda detecta la regresión.
+
+Tests nuevos/ajustados: `tests/fase5-financial-readiness.test.js` (el test de
+`globalRecommendationReady()` se reescribió para el nuevo contrato — mismo caso, mismos
+insumos, ahora contra `evaluateGlobalRecommendationReadiness()` — más 3 tests nuevos: LM
+bloqueado bloquea Piso+Base, todo resuelto sin fixed_price desbloquea ambos, y la guarda
+anti-regresión), `e2e/base-fixedprice.spec.js` (+1, fixed_price deja el Piso disponible y
+solo bloquea Base). **174/174 unitarios, 51/51 e2e, sin regresión.**
+
+### Actualización (revisión externa) — preparación para uso operativo con datos reales: reconciliación de reservas, contrato de moneda y auditoría
+
+Tres módulos nuevos, documentados en detalle en la sección "Preparación para datos
+reales" de arriba — resumen de la entrega:
+
+- **`src/domain/reconciliation.js`** (`reconcileReservation()`): compara el estimado de
+  `quoteScenario()` contra una reserva real que Dani ingresa a mano (canal, precio, noches,
+  días, comisiones/tarifas reales opcionales, payout recibido, moneda, referencia opcional
+  — nunca datos de huésped). Devuelve diferencia absoluta/%, desglose por componente,
+  causas posibles, severidad (`'ok'`/`'warn'`/`'bad'`, umbral documentado: `<=3%` ok, `>3%`
+  warn, `real<estimado` y `>10%` bad) y si el modelo sigue siendo confiable. NUNCA cambia
+  `channels`/`discounts` — solo sugiere qué revisar.
+- **`src/domain/currency.js`** (`resolveConversion()`): contrato de moneda — cada canal
+  puede declarar `settlementCurrency` (USD/COP/null) distinta a la moneda base de la
+  unidad; cualquier consolidación entre monedas distintas exige `state.fxRates[moneda]`
+  con `status:'verificado'` y un `rate` válido `> 0`, si no, bloquea explícitamente (nunca
+  1:1, nunca inventado, nunca una API externa). Reusada por `reconciliation.js` y por
+  `monthly-economics.js` (escenarios `'channel'`/`'mix'` con un canal en otra moneda).
+- **`src/domain/audit.js`** (`buildAuditChecklist()`): rollup de 7 verificaciones (costos,
+  comisiones, LM, Offset, promociones, moneda, última reconciliación) hacia un estado final
+  de 3 valores posibles (`'simulacion'`/`'datos_parciales'`/`'listo_supervisado'`) — NUNCA
+  "producción". Reusa `readiness.byChannel`/`resolveConversion()`, no reimplementa ninguna
+  regla de bloqueo existente.
+- **Bug real encontrado y corregido en el mismo commit**: `renderDataProvenance()`
+  (aviso "EJEMPLO" de `fixedCost`/`varCost`) solo miraba el modo simple — una unidad que
+  llenó la calculadora de costos detallada con datos reales pero nunca tocó los campos
+  simples (que quedan en 32/22 sin usarse) seguía mostrando "EJEMPLO" como si nada fuera
+  real. Corregido para contar también `costBreakdownIsFilled()`, mismo helper que ya usa
+  `compute()`.
+- **UI** (`index.html`): nuevas secciones en Resumen — "Moneda y tipo de cambio" (una fila
+  por cada moneda de liquidación distinta a la de la unidad), "Validar contra una reserva
+  real" (formulario + resultado en vivo + lista de conciliaciones guardadas localmente, con
+  borrado explícito), "Auditoría de datos reales" (checklist + estado). Selector de moneda
+  de liquidación agregado a la pestaña de cada canal.
+
+Tests: `tests/currency.test.js` (8), `tests/reconciliation.test.js` (12),
+`tests/audit.test.js` (8), `tests/monthly-economics.test.js` (+4, contrato de moneda en
+escenarios `'channel'`/`'mix'`), `tests/real-data-persistence.test.js` (15, incluye
+payloads malformados/XSS en `reconciliations`, monedas inventadas, rates inválidos).
+`e2e/real-data.spec.js` (9). **221/221 unitarios, 60/60 e2e, sin regresión.**
+
+### Actualización (revisión externa) — simplificación a USD único: se desactiva la multimoneda de la ronda anterior
+
+**Decisión de producto, no técnica**: la ronda anterior construyó soporte multimoneda
+(USD/COP con conversión manual verificada). Esta ronda lo **desactiva deliberadamente** —
+la prioridad pasa a que TODOS los cálculos financieros reales sean correctos, claros y
+seguros en **una sola moneda (USD)**. La multimoneda queda explícitamente fuera de esta
+fase, para una fase posterior — ver "Contrato de moneda" arriba para el contrato vigente.
+
+- **`quoteScenario()` devuelve `currency: 'USD'` explícito** (`src/domain/quote.js`) —
+  cualquier consumidor puede afirmarlo sin adivinar.
+- **`evaluateGlobalRecommendationReadiness()` gana un cuarto gate, `currencyBlocked`**
+  (`src/domain/readiness.js`) — bloquea Piso Y Base (igual que `lmBlocked`, no como
+  `baseBlocked`, que solo afecta a Base): una unidad "requiere revisión manual" no puede
+  mostrar NINGÚN número global, porque no se sabe con certeza en qué moneda quedaría
+  expresado. `engine.js`/`compute()` recibe `currencyNeedsReview` del caller y expone
+  `currencyBlocked`/`currencyBlockedReason`.
+- **`reconciliation.js`/`monthly-economics.js` simplificados**: se eliminó
+  `resolveConversion()`/`fxRates` de su flujo activo — ahora exigen `currency==='USD'`
+  (de la unidad, y de `real.currency` si se especifica) de forma estricta, sin ningún
+  camino de conversión. `currency.js` se conserva en el código (no se borra) para una
+  fase multimoneda futura, pero ningún flujo activo lo llama.
+- **`persistence.js` preserva (nunca convierte) la moneda guardada**: si `raw.currency`
+  no es exactamente `'USD'` (COP, o cualquier otro valor de una unidad vieja), se
+  preserva tal cual con un warning explícito — nunca se fuerza a `'USD'` en silencio.
+  Mismo criterio para `reconciliations[].currency`.
+- **UI simplificada** (`index.html`): eliminados el selector de moneda de la unidad, la
+  sección "Moneda y tipo de cambio" (tasas FX), el selector de moneda de liquidación por
+  canal, y el selector de moneda en el formulario de conciliación — ya no existe ningún
+  camino en la UI para configurar multimoneda. Nuevo `#currencyReviewBanner` +
+  `#currencyDisplay` + `#usdOnlyNotice` ("Todos los valores deben ingresarse en USD.").
+  `renderMatrix()`/`renderAlerts()` cortan explícitamente antes de calcular filas/veredictos
+  si `model.currencyBlocked` (gate ortogonal que esos dos módulos de dominio no conocen).
+- **`audit.js`**: el item `currency` del checklist ya no intenta resolver ninguna
+  conversión — falla siempre que la unidad o algún canal queden marcados en una moneda
+  distinta de USD, sin excepción posible.
+
+Verificación manual (3 casos obligatorios, confirmados con Node antes de cualquier commit):
+1. Precio USD 150, 3 noches → estimado exacto USD 126.75; payout real USD 106.75 →
+   diferencia −20 (−15.78%), severidad `'bad'`.
+2. Payout marcado `currency:'COP'` 600.000 → `currencyBlocked:true`, sin diferencia ni
+   severidad calculada.
+3. Unidad vieja con `currency:'COP'` (preservada, nunca convertida) → `currencyBlocked:true`
+   en `compute()`, `floorReadinessBlocked`/`baseReadinessBlocked` ambos `true`.
+
+Tests: `tests/reconciliation.test.js`/`tests/monthly-economics.test.js` reescritos para el
+contrato USD-estricto (se eliminaron los casos de "conversión verificada permitida", que ya
+no existen), `tests/audit.test.js` actualizado, `tests/fase5-financial-readiness.test.js`
+(+3: `currencyBlocked` como cuarto gate), `tests/real-data-persistence.test.js` (+6: moneda
+de unidad preservada/no convertida). `e2e/real-data.spec.js` reescrito (sin selectores
+FX/moneda; +2 tests de unidad/conciliación vieja importada en COP bloqueada).
+**233/233 unitarios, 61/61 e2e, sin regresión.**
+
+### Actualización (revisión externa, RONDA 4) — dos bloqueantes corregidos (canal no-USD sin bloquear; costos parciales bajando el Piso), conciliación con dos estados de confianza, recuperación segura de unidades no-USD, accesibilidad
+
+**Contexto**: auditoría externa encontró dos hallazgos BLOQUEANTES sobre la
+ronda anterior (simplificación a USD único) — ver "Contrato de moneda" y
+"Contrato de costos" arriba para el contrato completo y detallado; esta
+sección resume qué cambió y por qué.
+
+**BLOQUEANTE 1 — canal histórico no-USD no bloqueaba nada globalmente**: una
+unidad con `state.currency==='USD'` pero un canal con
+`settlementCurrency:'COP'` (dato de antes de la simplificación) devolvía
+Piso/Base/Matriz/Alertas sin bloqueo — `engine.js` solo miraba
+`state.currency`, nunca los canales, aunque `monthly-economics.js`/`audit.js`
+SÍ los detectaban. Corregido con `evaluateUsdOnlyReadiness()`
+(`src/domain/usd-only.js`), única fuente de verdad que ahora comparten
+`engine.js`, `reconciliation.js` y `monthly-economics.js`.
+
+**BLOQUEANTE 2 — un campo suelto de la calculadora detallada bajaba el
+Piso**: `costBreakdownIsFilled()` (cualquier campo > 0) activaba el modo
+detallado de inmediato — escribir solo "Consumos: 5" hacía caer el costo de
+54 (32+22) a 5, y el Piso de ≈90 a ≈8.33. Corregido con
+`evaluateCostReadiness()` (`src/domain/cost-mode.js`): el desglose solo
+alimenta el motor tras una confirmación EXPLÍCITA del usuario ("Revisé estos
+costos reales en USD, incluidos los valores en cero"); mientras tanto, el
+motor sigue usando el modelo simple. También se eliminó el auto-sync que
+copiaba la calculadora detallada a los campos simples (mismo vector de bug),
+y los costos de ejemplo de fábrica (32/22 nunca tocados) pasaron de solo
+advertir a BLOQUEAR Piso/Base/Offset/Matriz/Alertas/planificación mensual.
+
+**Correcciones adicionales**: conciliación separa `numericMatch` de
+`modelVerified` (coincidir en el número ya no basta para "confiable" —
+tags nuevos "COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES" vs "CONCILIACIÓN
+CONFIABLE"); recuperación segura de una unidad no-USD vía un botón que crea
+una copia en USD sin conversión automática (la original nunca se toca);
+accesibilidad — los campos principales de Resumen/Simulador/reconciliación/
+planificación mensual ahora usan `<label for>` en vez de `<span>` suelto
+(no se llegó a una auditoría exhaustiva de TODOS los campos dinámicos por
+canal/descuento — ver "Riesgos abiertos" al final del reporte de esta
+ronda).
+
+**Verificación manual reproducida con Node antes de dar el fix por bueno**
+(los mismos números del encargo):
+1. Costo simple 32+22=54, Piso≈90 (catálogo de fábrica + LM verificado) —
+   `tests/fase-usd-cost-blockers.test.js`.
+2. Agregar SOLO `consumables:5` sin confirmar: costo sigue en 54, Piso sin
+   cambios, `costBlocked:true` — reproduce EXACTAMENTE el bug reportado
+   (antes caía a costo 5).
+3. Desglose confirmado explícitamente: costo real ≈91.82 (fijos 700/22 +
+   consumo 5 + turno 55), `costBlocked:false`.
+4. Canal COP en unidad USD: `currencyBlocked:true`, Piso/Base bloqueados,
+   Matriz sin filas, Alertas sin "OK"/"RENTABLE".
+5. Dos unidades simultáneas (una bloqueada por canal COP, otra USD limpia)
+   sin contaminación cruzada — confirmado con Node y en navegador real.
+
+**Verificación de regresión (ambos bugs reintroducidos temporalmente y
+restaurados)**: se revirtió deliberadamente `evaluateUsdOnlyReadiness()` (para
+ignorar canales) y `evaluateCostReadiness()` (para activar el modo detallado
+con solo "tocado", sin confirmación) — las pruebas nuevas (unitarias Y E2E)
+fallaron exactamente como se esperaba en ambos casos, confirmando que no son
+tautológicas. Los archivos se restauraron a la versión corregida
+inmediatamente después (diff verificado, cero cambios netos).
+
+Tests nuevos/actualizados: `tests/usd-only.test.js` (8), `tests/cost-mode.test.js`
+(11), `tests/fase-usd-cost-blockers.test.js` (13, reproduce ambos bloqueantes
+contra `compute()`/`buildMatrixVerdict()`/`buildAlerts()`),
+`tests/reconciliation.test.js` (+2/-2, `numericMatch`/`modelVerified`),
+`tests/monthly-economics.test.js` (+1, canal no-referenciado en el escenario
+también bloquea), `tests/real-data-persistence.test.js` (+4,
+`costBreakdownConfirmed`). `e2e/fase-usd-cost-blockers.spec.js` (7 tests
+nuevos: ambos bloqueantes, recuperación segura, accesibilidad),
+`e2e/real-data.spec.js` (+1, "CONCILIACIÓN CONFIABLE" con LM verificado),
+3 tests existentes de `financial-readiness.spec.js`/`lm-blocking.spec.js`/
+`sim-blocked-bypass.spec.js` y 10 de `monthly-economics.spec.js` actualizados
+para cargar/confirmar costos reales (ya no alcanza con resolver solo LM/datos
+de negocio — el gate de costos es independiente).
+**270/270 unitarios, 69/69 e2e, sin regresión.**
+
+**Riesgos abiertos, explícitos (no ocultos)**:
+- `src/domain/currency.js` sigue siendo código muerto en el flujo activo
+  (conservado a propósito para una fase multimoneda futura) — revisar/
+  reactivar deliberadamente cuando esa fase empiece, no dejarlo indefinido.
+- Accesibilidad: los campos principales (Resumen, Simulador, reconciliación,
+  planificación mensual) ya tienen `<label for>`; los campos dinámicos
+  repetidos por canal/descuento (pestañas de canal, catálogo de descuentos,
+  techos por ventana de la Matriz) todavía usan `<span>` — funcionan
+  visualmente pero un lector de pantalla no asocia la etiqueta al campo.
+  Mismo pendiente ya documentado en una ronda anterior, ahora parcialmente
+  reducido, no eliminado.
+- No existe ningún camino en la UI para crear un canal con
+  `settlementCurrency` distinta de USD (intencional, dato histórico
+  únicamente) — pero tampoco existe un botón de "corregir este canal" más
+  allá de editar el JSON exportado; el botón de recuperación (copia en USD)
+  solo resuelve el caso de la unidad MISMA en otra moneda, no un canal
+  aislado.
+- Ningún dato real de unidades de Dani ha sido cargado/confirmado todavía —
+  esta ronda corrige el MOTOR, no reemplaza la tarea pendiente de cargar
+  costos/comisiones/LM reales y confirmarlos uno por uno antes de usar
+  cualquier recomendación en producción real.
+
+### Actualización (revisión externa, RONDA 5) — BLOQUEANTE 3 corregido: la recuperación segura de una unidad COP no era segura
+
+**Contexto**: una nueva auditoría externa sobre la ronda 4 encontró que el
+flujo "Crear copia en USD" (agregado esa misma ronda para recuperar una
+unidad no-USD sin editar JSON a mano) tenía un hueco crítico: la copia
+quedaba con `currency:'USD'` desde el instante en que se creaba, y nada más
+la distinguía de una unidad USD real y verificada. Caso reproducido y
+confirmado: unidad COP con `fixedCost:40`/`varCost:25` → crear copia USD →
+resolver LM y verificaciones de negocio → el Piso (USD 108,33) y el Base
+(USD 196,97) se mostraban DISPONIBLES, aunque ningún número copiado hubiera
+sido revisado — podían seguir siendo COP con la etiqueta USD encima. Ver la
+sección "Recuperación segura de una unidad no-USD" arriba para el contrato
+completo y definitivo (`usdManualReviewPending`, el flujo de confirmación
+fuerte, y la bitácora append-only `usdManualReviewLog`).
+
+**Resumen de la corrección**: `evaluateUsdOnlyReadiness()` (fuente única ya
+compartida por `engine.js`/`reconciliation.js`/`monthly-economics.js` desde
+la ronda 4) ganó un tercer motivo de bloqueo, `usdManualReviewPending`,
+evaluado ANTES que la moneda guardada — así que bloquea GLOBALMENTE aunque
+`unitCurrency` ya sea `'USD'`. `audit.js` (el checklist de auditoría) se
+refactorizó para llamar a esta MISMA función en vez de reimplementar su
+propio chequeo de moneda por canal, cerrando también ese hueco de
+duplicación. La copia arranca en `usdManualReviewPending:true`; solo el
+botón "Ya revisé manualmente todos los valores en USD →", con un `confirm()`
+de texto exacto, puede apagarlo — nunca automáticamente, nunca al resolver
+otro gate (LM/negocio/costos).
+
+**Verificación manual reproducida con Node antes de dar el fix por bueno**
+(el caso exacto del encargo): unidad COP `fixedCost:40`/`varCost:25` →
+`currencyBlocked:true` (moneda) → copia con `usdManualReviewPending:true` →
+con LM y datos de negocio TODOS resueltos, `currencyBlocked` sigue en `true`
+(ahora por `usdManualReviewPending`, no por moneda) → `floorReadinessBlocked`/
+`baseReadinessBlocked` ambos `true` → tras confirmar la revisión manual,
+ambos pasan a `false` y el Piso/Base quedan disponibles con normalidad.
+
+**Verificación de regresión (bug reintroducido temporalmente y
+restaurado)**: se revirtió deliberadamente el chequeo de
+`usdManualReviewPending` dentro de `evaluateUsdOnlyReadiness()` — las 7
+pruebas unitarias nuevas y las 4 pruebas E2E nuevas/ajustadas fallaron
+exactamente como se esperaba, confirmando que no son tautológicas. El
+archivo se restauró a la versión corregida inmediatamente después (`diff`
+verificado, cero cambios netos).
+
+Tests nuevos/actualizados: `tests/usd-only.test.js` (+4, el gate
+`usdManualReviewPending` en aislamiento), `tests/fase-usd-copy-recovery.test.js`
+(NEW, 13 — reproduce el caso exacto contra `compute()`/`reconcileReservation()`/
+`computeMonthlyEconomics()`/`buildAuditChecklist()`), `tests/real-data-persistence.test.js`
+(+11 — `usdManualReviewPending`/`usdManualReviewLog`, incluido round-trip
+guardar→recargar y payload XSS en la nota). `e2e/fase-usd-copy-recovery.spec.js`
+(NEW, 3 — flujo completo 1-10 del encargo en navegador real, dos unidades
+simultáneas, persistencia/recarga), `e2e/fase-usd-cost-blockers.spec.js`
+(1 test de la ronda 4 corregido — afirmaba, por error, que la copia quedaba
+"no bloqueada por moneda" inmediatamente tras crearla; eso era exactamente
+el bug que este bloqueante corrige, así que se reescribió para reflejar el
+contrato real). **296/296 unitarios, 72/72 e2e, cero skip/todo, sin
+regresión.**
+
+**Riesgos abiertos, sin cambios respecto a la ronda 4** (ver la lista
+completa arriba) — ninguno de ellos es Alto/Crítico en el sentido de "puede
+producir una recomendación financiera falsa": `currency.js` sigue aislado y
+sin uso activo; la accesibilidad de campos dinámicos por canal sigue
+parcial; no existe recuperación guiada para un canal aislado en otra moneda
+(solo para la unidad completa); y sigue pendiente cargar/confirmar datos
+reales de las unidades de Dani.
+
+### Actualización (revisión externa, RONDA 6) — cerrado el bypass de copia COP→USD por importación
+
+**Hallazgo**: el booleano `usdManualReviewPending` (ronda 5) era la ÚNICA
+fuente que consultaban `evaluateUsdOnlyReadiness()` y `normalizeUnit()` — un
+JSON exportado, editado a mano para dejar `usdManualReviewPending:false`
+pero conservando en `usdManualReviewLog` un `copy_created` SIN un
+`review_confirmed` real después, desbloqueaba la unidad igual al
+reimportarlo. El booleano nunca se cruzaba contra su propia bitácora.
+
+**Corrección**: `evaluateUsdManualReviewState({usdManualReviewPending,
+usdManualReviewLog})` (`src/domain/usd-only.js`) es ahora la ÚNICA función
+pura que decide el estado EFECTIVO de revisión manual — ordena las entradas
+válidas del log cronológicamente y exige que el `copy_created` MÁS RECIENTE
+tenga un `review_confirmed` VÁLIDO y POSTERIOR; si no, el estado es
+"pendiente" sin importar el booleano. Entradas malformadas (evento
+desconocido, fecha inválida/ausente, orden imposible) nunca cuentan como
+confirmación. `evaluateUsdOnlyReadiness()` ya nunca lee el booleano crudo —
+siempre pasa por esta función, así que `engine.js`/`reconciliation.js`/
+`monthly-economics.js`/`audit.js` quedan protegidos por igual, sin
+reimplementar el cruce cada uno. `normalizeUnit()` (`persistence.js`) agrega
+una segunda capa de defensa: si detecta la contradicción, CORRIGE
+`usdManualReviewPending` a `true` en el estado cargado y deja un warning
+explícito — así cualquier lector que siga leyendo `state.usdManualReviewPending`
+directo (incluida la UI) ve siempre el valor seguro.
+
+También se corrigió un bug de orden de operaciones en el handler
+`#confirmUsdReviewBtn`: mutaba `state` en memoria ANTES de confirmar el
+guardado — si `window.storage.set()` fallaba, la unidad quedaba mostrándose
+como revisada sin haberse persistido nada. Ahora arma un candidato aparte y
+solo reasigna `state` tras una escritura exitosa; si falla, la unidad sigue
+bloqueada en memoria y en pantalla, con un error explícito.
+
+Verificado en navegador real: crear copia COP→USD → bloqueada → exportar/
+tamperar (`usdManualReviewPending:false` con log sin confirmar) → reimportar
+→ sigue bloqueada (auto-corregida) → confirmar revisión real → resolver
+LM/datos de negocio → recién ahí Piso/Base disponibles. Bug reintroducido
+deliberadamente y restaurado para confirmar que las pruebas nuevas (6
+unitarias + 1 e2e) lo detectan. **320/320 unitarios, 75/75 e2e, sin
+regresión.** Alcance de esta ronda, a pedido explícito: NO se tocó
+`currency.js` ni la limpieza de multimoneda — sigue exactamente igual que en
+la ronda 5.
