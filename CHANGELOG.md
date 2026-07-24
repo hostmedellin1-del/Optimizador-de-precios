@@ -4,6 +4,67 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.10.0] — Dos bloqueantes corregidos: canal histórico no-USD sin bloquear; costos parciales bajando el Piso
+
+Auditoría externa (ronda 4) sobre 0.9.0. Objetivo de cierre: dejar la herramienta apta
+para uso interno supervisado exclusivamente en USD, con recomendaciones de Piso/Base/Offset
+que nunca puedan salir de datos monetarios incompletos, en otra moneda o sin confirmar.
+
+**BLOQUEANTE 1 — canal histórico no-USD no bloqueaba nada globalmente**: una unidad con
+`state.currency==='USD'` pero un canal con `settlementCurrency:'COP'` (dato de antes de la
+simplificación a USD único) devolvía Piso/Base/Matriz/Alertas sin bloqueo — `engine.js`
+solo miraba `state.currency`, nunca los canales, aunque `monthly-economics.js`/`audit.js`
+sí los detectaban. Corregido con **`evaluateUsdOnlyReadiness()`** (`src/domain/usd-only.js`),
+única fuente de verdad que ahora comparten `engine.js`, `reconciliation.js` y
+`monthly-economics.js` — bloquea Min Price, Base Price, el Offset sugerido de CUALQUIER
+canal, Matriz (sin filas) y Alertas (sin "OK"/"RENTABLE"), y nunca contamina otra unidad
+cargada en la misma sesión.
+
+**BLOQUEANTE 2 — un campo suelto de la calculadora detallada bajaba el Piso**:
+`costBreakdownIsFilled()` (cualquier campo del desglose > 0) activaba el modo detallado de
+inmediato — escribir solo "Consumos: 5" hacía caer el costo real (32+22=54) a 5, y el Piso
+de ≈90 a ≈8.33, como si los campos en 0 sin tocar fueran datos reales confirmados. Corregido
+con **`evaluateCostReadiness()`** (`src/domain/cost-mode.js`) — tres estados explícitos
+(`simple` / `detailed_incomplete` / `detailed_confirmed`): el desglose SOLO alimenta el
+motor tras una confirmación EXPLÍCITA ("Revisé estos costos reales en USD, incluidos los
+valores en cero"); mientras tanto sigue usando el modelo simple. Cualquier edición posterior
+invalida la confirmación. Se eliminó también el auto-sync que copiaba la calculadora
+detallada a los campos simples (mismo vector de bug), y los costos de ejemplo de fábrica
+(32/22 nunca tocados) pasaron de solo advertir a **bloquear** Piso/Base/Offset/Matriz/
+Alertas/planificación mensual.
+
+**Correcciones adicionales**:
+- Conciliación separa `numericMatch` de `modelVerified` — coincidir en el número ya no
+  basta para "confiable". Tags nuevos: "COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES" vs
+  "CONCILIACIÓN CONFIABLE".
+- Recuperación segura de una unidad no-USD: botón "Crear copia en USD (pendiente de
+  revisión manual)" en el banner de moneda — crea una copia sin convertir ningún valor; la
+  unidad original nunca se toca ni se borra.
+- Accesibilidad: `<label for>` en los campos principales de Resumen, Simulador,
+  reconciliación y planificación mensual (reemplaza `<span>` suelto).
+- `index.html` ya no importa `defaultFxRates`/`currency.js`; unidades nuevas no crean
+  `state.fxRates`.
+
+Verificación manual (con Node, antes y después de reintroducir/restaurar ambos bugs
+deliberadamente para confirmar que las pruebas nuevas los detectan): costo simple 32+22=54,
+Piso≈90; `consumables:5` sin confirmar → costo y Piso SIN CAMBIOS (antes caía a 5/≈8.33);
+desglose confirmado → costo real ≈91.82; canal COP en unidad USD → `currencyBlocked:true`,
+Piso/Base bloqueados; dos unidades simultáneas sin contaminación cruzada.
+
+Tests: `usd-only.test.js` (8, nuevo), `cost-mode.test.js` (11, nuevo),
+`fase-usd-cost-blockers.test.js` (13, nuevo — reproduce ambos bloqueantes contra
+`compute()`/`buildMatrixVerdict()`/`buildAlerts()`), `reconciliation.test.js` (+2/-2),
+`monthly-economics.test.js` (+1), `real-data-persistence.test.js` (+4).
+`e2e/fase-usd-cost-blockers.spec.js` (7, nuevo), `e2e/real-data.spec.js` (+1), 14 tests
+existentes de `financial-readiness.spec.js`/`lm-blocking.spec.js`/`sim-blocked-bypass.spec.js`/
+`monthly-economics.spec.js` actualizados (cargar/confirmar costos reales — el gate de costos
+es independiente del de LM/datos de negocio). **270/270 unitarios, 69/69 e2e, sin regresión.**
+
+Riesgos abiertos: `currency.js` sigue siendo código muerto (conservado a propósito);
+accesibilidad de campos dinámicos por canal/descuento aún pendiente; ningún dato real de
+unidades de Dani ha sido cargado/confirmado todavía — este release corrige el motor, no
+reemplaza la carga y confirmación manual de costos/comisiones/LM reales.
+
 ## [0.9.0] — Simplificación a USD único: se desactiva la multimoneda de 0.8.0
 
 **Versión actual: solo USD. La multimoneda se implementará en una fase posterior.**

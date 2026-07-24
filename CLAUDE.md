@@ -823,6 +823,23 @@ reconciliación NUNCA cambia `channels`/`discounts` automáticamente** — solo
 sugiere qué revisar; confirmar un valor real sigue siendo 100% manual en
 Resumen → "Verificación de datos financieros".
 
+**`numericMatch` / `modelVerified` / `reliable` (corrección adicional,
+auditoría externa, ronda 4)**: `reliable` NO puede ser `true` solo porque la
+diferencia caiga dentro del umbral (`severity==='ok'`) si el estimado
+depende de supuestos sin confirmar (LM sin verificar, datos de negocio
+pendientes por canal) — coincidir en el número por casualidad (o porque dos
+errores se cancelan) no es lo mismo que un estimado con el modelo realmente
+verificado. `reconcileReservation()` separa dos preguntas independientes:
+`numericMatch` (¿la diferencia cae dentro del umbral? — un hecho puramente
+numérico) y `modelVerified` (¿TODOS los supuestos de los que depende el
+estimado están confirmados? — exactamente `unverifiedAssumptions.length===0`).
+`reliable` sigue existiendo (por compatibilidad — `audit.js` y la UI lo
+siguen leyendo) pero ahora es la conjunción `numericMatch && modelVerified`.
+En la UI (`reconcileResultHTML()`), el tag "CONFIABLE" se reemplazó por dos
+estados distintos: **"COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES"**
+(`numericMatch` true, `modelVerified` false — el caso típico de una unidad
+nueva con LM sin verificar) y **"CONCILIACIÓN CONFIABLE"** (ambos true).
+
 **Contrato de moneda — VERSIÓN ACTUAL: SOLO USD (revisión externa,
 simplificación posterior).** El soporte multimoneda (USD/COP con conversión
 manual verificada) que se construyó en la ronda anterior se **desactivó
@@ -849,10 +866,20 @@ La multimoneda se implementará en una fase posterior; hasta entonces:
   (`src/domain/persistence.js`) preserva `state.currency` TAL CUAL si el
   valor guardado no es exactamente `'USD'` (COP, o cualquier otro valor), con
   un warning explícito — nunca lo fuerza a USD en silencio. Esa unidad queda
-  marcada **"requiere revisión manual"** (`currencyNeedsReview`, calculado en
-  `index.html` como `state.currency !== 'USD'`) y **excluida de toda
-  recomendación global**: `engine.js`/`compute()` recibe `currencyNeedsReview`
-  y expone `currencyBlocked`/`currencyBlockedReason` — un cuarto gate en
+  marcada **"requiere revisión manual"** y **excluida de toda recomendación
+  global**. **Corrección BLOQUEANTE 1 (auditoría externa, ronda 4):**
+  `evaluateUsdOnlyReadiness()` (`src/domain/usd-only.js`) es ahora la ÚNICA
+  fuente que decide esto — mira TANTO la moneda guardada de la unidad COMO
+  la de cada canal (`channels[].settlementCurrency`); antes, `engine.js` solo
+  miraba `state.currency`, así que una unidad guardada en USD pero con un
+  canal histórico marcado `settlementCurrency:'COP'` pasaba el gate sin
+  bloquear nada (Piso/Base se mostraban igual), aunque
+  `monthly-economics.js`/`audit.js` SÍ lo detectaban — tres lugares
+  respondiendo la misma pregunta de tres formas distintas, con riesgo real de
+  desalinearse (que es justo lo que pasó). `engine.js`/`compute()`,
+  `reconciliation.js` y `monthly-economics.js` llaman los tres a esta MISMA
+  función (nunca reimplementan el chequeo) para derivar
+  `currencyBlocked`/`currencyBlockedReason` — un cuarto gate en
   `evaluateGlobalRecommendationReadiness()` (junto a los datos de negocio
   pendientes y `lmBlocked`) que bloquea **tanto Piso como Base** (igual que
   `lmBlocked`, no como `baseBlocked`, que solo afecta a Base). `index.html`
@@ -860,14 +887,32 @@ La multimoneda se implementará en una fase posterior; hasta entonces:
   (`renderAlerts()`) antes de calcular ninguna fila/veredicto si
   `model.currencyBlocked` — ninguna de las dos conoce este gate internamente
   (es ortogonal, igual que `lmBlocked` lo es de `readiness`), así que el
-  corte vive en el único lugar que ya sabe que la unidad está bloqueada.
-  `reconcileReservation()` y `computeMonthlyEconomics()` bloquean por su
-  cuenta si `currency !== 'USD'`, con el mismo mensaje. `channels[].settlementCurrency`
+  corte vive en el único lugar que ya sabe que la unidad está bloqueada. El
+  Offset sugerido por canal (`renderChannelPages()`) y el precargado
+  automático del Simulador (`goSimBtn`) también respetan este gate con máxima
+  prioridad; la simulación MANUAL (precio escrito a mano) nunca se bloquea,
+  pero se etiqueta "SIMULACIÓN NO CONFIABLE" mientras la unidad esté marcada
+  así. `#currencyReviewBanner` (`renderCurrencyReviewBanner()`) es el banner
+  ÚNICO y SIEMPRE VISIBLE para este estado — ya no depende de
+  `state.currency` solamente, sino del mismo `evaluateUsdOnlyReadiness()`, e
+  incluye un botón **"Crear copia en USD (pendiente de revisión manual)"**
+  (ver "Recuperación segura de una unidad no-USD" más abajo) cuando la unidad
+  MISMA (no solo un canal) está en otra moneda. `channels[].settlementCurrency`
   y `state.fxRates` (de la ronda anterior) se siguen normalizando/preservando
   en `persistence.js` — nunca se borran datos existentes — pero ya no se
-  editan desde la UI ni afectan ningún cálculo activo; un canal viejo marcado
-  con una moneda distinta de USD simplemente bloquea su uso en planificación
-  mensual, con el mismo mensaje de "requiere revisión manual".
+  editan desde la UI ni afectan ningún cálculo activo.
+
+**Recuperación segura de una unidad no-USD (BLOQUEANTE, auditoría externa,
+ronda 4)**: editar el JSON exportado a mano ya NO es la única vía de
+recuperación. El botón del banner crea una **copia nueva directamente en
+USD**, SIN convertir ningún valor (los números quedan exactamente como
+estaban), marcada "pendiente de revisión manual" —
+`state.costBreakdownConfirmed` se resetea a `false` a propósito en la copia
+(fuerza revisar también los costos, no solo la moneda) y el nombre deja
+explícito que es una copia sin revisar. La unidad ORIGINAL (bloqueada) nunca
+se toca ni se borra — sigue disponible tal cual estaba. La copia sigue
+sujeta a los demás gates (LM, datos de negocio, costos) hasta que Dani los
+confirme uno por uno, exactamente igual que cualquier otra unidad.
 - **Reconciliación**: `reconcileReservation()` exige `real.currency==='USD'`
   (o ausente/vacío, que se asume USD porque el formulario ya no ofrece otra
   moneda) — un valor explícito distinto bloquea con
@@ -877,6 +922,70 @@ La multimoneda se implementará en una fase posterior; hasta entonces:
   diferencia falso.
 - Advertencia visible en la UI: "Todos los valores deben ingresarse en USD."
   (`#usdOnlyNotice`, junto al campo de moneda en Resumen).
+
+**Contrato de costos — simple / detailed_incomplete / detailed_confirmed
+(BLOQUEANTE 2, auditoría externa, ronda 4)**: `evaluateCostReadiness()`
+(`src/domain/cost-mode.js`) es la ÚNICA fuente de verdad de si el desglose
+detallado de costos (Resumen → "Costos por noche → calcular a partir de
+costos detallados") puede alimentar una recomendación. Corrige un bug real
+confirmado: `costBreakdownIsFilled()` (index.html) trataba CUALQUIER campo
+del desglose con un valor > 0 como "modo detallado ya activo", así que
+escribir solo "Consumos: 5" (con Arriendo/Limpieza/etc todavía en 0 porque
+Dani no había llegado a esos campos) hacía que el costo real (32+22=54,
+Piso≈90) cayera a un costo de 5 (Piso≈8.33) — los ceros de los campos sin
+tocar se trataban como datos reales confirmados, no como "todavía no los he
+escrito". Tres estados, nunca inferidos de "algún campo > 0" para decidir si
+el desglose ALIMENTA el cálculo (esa heurística — `costBreakdownIsFilled()`,
+se conserva — solo decide si mostrar la ETIQUETA "tocado"):
+- `'simple'`: el desglose nunca se tocó — se usa `fixedCost`/`varCost`. Si
+  esos dos siguen en el valor ilustrativo de fábrica (32/22 exactos, nunca
+  tocados), el modo es `'simple_example'` y **BLOQUEA** Piso/Base/Offset/
+  Matriz/Alertas/planificación mensual — antes esto solo mostraba un aviso
+  pasivo ("EJEMPLO") sin bloquear nada; ahora un costo de ejemplo nunca puede
+  alimentar una recomendación real, tiene que confirmarse.
+- `'detailed_incomplete'`: se editó al menos un campo del desglose, pero
+  `state.costBreakdownConfirmed` no es `true` — el desglose NUNCA alimenta el
+  costo real mientras tanto (el motor sigue usando el modelo simple,
+  `fixedCost`/`varCost`, exactamente como si el desglose no existiera) y
+  Piso/Base/Offset/Matriz/Alertas/planificación mensual quedan bloqueados con
+  el motivo exacto.
+- `'detailed_confirmed'`: el usuario marcó explícitamente la casilla "Revisé
+  estos costos reales en USD, incluidos los valores en cero"
+  (`#costBreakdownConfirmedChk`, dentro del propio `<details>` de la
+  calculadora) — es el ÚNICO estado que puede alimentar el costo real
+  (`reservationCostBreakdown()`) a Piso/Base/Offset/Matriz/Alertas/
+  planificación mensual. Un cero real y confirmado es válido (la
+  confirmación explícita manda sobre la heurística de "tocado": un desglose
+  totalmente en cero pero con `costBreakdownConfirmed:true` SÍ se usa,
+  cost=0). **Cualquier edición posterior de cualquier campo del desglose
+  invalida la confirmación** (`state.costBreakdownConfirmed` vuelve a
+  `false` en el handler de `data-cb`) — nunca se reutiliza una confirmación
+  vieja sobre datos que ya cambiaron. Ya NO existe el auto-sync que copiaba
+  el resultado de la calculadora detallada a los campos `fixedCost`/`varCost`
+  simples (`data-k`) — ese auto-sync era el OTRO vector del mismo bug: un
+  campo suelto contaminaba también el modelo "simple" de respaldo.
+
+Integración en el motor: `compute()` (`engine.js`) y `quoteScenario()`
+(`quote.js`) reciben SIEMPRE `config.costBreakdown` (aunque esté vacío o sin
+confirmar) más `config.costBreakdownConfirmed` — deciden internamente si es
+usable (`costBreakdownConfirmed!==false`, con `undefined` tratado como "no
+aplica esta regla", para no romper ningún test existente que pasa
+`costBreakdown` directo sin conocer este contrato). `costBlocked`/
+`costBlockedReason` es un QUINTO gate en `evaluateGlobalRecommendationReadiness()`
+(mismo nivel que `lmBlocked`/`currencyBlocked` — bloquea Piso Y Base).
+`buildMatrixVerdict()`/`buildAlerts()` degradan el veredicto "RENTABLE EN
+TODOS"/"OK: sin conflictos" a "COSTOS SIN CONFIRMAR" cuando `model.costBlocked`
+— los veredictos NEGATIVOS (TECHO EXCEDIDO/BAJO COSTO/CUBRE COSTO, alertas
+PISO/DURACIÓN/etc.) NO se suprimen (son advertencias reales, no una
+afirmación de "todo bien", mismo principio ya establecido para `lmBlocked`).
+`computeMonthlyEconomics()` (planificación mensual) NUNCA recibe el desglose
+a menos que el modo sea exactamente `'detailed_confirmed'` — en cualquier
+otro caso recibe `costBreakdown:undefined`, que ya produce su "NO CALCULABLE
+— falta la calculadora de costos detallada" existente (sin cambios en ese
+módulo). `#dataProvenanceBanner` (`renderDataProvenance()`) es el banner
+ÚNICO y SIEMPRE VISIBLE para el estado de costos (igual que
+`#currencyReviewBanner` lo es para moneda) — muestra "EJEMPLO" o "COSTOS SIN
+CONFIRMAR" según el modo.
 
 **Auditoría de datos reales** (`src/domain/audit.js`, `buildAuditChecklist()`)
 — rollup puro de señales que YA calculan otros módulos (nunca reimplementa
@@ -1320,3 +1429,101 @@ no existen), `tests/audit.test.js` actualizado, `tests/fase5-financial-readiness
 de unidad preservada/no convertida). `e2e/real-data.spec.js` reescrito (sin selectores
 FX/moneda; +2 tests de unidad/conciliación vieja importada en COP bloqueada).
 **233/233 unitarios, 61/61 e2e, sin regresión.**
+
+### Actualización (revisión externa, RONDA 4) — dos bloqueantes corregidos (canal no-USD sin bloquear; costos parciales bajando el Piso), conciliación con dos estados de confianza, recuperación segura de unidades no-USD, accesibilidad
+
+**Contexto**: auditoría externa encontró dos hallazgos BLOQUEANTES sobre la
+ronda anterior (simplificación a USD único) — ver "Contrato de moneda" y
+"Contrato de costos" arriba para el contrato completo y detallado; esta
+sección resume qué cambió y por qué.
+
+**BLOQUEANTE 1 — canal histórico no-USD no bloqueaba nada globalmente**: una
+unidad con `state.currency==='USD'` pero un canal con
+`settlementCurrency:'COP'` (dato de antes de la simplificación) devolvía
+Piso/Base/Matriz/Alertas sin bloqueo — `engine.js` solo miraba
+`state.currency`, nunca los canales, aunque `monthly-economics.js`/`audit.js`
+SÍ los detectaban. Corregido con `evaluateUsdOnlyReadiness()`
+(`src/domain/usd-only.js`), única fuente de verdad que ahora comparten
+`engine.js`, `reconciliation.js` y `monthly-economics.js`.
+
+**BLOQUEANTE 2 — un campo suelto de la calculadora detallada bajaba el
+Piso**: `costBreakdownIsFilled()` (cualquier campo > 0) activaba el modo
+detallado de inmediato — escribir solo "Consumos: 5" hacía caer el costo de
+54 (32+22) a 5, y el Piso de ≈90 a ≈8.33. Corregido con
+`evaluateCostReadiness()` (`src/domain/cost-mode.js`): el desglose solo
+alimenta el motor tras una confirmación EXPLÍCITA del usuario ("Revisé estos
+costos reales en USD, incluidos los valores en cero"); mientras tanto, el
+motor sigue usando el modelo simple. También se eliminó el auto-sync que
+copiaba la calculadora detallada a los campos simples (mismo vector de bug),
+y los costos de ejemplo de fábrica (32/22 nunca tocados) pasaron de solo
+advertir a BLOQUEAR Piso/Base/Offset/Matriz/Alertas/planificación mensual.
+
+**Correcciones adicionales**: conciliación separa `numericMatch` de
+`modelVerified` (coincidir en el número ya no basta para "confiable" —
+tags nuevos "COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES" vs "CONCILIACIÓN
+CONFIABLE"); recuperación segura de una unidad no-USD vía un botón que crea
+una copia en USD sin conversión automática (la original nunca se toca);
+accesibilidad — los campos principales de Resumen/Simulador/reconciliación/
+planificación mensual ahora usan `<label for>` en vez de `<span>` suelto
+(no se llegó a una auditoría exhaustiva de TODOS los campos dinámicos por
+canal/descuento — ver "Riesgos abiertos" al final del reporte de esta
+ronda).
+
+**Verificación manual reproducida con Node antes de dar el fix por bueno**
+(los mismos números del encargo):
+1. Costo simple 32+22=54, Piso≈90 (catálogo de fábrica + LM verificado) —
+   `tests/fase-usd-cost-blockers.test.js`.
+2. Agregar SOLO `consumables:5` sin confirmar: costo sigue en 54, Piso sin
+   cambios, `costBlocked:true` — reproduce EXACTAMENTE el bug reportado
+   (antes caía a costo 5).
+3. Desglose confirmado explícitamente: costo real ≈91.82 (fijos 700/22 +
+   consumo 5 + turno 55), `costBlocked:false`.
+4. Canal COP en unidad USD: `currencyBlocked:true`, Piso/Base bloqueados,
+   Matriz sin filas, Alertas sin "OK"/"RENTABLE".
+5. Dos unidades simultáneas (una bloqueada por canal COP, otra USD limpia)
+   sin contaminación cruzada — confirmado con Node y en navegador real.
+
+**Verificación de regresión (ambos bugs reintroducidos temporalmente y
+restaurados)**: se revirtió deliberadamente `evaluateUsdOnlyReadiness()` (para
+ignorar canales) y `evaluateCostReadiness()` (para activar el modo detallado
+con solo "tocado", sin confirmación) — las pruebas nuevas (unitarias Y E2E)
+fallaron exactamente como se esperaba en ambos casos, confirmando que no son
+tautológicas. Los archivos se restauraron a la versión corregida
+inmediatamente después (diff verificado, cero cambios netos).
+
+Tests nuevos/actualizados: `tests/usd-only.test.js` (8), `tests/cost-mode.test.js`
+(11), `tests/fase-usd-cost-blockers.test.js` (13, reproduce ambos bloqueantes
+contra `compute()`/`buildMatrixVerdict()`/`buildAlerts()`),
+`tests/reconciliation.test.js` (+2/-2, `numericMatch`/`modelVerified`),
+`tests/monthly-economics.test.js` (+1, canal no-referenciado en el escenario
+también bloquea), `tests/real-data-persistence.test.js` (+4,
+`costBreakdownConfirmed`). `e2e/fase-usd-cost-blockers.spec.js` (7 tests
+nuevos: ambos bloqueantes, recuperación segura, accesibilidad),
+`e2e/real-data.spec.js` (+1, "CONCILIACIÓN CONFIABLE" con LM verificado),
+3 tests existentes de `financial-readiness.spec.js`/`lm-blocking.spec.js`/
+`sim-blocked-bypass.spec.js` y 10 de `monthly-economics.spec.js` actualizados
+para cargar/confirmar costos reales (ya no alcanza con resolver solo LM/datos
+de negocio — el gate de costos es independiente).
+**270/270 unitarios, 69/69 e2e, sin regresión.**
+
+**Riesgos abiertos, explícitos (no ocultos)**:
+- `src/domain/currency.js` sigue siendo código muerto en el flujo activo
+  (conservado a propósito para una fase multimoneda futura) — revisar/
+  reactivar deliberadamente cuando esa fase empiece, no dejarlo indefinido.
+- Accesibilidad: los campos principales (Resumen, Simulador, reconciliación,
+  planificación mensual) ya tienen `<label for>`; los campos dinámicos
+  repetidos por canal/descuento (pestañas de canal, catálogo de descuentos,
+  techos por ventana de la Matriz) todavía usan `<span>` — funcionan
+  visualmente pero un lector de pantalla no asocia la etiqueta al campo.
+  Mismo pendiente ya documentado en una ronda anterior, ahora parcialmente
+  reducido, no eliminado.
+- No existe ningún camino en la UI para crear un canal con
+  `settlementCurrency` distinta de USD (intencional, dato histórico
+  únicamente) — pero tampoco existe un botón de "corregir este canal" más
+  allá de editar el JSON exportado; el botón de recuperación (copia en USD)
+  solo resuelve el caso de la unidad MISMA en otra moneda, no un canal
+  aislado.
+- Ningún dato real de unidades de Dani ha sido cargado/confirmado todavía —
+  esta ronda corrige el MOTOR, no reemplaza la tarea pendiente de cargar
+  costos/comisiones/LM reales y confirmarlos uno por uno antes de usar
+  cualquier recomendación en producción real.

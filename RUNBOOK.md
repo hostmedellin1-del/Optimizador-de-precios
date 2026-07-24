@@ -141,6 +141,32 @@ cubre todavía, corre esto a mano en un navegador real:
     datos financieros), confirma LM, y guarda una conciliación con diferencia baja — el
     estado debe pasar a "LISTO PARA USO INTERNO SUPERVISADO". En ningún punto debe decir
     "producción".
+21. **BLOQUEANTE 1 corregido — canal histórico no-USD bloquea globalmente**: exporta una
+    unidad, edítala a mano agregando `"channels":[{"id":"airbnb","settlementCurrency":"COP"}]`
+    (con `"currency":"USD"` en la unidad), e impórtala de vuelta. Debe aparecer el mismo
+    banner "REQUIERE REVISIÓN MANUAL" (mencionando Airbnb y COP) aunque la unidad esté en
+    USD, con Min Price/Base Price en "—", Matriz sin filas, Alertas sin "OK"/"RENTABLE", y
+    el Offset sugerido de CUALQUIER canal (no solo Airbnb) también bloqueado. Carga una
+    segunda unidad limpia en USD y confirma que no hereda el bloqueo de la primera al
+    cambiar entre ellas con el selector "Cargar unidad".
+22. **BLOQUEANTE 2 corregido — costos parciales no bajan el Piso**: en una unidad con
+    costos reales (ej. fijo 40, variable 25) y LM/datos de negocio ya verificados, abre
+    "Calcular a partir de costos detallados" y escribe SOLO "Consumos: 5" — el Costo
+    total/noche y el Min Price NO deben cambiar (siguen reflejando el modelo simple),
+    debe aparecer el aviso "COSTOS SIN CONFIRMAR" en Resumen. Marca la casilla "Revisé
+    estos costos reales en USD, incluidos los valores en cero" — recién ahí el Costo
+    total/noche pasa a reflejar el desglose (5) y el Min Price se recalcula. Edita
+    cualquier otro campo del desglose después de confirmar — la casilla se desmarca sola
+    y vuelve a aparecer "COSTOS SIN CONFIRMAR". En una unidad nueva (costos de fábrica
+    32/22 sin tocar), confirma que Min Price/Base Price están en "—" con el aviso
+    "EJEMPLO" (ya no solo un aviso pasivo — ahora bloquea de verdad).
+23. **Recuperación segura de una unidad no-USD**: con la unidad del punto 19 (moneda
+    COP) cargada, en el banner rojo pulsa "Crear copia en USD (pendiente de revisión
+    manual)" y confirma el diálogo. Debe crearse y cargarse una unidad nueva con
+    "(copia USD — pendiente de revisión manual)" en el nombre, mostrando "USD" como
+    moneda y sin el banner de moneda — pero sigue bloqueada por los demás motivos (LM,
+    costos) hasta que los confirmes uno por uno. Vuelve a la unidad ORIGINAL en el
+    selector — debe seguir intacta, en COP, bloqueada. Elimina ambas al terminar.
 
 ## Rollback
 
@@ -167,8 +193,20 @@ el sitio estático automáticamente. Ningún paso de esta auditoría requiere bu
 
 ## Pendiente (no completado en esta ronda, para no sobre-reportar)
 
-- **Accesibilidad**: se corrigieron los controles nuevos sin texto visible
-  (editor de tramos de Last-Minute). El resto del formulario (pre-existente)
-  usa `<span>` en vez de `<label for>` — funciona visualmente pero un lector de
-  pantalla no asocia la etiqueta al campo. Auditoría completa de accesibilidad
-  del formulario original queda pendiente si la priorizas.
+- **Accesibilidad**: ronda 4 agregó `<label for>` a los campos principales de
+  Resumen (costos simples/detallados, margen, ventana de mercado, estadía
+  promedio, base de mercado), Simulador, "Validar contra una reserva real" y
+  planificación mensual. Los campos DINÁMICOS repetidos por canal/descuento
+  (pestañas de cada canal, catálogo de descuentos, techos por ventana de la
+  Matriz) todavía usan `<span>` en vez de `<label for>` — funcionan
+  visualmente pero un lector de pantalla no asocia la etiqueta al campo.
+  Auditoría completa de accesibilidad de esos campos queda pendiente si la
+  priorizas.
+- **`src/domain/currency.js`**: sigue siendo código muerto en el flujo activo
+  (conservado a propósito para una fase multimoneda futura, ver CLAUDE.md) —
+  revisar/reactivar deliberadamente cuando esa fase empiece.
+- **Recuperación de un canal (no la unidad) en otra moneda**: el botón "Crear
+  copia en USD" solo resuelve el caso de la unidad MISMA guardada en otra
+  moneda — un canal aislado con `settlementCurrency` distinta de USD (dato
+  histórico) sigue sin tener un botón de "corregir este canal" en la UI, solo
+  editar el JSON exportado y reimportar.
