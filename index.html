@@ -494,7 +494,8 @@ function compute(){
        de evaluateUsdOnlyReadiness() para el hallazgo (copia USD de una
        unidad COP, sin convertir ningun valor). */
     currency: state.currency,
-    usdManualReviewPending: state.usdManualReviewPending
+    usdManualReviewPending: state.usdManualReviewPending,
+    usdManualReviewLog: state.usdManualReviewLog
   });
 }
 function suggestedOffset(chId, effBase, netObjetivo){
@@ -531,6 +532,7 @@ function computeMonthly(model){
     distribution: state.monthlyDistribution,
     currency: state.currency,
     usdManualReviewPending: state.usdManualReviewPending,
+    usdManualReviewLog: state.usdManualReviewLog,
     readiness: model.readiness
   });
 }
@@ -1237,7 +1239,7 @@ function renderCurrencyReviewBanner(model){
   const notice = document.getElementById('usdOnlyNotice');
   const box = document.getElementById('currencyReviewBanner');
   const trail = document.getElementById('usdReviewTrail');
-  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: state.currency, channels: state.channels, usdManualReviewPending: state.usdManualReviewPending});
+  const usdGate = evaluateUsdOnlyReadiness({unitCurrency: state.currency, channels: state.channels, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog});
   const needsReview = usdGate.blocked;
   const unitCurrencyWrong = state.currency !== 'USD';
   const pendingReview = state.usdManualReviewPending === true;
@@ -1336,7 +1338,7 @@ function renderReconcileResult(model){
   if(!box || typeof recChId==='undefined') return;
   const real = readReconcileForm();
   if(!real.chId || (!real.price && !real.payoutReceived)){ box.innerHTML=''; return; } // formulario vacio: no mostrar nada todavia
-  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: model.readiness});
+  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness});
   box.innerHTML = reconcileResultHTML(r);
 }
 function renderReconciliationsList(model){
@@ -1345,7 +1347,7 @@ function renderReconciliationsList(model){
   if(!state.reconciliations.length){ box.innerHTML = '<p class="hint">Todavía no has guardado ninguna conciliación.</p>'; return; }
   box.innerHTML = state.reconciliations.map(rec=>{
     const ch = state.channels.find(c=>c.id===rec.chId);
-    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: model.readiness});
+    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness});
     const summary = !r.ok ? 'no calculable con la config actual'
       : r.currencyBlocked ? 'bloqueada por moneda'
       : `diferencia ${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'} (${r.severity})`;
@@ -1367,11 +1369,11 @@ function renderAuditChecklist(model){
      cargados" incorrectamente. */
   const usingExampleCosts = costGateNow().blocked;
   const lastReconciliation = state.reconciliations.length
-    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: model.readiness})
+    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness})
     : null;
   const audit = buildAuditChecklist({
     usingExampleCosts, readiness: model.readiness, lmBlocked: model.lmBlocked,
-    channels: state.channels, currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, lastReconciliation
+    channels: state.channels, currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, lastReconciliation
   });
   const STATUS_CLS = {simulacion:'warn', datos_parciales:'warn', listo_supervisado:'ok'};
   box.innerHTML = `
@@ -1715,7 +1717,7 @@ document.addEventListener('click',e=>{
      archiva el dato real que Dani ingreso. */
   if(e.target.id==='recSaveBtn'){
     const real = readReconcileForm();
-    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, readiness: compute().readiness});
+    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: compute().readiness});
     if(!check.ok){ showInputError('No se pudo guardar la conciliación: ' + check.reason); return; }
     state.reconciliations.push({...real, id:'rec'+Date.now(), savedAt:new Date().toISOString()});
     renderAll();
@@ -1808,24 +1810,58 @@ document.addEventListener('click', async e=>{
    encargo) antes de apagar `usdManualReviewPending`. Nunca un toggle
    silencioso — es el único punto de todo el código donde ese campo puede
    pasar a `false`. Agrega la entrada `event:'review_confirmed'` a la
-   bitácora (nunca borra `copy_created`) y persiste inmediatamente. */
+   bitácora (nunca borra `copy_created`) y persiste inmediatamente.
+
+   BLOQUEANTE (auditoria externa, ronda 6) — orden de operaciones corregido:
+   antes, `state.usdManualReviewPending`/`state.usdManualReviewLog` se
+   mutaban DIRECTO sobre el objeto `state` en memoria ANTES de que
+   `window.storage.set()` confirmara nada — si el guardado fallaba (devolvía
+   falsy o lanzaba), el `catch`/`else` mostraba un error, pero `state` ya
+   había quedado con la revisión "confirmada" en memoria (incluida la
+   entrada `review_confirmed` en la bitácora), lista para filtrarse al
+   siguiente render sin que el guardado real hubiera ocurrido. Ahora se
+   arma un CANDIDATO aparte (nunca `state` mismo) y `state` solo se
+   reasigna DESPUÉS de una escritura exitosa confirmada — si
+   `window.storage.set()` falla o lanza, `state` queda exactamente como
+   estaba (bloqueado), no se llama a `renderAll()`, y el mensaje de error es
+   explícito. */
 document.addEventListener('click', async e=>{
   if(e.target.id!=='confirmUsdReviewBtn') return;
   if(state.usdManualReviewPending!==true) return; // defensivo — el boton solo deberia existir mientras este pendiente
   const confirmedText = 'Revisé manualmente todos los valores monetarios copiados y confirmo que ahora están expresados correctamente en USD. Entiendo que no hubo conversión automática.';
   if(!confirm(`${confirmedText}\n\n¿Confirmas que ya hiciste esta revisión, campo por campo (costos, tarifas, comisiones, precios), y que los números de esta unidad SÍ representan USD reales?`)) return;
   try{
-    state.usdManualReviewPending = false;
-    state.usdManualReviewLog = [
-      ...(Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : []),
-      {at: new Date().toISOString(), event:'review_confirmed', text: confirmedText}
-    ];
-    const {state: normalized} = normalizeUnit({...state, id: state.id});
+    const candidate = {
+      ...state,
+      usdManualReviewPending: false,
+      usdManualReviewLog: [
+        ...(Array.isArray(state.usdManualReviewLog) ? state.usdManualReviewLog : []),
+        {at: new Date().toISOString(), event:'review_confirmed', text: confirmedText}
+      ],
+      id: state.id
+    };
+    const {state: normalized} = normalizeUnit(candidate);
+    /* Defensa en profundidad: si por lo que sea normalizeUnit() NO logra
+       reflejar la confirmación (ej. evaluateUsdManualReviewState() sigue
+       viendo la bitácora como pendiente por alguna inconsistencia), NUNCA
+       continuar como si estuviera confirmada ni tocar `state`/`storage`. */
+    if(normalized.usdManualReviewPending !== false){
+      status('No se pudo confirmar la revisión — la bitácora sigue indicando que falta revisión. No se guardó ningún cambio.');
+      return;
+    }
     const record = buildV3Record(normalized, {id: state.id});
     const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    if(!r){
+      status('Error al guardar la confirmación — la unidad sigue marcada como pendiente de revisión, no se aplicó ningún cambio.');
+      return; // `state` NUNCA se toca si el guardado no fue exitoso
+    }
     state = normalized; state.id = record.id;
-    if(r){ renderAll(); status('Revisión manual confirmada ✓'); } else status('Error al guardar la confirmación');
-  }catch(err){ console.error(err); status('Error al confirmar la revisión'); }
+    renderAll();
+    status('Revisión manual confirmada ✓');
+  }catch(err){
+    console.error(err);
+    status('Error al confirmar la revisión — la unidad sigue marcada como pendiente de revisión, no se aplicó ningún cambio.');
+  }
 });
 migrateV2Btn.addEventListener('click', async()=>{
   try{
