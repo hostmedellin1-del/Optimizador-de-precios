@@ -99,7 +99,17 @@ test('BLOQUEANTE 1: dos unidades simultáneas — una bloqueada por canal COP, o
 
 /* ======================= Recuperación segura de una unidad COP ======================= */
 
-test('Recuperación segura: importar unidad COP → crear copia en USD → original sigue bloqueada → copia también bloqueada hasta confirmar moneda/costos → copia queda operativa solo tras revisión explícita', async ({page}) => {
+/* BLOQUEANTE 3 (auditoria externa, ronda 5) corrigió lo que este test
+   afirmaba antes: la copia NO queda operativa solo por tener `currency:'USD'`
+   — sigue bloqueada por `usdManualReviewPending:true` hasta la confirmación
+   explícita de revisión manual (ver e2e/fase-usd-copy-recovery.spec.js para
+   la cobertura completa de ese flujo, incluida la confirmación). Este test
+   se ajustó para reflejar el contrato REAL en vez del que tenía el bug: la
+   versión anterior aseguraba que la copia quedaba "no bloqueada por moneda"
+   inmediatamente después de crearla — eso era exactamente el hallazgo de la
+   auditoría (Piso/Base podían mostrarse sin revisión real de los números
+   copiados). */
+test('Recuperación segura: importar unidad COP → crear copia en USD → original sigue bloqueada → copia SIGUE bloqueada por revisión manual pendiente (aunque su moneda ya sea USD)', async ({page}) => {
   await page.goto('/index.html');
   await importUnit(page, 'Unidad para recuperar COP', {currency:'COP', fixedCost:40, varCost:25});
   await page.reload();
@@ -113,12 +123,17 @@ test('Recuperación segura: importar unidad COP → crear copia en USD → origi
 
   // La app debe quedar mostrando la COPIA (nombre distinto, marcado "pendiente de revisión").
   await expect(page.locator('#unitName')).toHaveValue(/copia USD — pendiente de revisión manual/, {timeout: 5000});
-  await expect(page.locator('#currencyDisplay')).toHaveText('USD');
-  await expect(page.locator('#currencyReviewBanner')).toHaveText(''); // la copia SI esta en USD ahora
-  // La copia no esta bloqueada POR MONEDA (aunque siga bloqueada por otro
-  // motivo ortogonal, ej. LM sin verificar por defecto — eso es correcto y
-  // no tiene nada que ver con la recuperación de moneda que este test prueba).
-  await expect(page.locator('#kFloorWhy')).not.toContainText('revisión manual');
+  // Su MONEDA ya es USD (los números no se convirtieron, solo se copiaron) —
+  // pero eso NO basta para desbloquearla: usdManualReviewPending sigue en
+  // true hasta que se confirme la revisión manual explícita.
+  await expect(page.locator('#currencyDisplay')).toHaveText('USD (copia pendiente de revisión manual)');
+  await expect(page.locator('#currencyReviewBanner')).toContainText('REQUIERE REVISIÓN MANUAL');
+  await expect(page.locator('#kFloor')).toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('revisión manual');
+  // El botón para crear OTRA copia ya no tiene sentido aquí (no hay "unidad
+  // original en otra moneda" que copiar) — en su lugar aparece el de finalizar.
+  await expect(page.locator('#createUsdCopyBtn')).toHaveCount(0);
+  await expect(page.locator('#confirmUsdReviewBtn')).toBeVisible();
 
   // La unidad ORIGINAL (en COP) sigue intacta y bloqueada.
   await page.selectOption('#unitList', {label: 'Unidad para recuperar COP'});

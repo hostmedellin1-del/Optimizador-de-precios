@@ -205,3 +205,93 @@ test('reconciliations[].currency: un valor real distinto de USD/COP (ej. "EUR") 
   ]});
   assert.equal(state.reconciliations[0].currency, 'EUR');
 });
+
+/* BLOQUEANTE 3 (auditoria externa, ronda 5) — usdManualReviewPending: mismo
+   criterio estricto que costBreakdownConfirmed arriba — nunca `true` por
+   default ni por un valor no-booleano; solo un `true`/`false` EXPLICITO
+   sobrevive. Item 10 de las pruebas obligatorias del encargo: "guardar,
+   recargar e importar/exportar conserva correctamente el estado pendiente y
+   la nota de revisión". */
+test('usdManualReviewPending: true explícito sobrevive el ciclo exacto', () => {
+  const {state} = normalizeUnit({name:'X', currency:'USD', usdManualReviewPending:true});
+  assert.equal(state.usdManualReviewPending, true);
+});
+
+test('usdManualReviewPending: false explícito sobrevive el ciclo exacto', () => {
+  const {state} = normalizeUnit({name:'X', currency:'USD', usdManualReviewPending:false});
+  assert.equal(state.usdManualReviewPending, false);
+});
+
+test('usdManualReviewPending: unidad sin este campo en absoluto migra a false — unidades normales preexistentes no quedan bloqueadas por una regla que no les aplica', () => {
+  const {state} = normalizeUnit({name:'Unidad vieja normal', currency:'USD'});
+  assert.equal(state.usdManualReviewPending, false);
+});
+
+test('usdManualReviewPending: un valor no-booleano (string, número, objeto) cae a false, nunca rompe ni se interpreta como "revisado"', () => {
+  for(const bad of ['si', 1, {a:1}, ['true']]){
+    assert.doesNotThrow(() => normalizeUnit({name:'Evil', usdManualReviewPending:bad}));
+    const {state} = normalizeUnit({name:'Evil', usdManualReviewPending:bad});
+    assert.equal(state.usdManualReviewPending, false, `usdManualReviewPending=${JSON.stringify(bad)} debe caer a false`);
+  }
+});
+
+test('usdManualReviewLog: entradas bien formadas (copy_created, review_confirmed) sobreviven el ciclo exacto, en orden, sin perder ninguna', () => {
+  const log = [
+    {at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde "Villa Juliana" (COP) — ningún valor fue convertido automáticamente.'},
+    {at:'2026-07-24T11:00:00.000Z', event:'review_confirmed', text:'Revisé manualmente todos los valores monetarios copiados...'}
+  ];
+  const {state} = normalizeUnit({name:'X', currency:'USD', usdManualReviewLog: log});
+  assert.equal(state.usdManualReviewLog.length, 2);
+  assert.equal(state.usdManualReviewLog[0].event, 'copy_created');
+  assert.equal(state.usdManualReviewLog[1].event, 'review_confirmed');
+  assert.equal(state.usdManualReviewLog[0].text, log[0].text);
+});
+
+test('usdManualReviewLog: unidad sin este campo migra a arreglo vacío, nunca rompe', () => {
+  const {state} = normalizeUnit({name:'X', currency:'USD'});
+  assert.deepEqual(state.usdManualReviewLog, []);
+});
+
+test('usdManualReviewLog: una entrada con evento desconocido se descarta ENTERA (no se repara a medias) — nunca se acepta un evento inventado como nota de auditoría', () => {
+  const {state, warnings} = normalizeUnit({name:'X', currency:'USD', usdManualReviewLog:[
+    {at:'2026-07-24T10:00:00.000Z', event:'algo_inventado', text:'x'}
+  ]});
+  assert.equal(state.usdManualReviewLog.length, 0);
+  assert.ok(warnings.some(w=>w.includes('usdManualReviewLog')));
+});
+
+test('usdManualReviewLog: una entrada sin fecha se descarta ENTERA, la unidad no rompe', () => {
+  const {state} = normalizeUnit({name:'X', currency:'USD', usdManualReviewLog:[
+    {event:'copy_created', text:'sin fecha'}
+  ]});
+  assert.equal(state.usdManualReviewLog.length, 0);
+});
+
+test('usdManualReviewLog: un payload malicioso (XSS en text) nunca se ejecuta al re-renderizarse — el texto se preserva como texto plano, escapeHtml() lo neutraliza', () => {
+  const evil = '<img src=x onerror=alert(1)>';
+  const {state} = normalizeUnit({name:'X', currency:'USD', usdManualReviewLog:[
+    {at:'2026-07-24T10:00:00.000Z', event:'copy_created', text: evil}
+  ]});
+  assert.equal(state.usdManualReviewLog[0].text, evil, 'el texto crudo se preserva tal cual en el estado');
+  assert.ok(!escapeHtml(state.usdManualReviewLog[0].text).includes('<img'), 'pero al pasar por escapeHtml() (la funcion que SIEMPRE usa el render) nunca queda como HTML ejecutable');
+});
+
+test('usdManualReviewLog: no es un arreglo (objeto suelto) — se usa una lista vacía, nunca rompe', () => {
+  const {state, warnings} = normalizeUnit({name:'X', currency:'USD', usdManualReviewLog:{not:'an array'}});
+  assert.deepEqual(state.usdManualReviewLog, []);
+  assert.ok(warnings.some(w=>w.startsWith('usdManualReviewLog')));
+});
+
+test('BLOQUEANTE 3 — round-trip completo (guardar → recargar): una copia USD marcada pendiente con su bitácora sobrevive normalizeUnit() dos veces seguidas (simula guardar y volver a cargar) sin perder el gate ni la nota', () => {
+  const raw = {
+    name:'Unidad para recuperar COP (copia USD — pendiente de revisión manual)',
+    currency:'USD', fixedCost:40, varCost:25, costBreakdownConfirmed:false,
+    usdManualReviewPending:true,
+    usdManualReviewLog:[{at:'2026-07-24T10:00:00.000Z', event:'copy_created', text:'Copia creada desde "Villa Juliana" (COP) — ningún valor fue convertido automáticamente.'}]
+  };
+  const {state: firstLoad} = normalizeUnit(raw);
+  const {state: secondLoad} = normalizeUnit(firstLoad); // simula guardar el resultado y volver a cargarlo (import/export)
+  assert.equal(secondLoad.usdManualReviewPending, true);
+  assert.equal(secondLoad.usdManualReviewLog.length, 1);
+  assert.equal(secondLoad.usdManualReviewLog[0].event, 'copy_created');
+});

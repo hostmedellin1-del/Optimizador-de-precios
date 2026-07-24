@@ -70,3 +70,31 @@ test('config vacio/ausente: no bloquea, no rompe', () => {
   assert.equal(r.blocked, false);
   assert.equal(r.reason, null);
 });
+
+/* BLOQUEANTE 3 (auditoria externa, ronda 5) — "recuperación segura de COP no
+   es segura": una copia USD de una unidad COP tiene unitCurrency==='USD'
+   desde el día uno; sin este gate explícito, nada la distingue de una
+   unidad USD real y verificada. */
+test('BLOQUEANTE 3: usdManualReviewPending:true bloquea aunque unitCurrency ya sea USD y no haya canales en otra moneda', () => {
+  const r = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels: freshChannels(), usdManualReviewPending:true});
+  assert.equal(r.blocked, true);
+  assert.match(r.reason, /pendiente de revisión manual/);
+});
+
+test('usdManualReviewPending:false (revisión ya confirmada) no bloquea por sí solo', () => {
+  const r = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels: freshChannels(), usdManualReviewPending:false});
+  assert.equal(r.blocked, false);
+});
+
+test('usdManualReviewPending ausente (undefined, unidad normal preexistente): no bloquea — cero regresión', () => {
+  const r = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels: freshChannels()});
+  assert.equal(r.blocked, false);
+});
+
+test('usdManualReviewPending:true Y canal en COP: ambos motivos aparecen (union, no exclusivo)', () => {
+  const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
+  const r = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels, usdManualReviewPending:true});
+  assert.equal(r.blocked, true);
+  assert.equal(r.reasons.length, 2);
+  assert.match(r.reasons[0], /pendiente de revisión manual/);
+});
