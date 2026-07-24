@@ -4,6 +4,62 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.12.0] — Cerrado el bypass de copia COP→USD por importación (booleano crudo vs. bitácora)
+
+Auditoría externa (ronda 6) sobre 0.11.0. Hallazgo: una copia USD creada desde COP podía
+"desbloquearse" importando un JSON con `usdManualReviewPending:false` mientras
+`usdManualReviewLog` seguía mostrando un `copy_created` SIN un `review_confirmed` real
+después — el booleano crudo era la única fuente que consultaban `evaluateUsdOnlyReadiness()`
+y `normalizeUnit()`, así que un archivo editado a mano (o un estado contradictorio) bastaba
+para que Piso/Base/Offset/Matriz/Alertas/Simulador/conciliación/planificación mensual/
+checklist de auditoría se mostraran disponibles sin revisión real.
+
+**Corrección**: nueva función pura `evaluateUsdManualReviewState({usdManualReviewPending,
+usdManualReviewLog})` (`src/domain/usd-only.js`) — cruza el booleano contra la bitácora en
+orden temporal (por `at`, empate resuelto por posición en el arreglo). Si el `copy_created`
+más reciente no tiene un `review_confirmed` VÁLIDO y posterior, el estado efectivo es
+"pendiente" sin importar lo que diga el booleano. Entradas malformadas (evento desconocido,
+fecha inválida/ausente) nunca cuentan como confirmación. `evaluateUsdOnlyReadiness()` ya
+NUNCA lee `usdManualReviewPending` crudo — siempre pasa por esta función, y la consumen
+`engine.js`, `reconciliation.js`, `monthly-economics.js` y `audit.js` por igual (mismo
+estado efectivo en los 7 puntos de bloqueo). `persistence.js` (`normalizeUnit()`) hace
+defensa adicional en la capa de persistencia: si detecta la contradicción, CORRIGE
+`usdManualReviewPending` a `true` y agrega un warning explícito — doble defensa (dominio +
+persistencia), no un parche cosmético.
+
+También se corrigió un bug real de orden de operaciones en el handler
+`#confirmUsdReviewBtn` (`index.html`): mutaba `state` en memoria ANTES de que
+`window.storage.set()` confirmara el guardado — si el guardado fallaba, la unidad quedaba
+mostrándose como revisada en memoria sin haberse persistido nada. Ahora se arma un
+candidato aparte y `state` solo se reasigna después de una escritura exitosa; si falla,
+la unidad permanece bloqueada en memoria y en pantalla, con un error explícito.
+
+Verificación manual en navegador real (flujo completo): crear copia USD desde COP →
+bloqueada → exportar/modificar (`usdManualReviewPending:false` con log sin confirmar) →
+reimportar → SIGUE bloqueada (auto-corregida) → confirmar revisión manual real → resolver
+LM/datos de negocio → Piso USD 108 / Base USD 197 disponibles (los mismos números del
+reporte original, ahora solo alcanzables tras la revisión real) → unidad COP original
+intacta y bloqueada.
+
+Verificación de regresión: se reintrodujo deliberadamente el bug (booleano crudo sin cruzar
+la bitácora, en `usd-only.js` y `persistence.js`) — 6 pruebas unitarias y 1 E2E fallaron
+exactamente como se esperaba; los archivos se restauraron después (`diff` verificado, cero
+cambios netos).
+
+Tests nuevos: `tests/usd-manual-review-state.test.js` (13, la función pura en aislamiento:
+el bypass exacto, orden temporal, eventos/fechas malformados, empates, re-copias sin
+reconfirmar), `tests/fase-usd-copy-recovery.test.js` (+7, el bypass contra
+`compute()`/`reconcileReservation()`/`computeMonthlyEconomics()`/`buildAuditChecklist()`),
+`tests/real-data-persistence.test.js` (+5, auto-corrección y warning en `normalizeUnit()`).
+`e2e/fase-usd-copy-recovery.spec.js` (+3: bypass por importación sigue bloqueado, log con
+confirmación válida sí desbloquea, fallo simulado de `window.storage.set()` durante la
+confirmación deja la unidad bloqueada con error explícito). **320/320 unitarios, 75/75 e2e,
+sin regresión.**
+
+Riesgos abiertos: sin cambios respecto a la ronda anterior — `currency.js` sigue sin tocarse
+en esta ronda (fuera de alcance, a pedido explícito); accesibilidad de campos dinámicos por
+canal aún parcial; ningún dato real de Dani cargado/confirmado todavía.
+
 ## [0.11.0] — BLOQUEANTE 3 corregido: la recuperación segura de una unidad COP no era segura
 
 Auditoría externa (ronda 5) sobre 0.10.0. El flujo "Crear copia en USD" (agregado en 0.10.0

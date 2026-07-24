@@ -1636,3 +1636,45 @@ sin uso activo; la accesibilidad de campos dinámicos por canal sigue
 parcial; no existe recuperación guiada para un canal aislado en otra moneda
 (solo para la unidad completa); y sigue pendiente cargar/confirmar datos
 reales de las unidades de Dani.
+
+### Actualización (revisión externa, RONDA 6) — cerrado el bypass de copia COP→USD por importación
+
+**Hallazgo**: el booleano `usdManualReviewPending` (ronda 5) era la ÚNICA
+fuente que consultaban `evaluateUsdOnlyReadiness()` y `normalizeUnit()` — un
+JSON exportado, editado a mano para dejar `usdManualReviewPending:false`
+pero conservando en `usdManualReviewLog` un `copy_created` SIN un
+`review_confirmed` real después, desbloqueaba la unidad igual al
+reimportarlo. El booleano nunca se cruzaba contra su propia bitácora.
+
+**Corrección**: `evaluateUsdManualReviewState({usdManualReviewPending,
+usdManualReviewLog})` (`src/domain/usd-only.js`) es ahora la ÚNICA función
+pura que decide el estado EFECTIVO de revisión manual — ordena las entradas
+válidas del log cronológicamente y exige que el `copy_created` MÁS RECIENTE
+tenga un `review_confirmed` VÁLIDO y POSTERIOR; si no, el estado es
+"pendiente" sin importar el booleano. Entradas malformadas (evento
+desconocido, fecha inválida/ausente, orden imposible) nunca cuentan como
+confirmación. `evaluateUsdOnlyReadiness()` ya nunca lee el booleano crudo —
+siempre pasa por esta función, así que `engine.js`/`reconciliation.js`/
+`monthly-economics.js`/`audit.js` quedan protegidos por igual, sin
+reimplementar el cruce cada uno. `normalizeUnit()` (`persistence.js`) agrega
+una segunda capa de defensa: si detecta la contradicción, CORRIGE
+`usdManualReviewPending` a `true` en el estado cargado y deja un warning
+explícito — así cualquier lector que siga leyendo `state.usdManualReviewPending`
+directo (incluida la UI) ve siempre el valor seguro.
+
+También se corrigió un bug de orden de operaciones en el handler
+`#confirmUsdReviewBtn`: mutaba `state` en memoria ANTES de confirmar el
+guardado — si `window.storage.set()` fallaba, la unidad quedaba mostrándose
+como revisada sin haberse persistido nada. Ahora arma un candidato aparte y
+solo reasigna `state` tras una escritura exitosa; si falla, la unidad sigue
+bloqueada en memoria y en pantalla, con un error explícito.
+
+Verificado en navegador real: crear copia COP→USD → bloqueada → exportar/
+tamperar (`usdManualReviewPending:false` con log sin confirmar) → reimportar
+→ sigue bloqueada (auto-corregida) → confirmar revisión real → resolver
+LM/datos de negocio → recién ahí Piso/Base disponibles. Bug reintroducido
+deliberadamente y restaurado para confirmar que las pruebas nuevas (6
+unitarias + 1 e2e) lo detectan. **320/320 unitarios, 75/75 e2e, sin
+regresión.** Alcance de esta ronda, a pedido explícito: NO se tocó
+`currency.js` ni la limpieza de multimoneda — sigue exactamente igual que en
+la ronda 5.
