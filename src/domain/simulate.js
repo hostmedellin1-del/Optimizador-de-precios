@@ -1,9 +1,10 @@
 /* Fase 2 de la auditoria: reemplazo de src/domain/simulate-legacy.js.
-   simulate-legacy.js queda INTACTO a proposito (no se edita) como registro
-   historico del bug P4 — este archivo es el reemplazo que corrige el problema
-   consumiendo quoteScenario() (fuente unica), y expone la MISMA forma de
-   resultado que simulate-legacy.js para que index.html no tenga que reescribir
-   el armado de HTML de renderSim(), solo el import.
+   Aquel archivo se conservo un tiempo como registro historico del bug P4 y se
+   elimino en la simplificacion de jul 2026 (no lo importaba nadie, ni los
+   tests). Este archivo es el reemplazo que corrige el problema consumiendo
+   quoteScenario() (fuente unica), y conserva la MISMA forma de resultado que
+   tenia aquel para que index.html no tenga que reescribir el armado de HTML de
+   renderSim(), solo el import.
 
    Fix P4: antes el LM se calculaba con el punto medio sintetico de la ventana y
    nights=1 fijo, ignorando los dias/noches reales que el usuario escribio en el

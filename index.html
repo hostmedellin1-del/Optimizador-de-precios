@@ -822,8 +822,8 @@ function renderAlerts(model){
    — aqui solo se arma el HTML del waterfall a partir de lo que esa funcion
    devuelve. Fase 2: el LM ya usa los days/nights REALES del escenario, no un
    punto medio sintetico de ventana ni nights=1 fijo (bug P4, corregido).
-   src/domain/simulate-legacy.js se deja intacto como registro historico del bug
-   — ya no lo usa index.html. */
+   El antiguo src/domain/simulate-legacy.js (registro historico del bug) se
+   elimino en la simplificacion de jul 2026 — no lo importaba nadie. */
 function renderSim(model){
   /* Bloqueante P2 (revision externa, ronda 3): antes, si el campo de precio
      quedaba vacio, este fallback usaba `model.effBase` — que es EXACTAMENTE
