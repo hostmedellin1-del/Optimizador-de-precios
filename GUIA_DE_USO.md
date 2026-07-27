@@ -188,7 +188,23 @@ Los datos no se sincronizan entre computadores, perfiles de navegador ni modo in
 Guarda los respaldos en una ubicación de confianza, por ejemplo tu almacenamiento habitual
 de archivos.
 
-## 7. Preguntas frecuentes
+## 7. El repositorio de GitHub y cómo se publican los cambios
+
+Vas a ver dos links distintos y no son lo mismo. [`github.com/hostmedellin1-del/Optimizador-de-precios`](https://github.com/hostmedellin1-del/Optimizador-de-precios)
+es donde vive el **CÓDIGO** de la herramienta: es la cocina, no el restaurante; ahí no se
+usa la herramienta y no hace falta entrar nunca para el trabajo diario. El sitio publicado
+que usas todos los días para calcular precios es el enlace mencionado al principio de esta guía.
+
+Cuando pides un cambio, primero se prueba en un lugar aparte sin afectar el sitio publicado.
+Solo se publica cuando tú lo apruebas explícitamente; después de confirmar “sí, publicalo”,
+el sitio publicado se actualiza solo, normalmente en menos de un minuto. No necesitas cuenta
+de GitHub, saber programar ni tocar nada ahí: solo confirmar cuando te pregunten.
+
+`CHANGELOG.md` es el historial de qué cambió y cuándo. Es un archivo de texto dentro del
+repositorio que puedes abrir directamente en github.com, sin instalar nada, si alguna vez
+quieres revisar qué se modificó en una fecha puntual.
+
+## 8. Preguntas frecuentes
 
 ### ¿Por qué Min Price o Base Price muestran `—`?
 
@@ -214,7 +230,7 @@ futura, no está activa hoy.
 No. No hay integración. Tú debes comparar cada descuento, comisión, Offset y modo
 Last-Minute con la cuenta real y registrar la fuente/fecha en Verificación.
 
-## 8. Límites importantes
+## 9. Límites importantes
 
 - No hay integración automática con PriceLabs, Hospy, Airbnb, Booking.com, Expedia,
   bancos ni pasarelas.
