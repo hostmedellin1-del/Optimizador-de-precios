@@ -8,7 +8,7 @@
    es el gate que cierra ese hueco — bloquea aunque `unitCurrency` YA sea
    'USD', porque la moneda por sí sola no prueba que alguien revisó los
    números. Este archivo prueba el contrato completo contra compute()
-   (engine.js), reconcileReservation() y computeMonthlyEconomics() — no solo
+   (engine.js) y reconcileReservation() — no solo
    contra evaluateUsdOnlyReadiness() en aislamiento (ver tests/usd-only.test.js
    para esas pruebas puras). */
 import {test} from 'node:test';
@@ -16,7 +16,6 @@ import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
 import {reconcileReservation} from '../src/domain/reconciliation.js';
 import {quoteScenario} from '../src/domain/quote.js';
-import {computeMonthlyEconomics} from '../src/domain/monthly-economics.js';
 import {evaluateUsdOnlyReadiness} from '../src/domain/usd-only.js';
 import {defaultVerification} from '../src/domain/verification.js';
 import {freshChannels, freshDiscounts, freshWindows, defaultCeilings} from './helpers/state-factory.js';
@@ -117,31 +116,6 @@ test('reconcileReservation() con usdManualReviewPending:false conciliaciones fun
   assert.equal(r.diff.absolute, 0);
 });
 
-/* ======================= monthly-economics.js ======================= */
-
-test('BLOQUEANTE 3: computeMonthlyEconomics() bloquea con usdManualReviewPending:true aunque currency ya sea USD', () => {
-  const quoteConfig = quoteConfigFor();
-  const res = computeMonthlyEconomics({
-    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
-    avgNights: 3,
-    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
-    quoteConfig, currency:'USD', usdManualReviewPending: true
-  });
-  assert.equal(res.ok, false);
-  assert.match(res.reason, /revisión manual/);
-});
-
-test('computeMonthlyEconomics() con usdManualReviewPending:false calcula con normalidad', () => {
-  const quoteConfig = quoteConfigFor();
-  const res = computeMonthlyEconomics({
-    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
-    avgNights: 3,
-    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
-    quoteConfig, currency:'USD', usdManualReviewPending: false
-  });
-  assert.equal(res.ok, true);
-});
-
 test('BLOQUEANTE 3: evaluateUsdOnlyReadiness bloquea con usdManualReviewPending:true aunque currency ya sea USD', () => {
   const gate = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels:freshChannels(), usdManualReviewPending:true});
   assert.equal(gate.blocked, true);
@@ -157,7 +131,7 @@ test('evaluateUsdOnlyReadiness con usdManualReviewPending:false permite una unid
    Reproduce el hallazgo exacto: JSON con usdManualReviewPending:false pero
    usdManualReviewLog con un copy_created SIN review_confirmed posterior —
    a nivel de DOMINIO (sin pasar por persistence.js/normalizeUnit()), para
-   confirmar que compute()/reconcileReservation()/computeMonthlyEconomics()/
+   confirmar que compute()/reconcileReservation()/
    evaluateUsdOnlyReadiness() NUNCA confían en el booleano crudo por su cuenta —
    la defensa vive en evaluateUsdOnlyReadiness() (via
    evaluateUsdManualReviewState()), no solo en la capa de persistencia. */
@@ -192,18 +166,6 @@ test('BYPASS: reconcileReservation() con usdManualReviewPending:false + log sin 
   });
   assert.equal(r.currencyBlocked, true);
   assert.equal(r.diff, null);
-});
-
-test('BYPASS: computeMonthlyEconomics() con usdManualReviewPending:false + log sin confirmar — sigue bloqueada', () => {
-  const quoteConfig = quoteConfigFor();
-  const res = computeMonthlyEconomics({
-    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
-    avgNights: 3,
-    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
-    quoteConfig, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog
-  });
-  assert.equal(res.ok, false);
-  assert.match(res.reason, /revisión manual/);
 });
 
 test('BYPASS: evaluateUsdOnlyReadiness con booleano falso y log sin confirmar sigue bloqueada', () => {

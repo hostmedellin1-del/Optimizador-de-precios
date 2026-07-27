@@ -67,6 +67,13 @@ test('unidad vieja con fxRates: el campo retirado se ignora sin warning ni ruptu
   assert.equal(warnings.some(w=>w.includes('fxRates')), false);
 });
 
+test('unidad vieja con planificación mensual: los campos retirados se ignoran sin warning ni ruptura', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad vieja', monthlyIncomeScenario:{type:'manual', manualNetPerNight:80}, monthlyDistribution:{configured:true, ownerTargetPct:50}});
+  assert.equal('monthlyIncomeScenario' in state, false);
+  assert.equal('monthlyDistribution' in state, false);
+  assert.equal(warnings.some(w=>w.includes('monthly')), false);
+});
+
 test('reconciliations: entrada bien formada sobrevive el ciclo exacto (campos financieros + referencia opcional)', () => {
   const rec = {id:'rec1', savedAt:'2026-07-20T00:00:00.000Z', chId:'airbnb', price:150, nights:3, days:20, currency:'USD',
     otaCommissionPct:15.5, bankFeePct:null, cleaningFeeCharged:40, nativeDiscountPct:null, payoutReceived:126.75, reference:'HMABC123'};

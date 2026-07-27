@@ -75,7 +75,7 @@ test('BLOQUEANTE 3 (reproducción exacta, 1-9): importar COP fixedCost:40/varCos
   // 3. Resolver LM, comisiones y demás verificaciones.
   await resolveEverythingExceptCurrency(page);
 
-  // 4. Confirmar que Piso/Base/Offset/Matriz/Alertas/planificación/conciliación
+  // 4. Confirmar que Piso/Base/Offset/Matriz/Alertas/conciliación
   //    SIGUEN bloqueados por usdManualReviewPending, y 5. que NO aparece un
   //    Piso/Base numérico engañoso (el bug real: 108.33/196.97 disponibles).
   await expect(page.locator('#kFloor')).toHaveText('—');
@@ -92,9 +92,6 @@ test('BLOQUEANTE 3 (reproducción exacta, 1-9): importar COP fixedCost:40/varCos
 
   await page.locator('[data-tabbtn="ch-booking"]').click();
   await expect(page.locator('.tab-panel[data-tab="ch-booking"] .offset-hint')).toContainText('revisión manual');
-
-  await page.locator('[data-tabbtn="resumen"]').click();
-  await expect(page.locator('#monthlyResult')).toContainText(/revisión manual/i);
 
   // 6. Completar la confirmación explícita de revisión manual.
   page.once('dialog', d => d.accept());

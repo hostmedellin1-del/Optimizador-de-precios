@@ -12,7 +12,6 @@
                               schemaVersion, savedAt, migratedFromV2Key?}. */
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
-import {defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './monthly-economics.js';
 import {evaluateUsdManualReviewState} from './usd-only.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
@@ -33,18 +32,6 @@ function safeNum(v, fallback){
 }
 function numField(raw, key, fallback, warnings, path){
   if(!(key in raw)) return fallback;
-  const r = safeNum(raw[key], fallback);
-  if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
-  return r;
-}
-/* P2 (revision externa) — para campos donde `null` es un estado VALIDO de
-   "todavia no configurado" (ej. monthlyIncomeScenario.manualNetPerNight),
-   distinto de un valor invalido. Si `raw[key]` es null explicito, se preserva
-   tal cual, sin warning — un warning ahi seria un falso positivo cada vez que
-   se exporta/reimporta una unidad que nunca configuro este campo. */
-function nullableNumField(raw, key, fallback, warnings, path){
-  if(!(key in raw)) return fallback;
-  if(raw[key]===null) return null;
   const r = safeNum(raw[key], fallback);
   if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
   return r;
@@ -220,65 +207,7 @@ function normalizeVerification(raw, warnings){
   return out;
 }
 
-const MONTHLY_INCOME_TYPES = ['manual', 'channel', 'mix'];
 const CHANNEL_IDS = CHANNELS.map(c => c.id);
-
-function normalizeMonthlyChannelScenario(raw, def, warnings, path){
-  const out = {...def};
-  if(!raw || typeof raw!=='object') return out;
-  if(CHANNEL_IDS.includes(raw.chId)) out.chId = raw.chId;
-  else if(raw.chId!==undefined) warnings.push(`${path}.chId: "${String(raw.chId).slice(0,40)}" no es un canal conocido — se uso "${def.chId}".`);
-  out.days = Math.round(nonNegField(raw, 'days', def.days, warnings, path, {min:0}));
-  out.nights = Math.round(nonNegField(raw, 'nights', def.nights, warnings, path, {min:1}));
-  out.price = nonNegField(raw, 'price', def.price, warnings, path, {min:0});
-  return out;
-}
-
-/* Fase "planificación mensual" — igual disciplina que discounts/channels
-   arriba: solo canales CONOCIDOS (whitelist contra CHANNEL_IDS), nunca se
-   inventa una fila de mezcla nueva desde un import; un `type` desconocido cae
-   a 'manual' (el mas seguro — nunca calcula sin que Dani escriba un numero
-   el mismo), nunca se ejecuta ni preserva el valor crudo. */
-function normalizeMonthlyIncomeScenario(raw, warnings){
-  const def = defaultMonthlyIncomeScenario(CHANNEL_IDS);
-  if(!raw || typeof raw!=='object') return def;
-  const type = MONTHLY_INCOME_TYPES.includes(raw.type) ? raw.type : 'manual';
-  if(raw.type!==undefined && type!==raw.type) warnings.push(`monthlyIncomeScenario.type: "${String(raw.type).slice(0,40)}" no es un tipo reconocido — se uso 'manual'.`);
-  const manualNetPerNight = nullableNumField(raw, 'manualNetPerNight', def.manualNetPerNight, warnings, 'monthlyIncomeScenario');
-  const channel = normalizeMonthlyChannelScenario(raw.channel, def.channel, warnings, 'monthlyIncomeScenario.channel');
-  const rawMixById = Object.fromEntries((Array.isArray(raw.mix) ? raw.mix : []).filter(m => m && CHANNEL_IDS.includes(m.chId)).map(m => [m.chId, m]));
-  if(!Array.isArray(raw.mix) && raw.mix!==undefined) warnings.push('monthlyIncomeScenario.mix: no es un arreglo — se uso el default (todos apagados).');
-  const mix = def.mix.map(defRow => {
-    const rawRow = rawMixById[defRow.chId];
-    if(!rawRow || typeof rawRow!=='object') return {...defRow};
-    const path = `monthlyIncomeScenario.mix.${defRow.chId}`;
-    return {
-      chId: defRow.chId,
-      on: boolField(rawRow, 'on', defRow.on),
-      weightPct: pctField(rawRow, 'weightPct', defRow.weightPct, warnings, path, {min:0, max:100}),
-      days: Math.round(nonNegField(rawRow, 'days', defRow.days, warnings, path, {min:0})),
-      nights: Math.round(nonNegField(rawRow, 'nights', defRow.nights, warnings, path, {min:1})),
-      price: nonNegField(rawRow, 'price', defRow.price, warnings, path, {min:0})
-    };
-  });
-  return {type, manualNetPerNight, channel, mix};
-}
-
-/* reservePct/taxReservePct/ownerTargetPct/managerTargetPct: 0-100 estricto —
-   un valor fuera de rango se descarta a favor de 0 (nunca inventa un reparto).
-   `configured` migra a `false` para cualquier unidad que no lo tenga — jamas
-   `true` por defecto (ver CLAUDE.md: nunca repartir el margin viejo solo). */
-function normalizeMonthlyDistribution(raw, warnings){
-  const def = defaultMonthlyDistribution();
-  if(!raw || typeof raw!=='object') return def;
-  return {
-    configured: boolField(raw, 'configured', def.configured),
-    ownerTargetPct: pctField(raw, 'ownerTargetPct', def.ownerTargetPct, warnings, 'monthlyDistribution', {min:0, max:100}),
-    managerTargetPct: pctField(raw, 'managerTargetPct', def.managerTargetPct, warnings, 'monthlyDistribution', {min:0, max:100}),
-    reservePct: pctField(raw, 'reservePct', def.reservePct, warnings, 'monthlyDistribution', {min:0, max:100}),
-    taxReservePct: pctField(raw, 'taxReservePct', def.taxReservePct, warnings, 'monthlyDistribution', {min:0, max:100})
-  };
-}
 
 /* reconciliations: datos LOCALES de auditoria que Dani ingresa a mano para
    comparar una reserva real contra el estimado del motor (ver
@@ -354,7 +283,7 @@ function normalizeReconciliations(raw, warnings){
    dentro de normalizeUnit(): si `evaluateUsdManualReviewState()` detecta
    esa contradicción, `usdManualReviewPending` se CORRIGE a `true` aquí
    mismo (defensa en la capa de persistencia) con un warning explícito —
-   ademas de que engine.js/reconciliation.js/monthly-economics.js/audit.js
+   ademas de que engine.js/reconciliation.js
    NUNCA confían en el booleano crudo por su cuenta (defensa en la capa de
    dominio, la autoritativa incluso si algo llega a `compute()` sin pasar
    por aquí). La fecha (`at`) ahora debe ser un valor REALMENTE parseable
@@ -451,8 +380,6 @@ export function normalizeUnit(raw){
   const costBreakdownConfirmed = boolField(raw, 'costBreakdownConfirmed', false);
   const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
   const verification = normalizeVerification(raw.verification, warnings);
-  const monthlyIncomeScenario = normalizeMonthlyIncomeScenario(raw.monthlyIncomeScenario, warnings);
-  const monthlyDistribution = normalizeMonthlyDistribution(raw.monthlyDistribution, warnings);
   const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
   /* BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js:
      `usdManualReviewPending` es EXPLICITO, nunca inferido. Una unidad sin
@@ -510,7 +437,7 @@ export function normalizeUnit(raw){
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
-    monthlyIncomeScenario, monthlyDistribution, reconciliations,
+    reconciliations,
     usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
