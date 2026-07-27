@@ -19,9 +19,18 @@ import assert from 'node:assert/strict';
 import {combineChannel, worstNative, compute} from '../src/domain/engine.js';
 import {buildAlerts} from '../src/domain/alerts.js';
 import {simulateReservation} from '../src/domain/simulate.js'; // Fase 2: reemplaza simulate-legacy.js (que se deja intacto como registro historico del bug P4)
-import {costCalcTotals} from '../src/domain/costs-legacy.js';
 import {reservationCost} from '../src/domain/costs.js';
 import {freshChannels, freshDiscounts, freshWindows, defaultCeilings, findDiscount, baseConfig} from './helpers/state-factory.js';
+
+function costCalcTotals(costBreakdown, avgNights){
+  const cb=costBreakdown;
+  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(avgNights)||1);
+  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
+  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
+  const turnoPerNight=turnoSum/avgN;
+  const consumptionPerNight=parseFloat(cb.consumables)||0;
+  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
+}
 
 /* ============================================================================
    CASO OBLIGATORIO 1 — Airbnb early-bird desde 90 dias al 50%

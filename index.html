@@ -208,7 +208,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
-        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Este desglose NO alimenta ninguna recomendación (Piso/Base/Offset/Matriz/Alertas/planificación mensual) hasta que lo confirmes explícitamente abajo — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba).</p>
+        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Este desglose NO alimenta ninguna recomendación (Piso/Base/Offset/Matriz/Alertas) hasta que lo confirmes explícitamente abajo — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba).</p>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Fijos mensuales</span>
           <div class="field"><label for="f-cb-rent">Arriendo/cuota</label><input id="f-cb-rent" type="number" data-cb="rent" step="1"></div>
@@ -272,58 +272,19 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
   <div id="lmModeFields"></div>
 </section>
+<section class="card" id="ceilingsSection">
+  <h2>Techo total por ventana <span class="hint">el % máximo de descuento total que aceptas ver en el precio del huésped, sumando nativos + LM</span></h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ventana</th><th>Techo total %</th></tr></thead>
+      <tbody id="ceilingsEditor"></tbody>
+    </table>
+  </div>
+</section>
 <section class="card" id="verificationSection">
   <h2 id="verificationSectionHeading" tabindex="-1">Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
   <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y reglas de Hospy/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Hospy — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
   <div id="verificationList"></div>
-</section>
-<section class="card">
-  <h2>Rentabilidad mensual y punto de equilibrio <span class="hint">proyección de planificación — no es el costo/ingreso exacto de una reserva individual</span></h2>
-  <p class="hint">Usa los costos fijos MENSUALES y "Noches ocupadas al mes" de la calculadora de costos detallada (arriba) más la Estadía promedio (Resumen) para proyectar si la unidad cierra el mes en positivo, y cuántas noches necesitas vender para no perder plata. Reservas estimadas = noches ocupadas planeadas ÷ estadía promedio — es una PROYECCIÓN de planificación, no el número exacto de reservas reales del mes.</p>
-
-  <h3 style="margin-top:16px;">Escenario de ingreso</h3>
-  <div class="field"><span>Método</span>
-    <select data-mon="incomeType">
-      <option value="manual">Manual — neto/noche que tú escribes</option>
-      <option value="channel">Canal específico cotizado (usa quoteScenario)</option>
-      <option value="mix">Mezcla de canales configurada</option>
-    </select>
-  </div>
-  <div id="monthlyIncomeFields"></div>
-
-  <h3 style="margin-top:16px;">Reparto Propietario / Administrador (PM) <span class="hint">apagado por defecto — no reemplaza el Margen objetivo existente</span></h3>
-  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-mon="distConfigured"><span>Activar reparto detallado (si no, la utilidad mensual se muestra sin dividir)</span></label></div>
-  <div id="monthlyDistFields"></div>
-
-  <div id="monthlyResult"></div>
-</section>
-<section class="card">
-  <h2>Validar contra una reserva real <span class="hint">compara el estimado del motor contra una liquidación real ya cerrada</span></h2>
-  <p class="hint">Ingresa los datos reales de UNA reserva/liquidación ya cerrada, <strong>en USD</strong> — el motor cotiza el mismo escenario con quoteScenario() (la misma fuente que usan Piso/Base/Matriz/Simulador) y muestra la diferencia. Esto NUNCA cambia tu configuración (comisiones, descuentos) automáticamente — solo dice qué revisar. No ingreses datos del huésped (nombre, email, teléfono); solo números financieros y, si quieres, una referencia/código de reserva.</p>
-  <div class="row">
-    <div class="field"><label for="recChId">Canal</label><select id="recChId"></select></div>
-    <div class="field"><label for="recPrice">Precio publicado por PriceLabs (USD)</label><input type="number" id="recPrice"></div>
-    <div class="field"><label for="recNights">Noches</label><input type="number" id="recNights" min="1" step="1"></div>
-    <div class="field"><label for="recDays">Días de anticipación</label><input type="number" id="recDays" min="0" step="1"></div>
-  </div>
-  <div class="row">
-    <div class="field"><label for="recOtaCommissionPct">Comisión OTA real % <span class="hint">opcional</span></label><input type="number" id="recOtaCommissionPct"></div>
-    <div class="field"><label for="recBankFeePct">Comisión bancaria real % <span class="hint">opcional</span></label><input type="number" id="recBankFeePct"></div>
-    <div class="field"><label for="recCleaningFeeCharged">Tarifa de aseo cobrada <span class="hint">opcional</span></label><input type="number" id="recCleaningFeeCharged"></div>
-    <div class="field"><label for="recNativeDiscountPct">Descuento nativo reportado % <span class="hint">opcional</span></label><input type="number" id="recNativeDiscountPct"></div>
-  </div>
-  <div class="row">
-    <div class="field"><label for="recPayoutReceived">Payout/liquidación real recibido (USD)</label><input type="number" id="recPayoutReceived"></div>
-    <div class="field"><label for="recReference">Referencia de reserva <span class="hint">opcional — código/confirmación, nunca datos del huésped</span></label><input type="text" id="recReference" maxlength="120"></div>
-  </div>
-  <button type="button" class="ghost" id="recSaveBtn" style="margin-top:8px;">+ Guardar esta conciliación</button>
-  <div id="reconcileResult" style="margin-top:12px;"></div>
-  <h3 style="margin-top:16px;">Conciliaciones guardadas <span class="hint">solo datos locales, en este navegador — bórralas cuando quieras</span></h3>
-  <div id="reconciliationsList"></div>
-</section>
-<section class="card">
-  <h2>Auditoría de datos reales <span class="hint">qué falta confirmar antes de confiar en la recomendación</span></h2>
-  <div id="auditChecklist"></div>
 </section>
 </div>
 
@@ -335,9 +296,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div class="tab-panel" data-tab="comparacion">
 <section class="card">
   <h2>Panel de decisión por ventana de reserva <span class="hint">qué poner en PriceLabs, canal por canal</span></h2>
-  <p class="hint">Cada fila es una ventana de anticipación (días antes del check-in). Lee primero el <strong>Veredicto</strong>: te dice en una frase si algo necesita tu atención en esa ventana. El Techo % lo pones tú (cuánto descuento total le aceptas al huésped); el detalle por canal está colapsado — ábrelo solo si el veredicto te manda a revisar algo puntual.</p>
+  <p class="hint">Cada fila es una ventana de anticipación (días antes del check-in). Lee primero el <strong>Veredicto</strong>: te dice en una frase si algo necesita tu atención en esa ventana. El techo total configurado en Resumen define cuánto descuento total le aceptas al huésped; el detalle por canal está colapsado — ábrelo solo si el veredicto te manda a revisar algo puntual.</p>
   <div class="matrix-intro" id="matrixIntro"></div>
-  <div class="field" style="max-width:320px;"><span>Noches de estadía a evaluar <span class="hint">activa descuentos por duración si califican</span></span><input type="number" data-k="matrixNights" step="1" min="1"></div>
   <div class="table-wrap">
     <table>
       <thead><tr>
@@ -386,7 +346,6 @@ import {pct} from './src/domain/percent.js';
 import {f$ as f$base, fP} from './src/domain/format.js';
 import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
 import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
-import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
 import {worstScenariosInWindow, buildMatrixVerdict} from './src/domain/matrix.js';
@@ -395,9 +354,6 @@ import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
-import {computeMonthlyEconomics, defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './src/domain/monthly-economics.js';
-import {reconcileReservation} from './src/domain/reconciliation.js';
-import {buildAuditChecklist} from './src/domain/audit.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
@@ -436,7 +392,7 @@ if (typeof window.storage === 'undefined') {
    src/catalog/discounts.js (import arriba) — ver ese archivo para el catálogo completo. */
 let state = {
   name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
-  avgNights:3, matrixNights:1,
+  avgNights:3,
   costBreakdown: defaultCostBreakdown(),
   costBreakdownConfirmed:false, // BLOQUEANTE 2 (auditoria externa, ronda 4) — ver src/domain/cost-mode.js
   channels: CHANNELS.map(c=>({...c})),
@@ -444,9 +400,6 @@ let state = {
   ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
   lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
-  monthlyIncomeScenario: defaultMonthlyIncomeScenario(CHANNELS.map(c=>c.id)), // PLANIFICACIÓN MENSUAL — escenario de ingreso para planificación mensual
-  monthlyDistribution: defaultMonthlyDistribution(), // PLANIFICACIÓN MENSUAL — reparto Propietario/PM, apagado por defecto
-  reconciliations: [], // DATOS REALES — reconciliaciones locales guardadas (auditoría, nunca datos sensibles de huésped)
   usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
   usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
 };
@@ -466,7 +419,7 @@ const f$ = x => f$base(x, state.currency);
    desglose fue TOCADO, nunca para decidir si alimenta una recomendacion).
    `costGateNow()` es el UNICO punto que arma ese estado real (simple /
    simple_example / detailed_incomplete / detailed_confirmed) a partir de
-   `state` — compute()/quoteConfig()/computeMonthly() lo consumen, nunca
+   `state` — compute()/quoteConfig() lo consumen, nunca
    reimplementan el calculo. */
 function costGateNow(){
   return evaluateCostReadiness({
@@ -517,32 +470,6 @@ function quoteConfig(){
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
   };
 }
-/* PLANIFICACIÓN MENSUAL — punto de equilibrio. Wrapper delgado sobre
-   src/domain/monthly-economics.js (computeMonthlyEconomics) — cero fórmula
-   financiera aquí, solo arma el config con `state`/quoteConfig()/model.readiness
-   (misma fuente que ya usan Piso/Base/Matriz/Alertas, ver Fase 5).
-   BLOQUEANTE 2 (auditoria externa, ronda 4): a diferencia de compute()/
-   quoteConfig() (que SIEMPRE pasan `costBreakdown` y dejan que engine.js/
-   quote.js decidan si es usable), computeMonthlyEconomics() exige que
-   `costBreakdown` este REALMENTE lleno y confirmado para calcular algo —
-   sin el (ni siquiera tocado, ni tocado-sin-confirmar), se niega a inventar
-   un total mensual desde fixedCost/varCost por noche (contrato propio de
-   ese modulo, sin cambios). Se pasa `undefined` en cualquier otro caso que
-   no sea 'detailed_confirmed' para no reimplementar esa regla aqui. */
-function computeMonthly(model){
-  return computeMonthlyEconomics({
-    costBreakdown: costGateNow().mode==='detailed_confirmed' ? state.costBreakdown : undefined,
-    avgNights: state.avgNights,
-    incomeScenario: {...state.monthlyIncomeScenario, mix: state.monthlyIncomeScenario.mix.filter(m=>m.on)},
-    quoteConfig: quoteConfig(),
-    distribution: state.monthlyDistribution,
-    currency: state.currency,
-    usdManualReviewPending: state.usdManualReviewPending,
-    usdManualReviewLog: state.usdManualReviewLog,
-    readiness: model.readiness
-  });
-}
-
 /* ================== ALERTS ================== */
 function buildAlerts(model){
   return buildAlertsBase({
@@ -654,7 +581,7 @@ function renderValidation(model){
    lugar UNICO y SIEMPRE VISIBLE (no depende de `hasPendingBusinessData` como
    #validationBanner) donde se explica el estado real de los costos —
    `costGateNow()` (mismo gate que ya bloquea Piso/Base/Offset/Matriz/Alertas/
-   planificación mensual, ver src/domain/cost-mode.js) decide el mensaje:
+   ver src/domain/cost-mode.js) decide el mensaje:
    - 'simple_example': costo fijo/variable siguen en el valor ilustrativo de
      fábrica — nunca antes esto bloqueaba una recomendación, ahora SÍ.
    - 'detailed_incomplete': el desglose detallado fue editado pero todavía no
@@ -666,7 +593,7 @@ function renderDataProvenance(){
   if(!box) return;
   const cg = costGateNow();
   if(cg.mode==='simple_example'){
-    box.innerHTML = `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (${EXAMPLE_COST_DEFAULTS.fixedCost}) y variable (${EXAMPLE_COST_DEFAULTS.varCost}) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada y confírmala) antes de confiar en el Min Price/Base Price/Offset/Matriz/Alertas/planificación mensual: mientras tanto quedan bloqueados, no solo advertidos.</span></div>`;
+    box.innerHTML = `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (${EXAMPLE_COST_DEFAULTS.fixedCost}) y variable (${EXAMPLE_COST_DEFAULTS.varCost}) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada y confírmala) antes de confiar en el Min Price/Base Price/Offset/Matriz/Alertas: mientras tanto quedan bloqueados, no solo advertidos.</span></div>`;
   } else if(cg.mode==='detailed_incomplete'){
     box.innerHTML = `<div class="alert warn"><span class="tag">COSTOS SIN CONFIRMAR</span><span>${escapeHtml(cg.reason)}</span></div>`;
   } else {
@@ -780,6 +707,12 @@ function renderChannelPages(model){
       </section>`;
   });
 }
+function renderCeilingsEditor(){
+  ceilingsEditor.innerHTML = WINDOWS.map(w=>`<tr>
+    <td>${w.label}</td>
+    <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
+  </tr>`).join('');
+}
 function renderMatrix(model){
   /* Simplificacion a USD unico (revision externa): una unidad "requiere
      revision manual" no puede mostrar NINGUNA fila de la Matriz — ni
@@ -812,9 +745,6 @@ function renderMatrix(model){
      Ahora se enumera dia critico x noche critica x canal (OTA + LM), se cotiza
      CADA combinacion con quoteScenario(), y la fila se arma sobre el escenario
      que realmente da el PEOR NETO, no el que solo tiene mas descuento nativo.
-     `matrixNights` (el input de "noches a evaluar") ya no filtra el peor caso —
-     se mantiene solo como referencia manual de Dani, el veredicto siempre usa
-     el peor caso real encontrado.
      El veredicto (vLvl/vTag/vMsg) ya NO se arma inline aqui — vive en
      buildMatrixVerdict() (src/domain/matrix.js), pura y testeada sin DOM, para
      que Min Price/Base/Offset/Matriz nunca puedan desalinearse en como tratan
@@ -847,7 +777,7 @@ function renderMatrix(model){
        Fix: usar los campos reales que la funcion realmente devuelve. */
     return `<tr>
       <td>${w.label}</td>
-      <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
+      <td>${fP(state.ceilings[w.id])}</td>
       <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
@@ -892,8 +822,8 @@ function renderAlerts(model){
    — aqui solo se arma el HTML del waterfall a partir de lo que esa funcion
    devuelve. Fase 2: el LM ya usa los days/nights REALES del escenario, no un
    punto medio sintetico de ventana ni nights=1 fijo (bug P4, corregido).
-   src/domain/simulate-legacy.js se deja intacto como registro historico del bug
-   — ya no lo usa index.html. */
+   El antiguo src/domain/simulate-legacy.js (registro historico del bug) se
+   elimino en la simplificacion de jul 2026 — no lo importaba nadie. */
 function renderSim(model){
   /* Bloqueante P2 (revision externa, ronda 3): antes, si el campo de precio
      quedaba vacio, este fallback usaba `model.effBase` — que es EXACTAMENTE
@@ -1042,9 +972,9 @@ function buildTabbar(){
 function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance();
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
-  renderLmConfig(); renderVerification(); renderMonthlyIncomeFields(); renderMonthlyDistFields(); renderMonthlyResult(model);
-  renderCurrencyReviewBanner(model); renderReconcileResult(model); renderReconciliationsList(model); renderAuditChecklist(model);
+  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderLmConfig(); renderVerification();
+  renderCurrencyReviewBanner(model);
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -1053,7 +983,13 @@ function renderAll(){
    directo, sin dividir — meterlo en el mismo balde que limpieza lo distorsiona en ambos
    extremos (lo infla en estadías cortas, lo diluye de más en las largas). */
 function costCalcTotals(){
-  return costCalcTotalsBase(state.costBreakdown, state.avgNights);
+  const cb=state.costBreakdown;
+  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(state.avgNights)||1);
+  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
+  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
+  const turnoPerNight=turnoSum/avgN;
+  const consumptionPerNight=parseFloat(cb.consumables)||0;
+  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
 }
 function renderCostCalc(){
   const t=costCalcTotals();
@@ -1073,7 +1009,7 @@ function renderCostCalc(){
   if(hint){
     const cg = costGateNow();
     hint.textContent = cg.mode==='detailed_confirmed'
-      ? 'Confirmado — este desglose alimenta Piso/Base/Offset/Matriz/Alertas/planificación mensual.'
+      ? 'Confirmado — este desglose alimenta Piso/Base/Offset/Matriz/Alertas.'
       : cg.mode==='detailed_incomplete'
         ? 'Sin confirmar todavía — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba), no este desglose.'
         : '';
@@ -1128,7 +1064,7 @@ function renderLmConfig(){
         </div>`).join('') || '<p class="hint">Sin tramos todavía.</p>'}
       <button type="button" class="ghost" id="addTierBtn" style="margin-top:8px;">+ Agregar tramo</button>`;
   } else {
-    box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Comparación, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
+    box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Resumen, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
   }
 }
 function verifEntryHTML(key, chId, entry){
@@ -1176,97 +1112,8 @@ function renderVerification(){
     </div>`;
   }).join('');
 }
-/* PLANIFICACIÓN MENSUAL — punto de equilibrio. Estas tres funciones
-   SOLO arman HTML/leen-escriben `state.monthlyIncomeScenario`/
-   `state.monthlyDistribution` — el cálculo real vive en
-   src/domain/monthly-economics.js (computeMonthlyEconomics), consumido via
-   computeMonthly() arriba. Cero fórmula financiera aquí. */
-function renderMonthlyIncomeFields(){
-  const box = document.getElementById('monthlyIncomeFields');
-  const sel = document.querySelector('[data-mon="incomeType"]');
-  if(!box || !sel) return;
-  const sc = state.monthlyIncomeScenario;
-  sel.value = sc.type;
-  if(sc.type==='manual'){
-    box.innerHTML = `<div class="field"><label for="mon-manualNetPerNight">Neto por noche (después de comisiones — dato directo, tú lo defines)</label><input type="number" id="mon-manualNetPerNight" data-mon="manualNetPerNight" value="${escapeHtml(sc.manualNetPerNight)}"></div>`;
-  } else if(sc.type==='channel'){
-    const ch = sc.channel;
-    box.innerHTML = `<div class="row">
-      <div class="field"><label for="mon-channelChId">Canal</label><select id="mon-channelChId" data-mon="channelChId">${state.channels.map(c=>`<option value="${c.id}" ${c.id===ch.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div>
-      <div class="field"><label for="mon-channelDays">Días de anticipación</label><input type="number" id="mon-channelDays" data-mon="channelDays" value="${escapeHtml(ch.days)}"></div>
-      <div class="field"><label for="mon-channelNights">Noches</label><input type="number" id="mon-channelNights" data-mon="channelNights" value="${escapeHtml(ch.nights)}" min="1"></div>
-      <div class="field"><label for="mon-channelPrice">Precio PriceLabs (antes de LM/Offset/descuentos)</label><input type="number" id="mon-channelPrice" data-mon="channelPrice" value="${escapeHtml(ch.price)}"></div>
-    </div>`;
-  } else if(sc.type==='mix'){
-    box.innerHTML = `<p class="hint">Marca los canales que quieres mezclar y su % de peso — deben sumar 100%.</p>` +
-      sc.mix.map(m=>{
-        const c = state.channels.find(x=>x.id===m.chId);
-        return `<div class="row" style="align-items:center;">
-          <label style="display:flex;gap:6px;align-items:center;min-width:110px;"><input type="checkbox" data-mon-mix="on" data-mon-ch="${m.chId}" ${m.on?'checked':''}><span>${escapeHtml(c?c.name:m.chId)}</span></label>
-          <div class="field"><label for="mon-weightPct-${m.chId}">% peso</label><input type="number" id="mon-weightPct-${m.chId}" data-mon-mix="weightPct" data-mon-ch="${m.chId}" value="${escapeHtml(m.weightPct)}"></div>
-          <div class="field"><label for="mon-days-${m.chId}">Días</label><input type="number" id="mon-days-${m.chId}" data-mon-mix="days" data-mon-ch="${m.chId}" value="${escapeHtml(m.days)}"></div>
-          <div class="field"><label for="mon-nights-${m.chId}">Noches</label><input type="number" id="mon-nights-${m.chId}" data-mon-mix="nights" data-mon-ch="${m.chId}" value="${escapeHtml(m.nights)}" min="1"></div>
-          <div class="field"><label for="mon-price-${m.chId}">Precio</label><input type="number" id="mon-price-${m.chId}" data-mon-mix="price" data-mon-ch="${m.chId}" value="${escapeHtml(m.price)}"></div>
-        </div>`;
-      }).join('');
-  }
-}
-function renderMonthlyDistFields(){
-  const box = document.getElementById('monthlyDistFields');
-  const chk = document.querySelector('[data-mon="distConfigured"]');
-  if(!box || !chk) return;
-  const d = state.monthlyDistribution;
-  chk.checked = !!d.configured;
-  if(!d.configured){ box.innerHTML=''; return; }
-  box.innerHTML = `<div class="row">
-    <div class="field"><label for="mon-ownerTargetPct">Propietario % <span class="hint">de la utilidad distribuible</span></label><input type="number" id="mon-ownerTargetPct" data-mon="ownerTargetPct" value="${escapeHtml(d.ownerTargetPct)}"></div>
-    <div class="field"><label for="mon-managerTargetPct">Administrador/PM % <span class="hint">de la utilidad distribuible</span></label><input type="number" id="mon-managerTargetPct" data-mon="managerTargetPct" value="${escapeHtml(d.managerTargetPct)}"></div>
-    <div class="field"><label for="mon-reservePct">Reserva % <span class="hint">del ingreso neto mensual</span></label><input type="number" id="mon-reservePct" data-mon="reservePct" value="${escapeHtml(d.reservePct)}"></div>
-    <div class="field"><label for="mon-taxReservePct">Impuestos % <span class="hint">del ingreso neto mensual</span></label><input type="number" id="mon-taxReservePct" data-mon="taxReservePct" value="${escapeHtml(d.taxReservePct)}"></div>
-  </div>`;
-}
-function renderMonthlyResult(model){
-  const box = document.getElementById('monthlyResult');
-  if(!box) return;
-  const m = computeMonthly(model);
-  if(!m.ok){
-    box.innerHTML = `<div class="alert warn" style="margin-top:12px;"><span class="tag">NO CALCULABLE</span><span>${escapeHtml(m.reason)}</span></div>`;
-    return;
-  }
-  const distBlock = m.distribution.configured
-    ? `<div class="kpi"><span class="l">Propietario</span><span class="v">${f$(m.distribution.ownerAmt)}</span></div>
-       <div class="kpi"><span class="l">Administrador/PM</span><span class="v">${f$(m.distribution.managerAmt)}</span></div>
-       ${Math.abs(m.distribution.undistributedAmt)>0.005 ? `<div class="kpi"><span class="l">Utilidad no distribuida</span><span class="v">${f$(m.distribution.undistributedAmt)}</span></div>` : ''}`
-    : '';
-  const sensRows = m.sensitivity.map(s=>`<tr>
-      <td>${s.nights}</td><td class="out">${s.estimatedReservations.toFixed(1)}</td><td class="out">${f$(s.netIncomeMonthly)}</td>
-      <td class="out">${f$(s.variableCostsMonthly)}</td><td class="out" style="${s.profitMonthly<0?'color:var(--accent);font-weight:600;':''}">${f$(s.profitMonthly)}</td>
-    </tr>`).join('');
-  box.innerHTML = `
-    ${m.incomeSource.unverified ? `<div class="alert warn" style="margin-top:12px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Este resultado mensual depende de datos sin confirmar: ${escapeHtml(m.incomeSource.unverifiedReasons.join('; '))}. No lo trates como una recomendación automática hasta confirmarlos.</span></div>` : ''}
-    <div class="kpis" style="margin-top:12px;">
-      <div class="kpi"><span class="l">Reservas estimadas/mes</span><span class="v">${m.estimatedReservations.toFixed(1)}</span></div>
-      <div class="kpi"><span class="l">Ingreso neto mensual</span><span class="v">${f$(m.netIncomeMonthly)}</span></div>
-      <div class="kpi"><span class="l">Costos fijos mensuales</span><span class="v">${f$(m.fixedCostsMonthly)}</span></div>
-      <div class="kpi"><span class="l">Costos variables mensuales</span><span class="v">${f$(m.variableCostsMonthly)}</span></div>
-      ${m.reserveAmt>0 ? `<div class="kpi"><span class="l">Reserva</span><span class="v">${f$(m.reserveAmt)}</span></div>` : ''}
-      ${m.taxAmt>0 ? `<div class="kpi"><span class="l">Impuestos</span><span class="v">${f$(m.taxAmt)}</span></div>` : ''}
-      <div class="kpi accent"><span class="l">Utilidad distribuible</span><span class="v">${f$(m.profitMonthly)}</span><span class="s">${m.marginMonthlyPct!=null?'margen '+fP(m.marginMonthlyPct):'ingreso neto = 0'}</span></div>
-      <div class="kpi accent"><span class="l">Noches de equilibrio</span><span class="v">${m.breakeven.reachable ? m.breakeven.nightsCeil : '—'}</span><span class="s">${m.breakeven.reachable ? 'exacto '+m.breakeven.nightsExact.toFixed(1) : 'no alcanzable'}</span></div>
-      ${distBlock}
-    </div>
-    ${!m.breakeven.reachable ? `<div class="alert bad" style="margin-top:8px;"><span class="tag">EQUILIBRIO NO ALCANZABLE</span><span>${escapeHtml(m.breakeven.reason)}</span></div>` : ''}
-    <h3 style="margin-top:16px;">Sensibilidad por ocupación</h3>
-    <div class="table-wrap"><table><thead><tr><th>Noches ocupadas</th><th>Reservas est.</th><th>Ingreso neto</th><th>Costos variables</th><th>Utilidad</th></tr></thead>
-    <tbody>${sensRows}</tbody></table></div>
-    ${m.assumptions.length ? `<p class="hint" style="margin-top:10px;">${m.assumptions.map(a=>escapeHtml(a)).join('<br>')}</p>` : ''}
-    <p class="hint" style="margin-top:6px;">${escapeHtml(m.incomeSource.description)}</p>
-  `;
-}
 /* ================== MONEDA — simplificación a USD único (revision externa) ================
-   Esta version SOLO opera en USD (ver src/domain/currency.js: el modulo de
-   FX se conserva internamente para una fase multimoneda futura, pero NADA
-   en index.html lo llama). `state.currency` casi siempre es 'USD' — la unica
+   Esta version SOLO opera en USD. `state.currency` casi siempre es 'USD' — la unica
    forma de que sea otra cosa es una unidad VIEJA cargada desde localStorage/
    import que se guardo en otra moneda (COP, de la fase multimoneda que se
    revirtio) — normalizeUnit() la PRESERVA tal cual (nunca la convierte ni la
@@ -1274,8 +1121,7 @@ function renderMonthlyResult(model){
    manual", excluida de toda recomendacion global (ver engine.js: `currencyBlocked`). */
 /* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): este banner ya no
    mira solo `state.currency` — usa evaluateUsdOnlyReadiness() (src/domain/
-   usd-only.js, la MISMA fuente que engine.js/reconciliation.js/
-   monthly-economics.js) para detectar TAMBIEN un canal historico con
+   usd-only.js, la MISMA fuente que engine.js) para detectar TAMBIEN un canal historico con
    settlementCurrency distinta de USD, no solo la moneda de la unidad.
 
    BLOQUEANTE 3 (auditoria externa, ronda 5): ahora TAMBIEN pasa
@@ -1340,105 +1186,7 @@ function renderCurrencyReviewBanner(model){
   const finalizeBtn = pendingReview
     ? `<button type="button" id="confirmUsdReviewBtn" style="margin-top:8px;">Ya revisé manualmente todos los valores en USD →</button>`
     : '';
-  box.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" — ${escapeHtml(usdGate.reason||'')} Esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, Matriz, Alertas, planificación mensual y conciliación quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, corrige el dato manualmente en el archivo exportado y vuelve a importarlo, usa el botón de abajo para crear una copia nueva directamente en USD (sin conversión automática, pendiente de revisión), o si esta unidad YA es esa copia, confírmala una vez hayas revisado tú mismo cada valor monetario.${copyBtn}${finalizeBtn}</span></div>`;
-}
-
-/* ================== RECONCILIACIÓN (datos reales, revision externa) ====== */
-/* Lee los inputs del formulario (mismo patron que el Simulador: ids globales
-   via `id=`, no `state`) y arma el objeto `real` que espera reconciliation.js.
-   Campos opcionales vacios se pasan como null — reconcileReservation() los
-   ignora (no inventa un "real" para un campo que Dani no escribió). */
-function readReconcileForm(){
-  /* Simplificacion a USD unico (revision externa): el formulario ya NO
-     ofrece un selector de moneda — esta version solo admite USD, asi que
-     `currency` ni se lee del DOM (reconciliation.js trata la ausencia como
-     'USD' explicitamente). Un registro VIEJO guardado con otra moneda sigue
-     bloqueandose al recomputarse (ver renderReconciliationsList()), pero no
-     hay forma de CREAR uno nuevo en otra moneda desde la UI. */
-  const opt = (el)=> el && el.value.trim()!=='' ? parseFloat(el.value) : null;
-  return {
-    chId: recChId.value,
-    price: parseFloat(recPrice.value)||0,
-    nights: parseFloat(recNights.value)||0,
-    days: parseFloat(recDays.value)||0,
-    otaCommissionPct: opt(recOtaCommissionPct),
-    bankFeePct: opt(recBankFeePct),
-    cleaningFeeCharged: opt(recCleaningFeeCharged),
-    nativeDiscountPct: opt(recNativeDiscountPct),
-    payoutReceived: recPayoutReceived.value.trim()!=='' ? parseFloat(recPayoutReceived.value) : NaN,
-    reference: recReference.value
-  };
-}
-function reconcileResultHTML(r){
-  if(!r.ok) return `<div class="alert warn"><span class="tag">FALTA UN DATO</span><span>${escapeHtml(r.reason)}</span></div>`;
-  if(r.currencyBlocked) return `<div class="alert bad"><span class="tag">MONEDA SIN CONVERSIÓN — BLOQUEADO</span><span>${escapeHtml(r.currencyBlockedReason)}</span></div>`;
-  const sevTag = {ok:'OK', warn:'AVISO', bad:'ALERTA'}[r.severity] || 'AVISO';
-  const sevCls = {ok:'ok', warn:'warn', bad:'bad'}[r.severity] || 'warn';
-  const rows = r.breakdown.map(b=>`<tr><td>${escapeHtml(b.component)}</td><td class="out">${typeof b.configured==='number'?b.configured.toFixed(2):b.configured}</td><td class="out">${typeof b.real==='number'?b.real.toFixed(2):b.real}</td></tr>`).join('');
-  /* Correcciones adicionales (auditoria externa, ronda 4): "CONFIABLE" ya no
-     es un solo estado — coincidir en el numero (numericMatch) NO es lo
-     mismo que un estimado con el modelo verificado (modelVerified). Ver
-     src/domain/reconciliation.js. */
-  const trustTag = r.reliable ? ' — CONCILIACIÓN CONFIABLE'
-    : r.numericMatch ? ' — COINCIDE NUMÉRICAMENTE — SUPUESTOS PENDIENTES'
-    : '';
-  return `
-    <div class="alert ${sevCls}"><span class="tag">${sevTag}${trustTag}</span><span>Estimado ${f$(r.estimate.payout)} · Recibido ${f$(r.real.payoutReceivedInBase)}${r.real.currency!==state.currency?` (convertido desde ${escapeHtml(r.real.currency)})`:''} · Diferencia ${f$(r.diff.absolute)} (${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'})</span></div>
-    ${r.conversionCaveat ? `<p class="hint">${escapeHtml(r.conversionCaveat)}</p>` : ''}
-    ${rows ? `<div class="table-wrap"><table><thead><tr><th>Componente</th><th>Configurado</th><th>Real</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
-    ${r.causes.length ? `<p class="hint" style="margin-top:6px;"><strong>Posibles causas:</strong><br>${r.causes.map(c=>escapeHtml(c)).join('<br>')}</p>` : ''}
-    ${r.unverifiedAssumptions.length ? `<p class="hint" style="margin-top:6px;"><strong>El estimado ya dependía de supuestos sin confirmar:</strong><br>${r.unverifiedAssumptions.map(a=>escapeHtml(a)).join('<br>')}</p>` : ''}
-  `;
-}
-function renderReconcileResult(model){
-  const box = document.getElementById('reconcileResult');
-  if(!box || typeof recChId==='undefined') return;
-  const real = readReconcileForm();
-  if(!real.chId || (!real.price && !real.payoutReceived)){ box.innerHTML=''; return; } // formulario vacio: no mostrar nada todavia
-  const r = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness});
-  box.innerHTML = reconcileResultHTML(r);
-}
-function renderReconciliationsList(model){
-  const box = document.getElementById('reconciliationsList');
-  if(!box) return;
-  if(!state.reconciliations.length){ box.innerHTML = '<p class="hint">Todavía no has guardado ninguna conciliación.</p>'; return; }
-  box.innerHTML = state.reconciliations.map(rec=>{
-    const ch = state.channels.find(c=>c.id===rec.chId);
-    const r = reconcileReservation({real: rec, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness});
-    const summary = !r.ok ? 'no calculable con la config actual'
-      : r.currencyBlocked ? 'bloqueada por moneda'
-      : `diferencia ${r.diff.percent==null?'—':r.diff.percent.toFixed(1)+'%'} (${r.severity})`;
-    return `<div class="d-item" style="flex-wrap:wrap;">
-      <span class="d-name">${escapeHtml(ch?ch.name:rec.chId)} · ${escapeHtml(rec.savedAt?new Date(rec.savedAt).toLocaleDateString('es-CO'):'')}${rec.reference?' · '+escapeHtml(rec.reference):''}<span class="d-meta">${escapeHtml(summary)}</span></span>
-      <button type="button" class="ghost" data-rec-del="${escapeHtml(rec.id)}" aria-label="Eliminar esta conciliación">✕</button>
-    </div>`;
-  }).join('');
-}
-
-/* ================== AUDITORÍA DE DATOS REALES (revision externa) ========= */
-function renderAuditChecklist(model){
-  const box = document.getElementById('auditChecklist');
-  if(!box) return;
-  /* BLOQUEANTE 2 (auditoria externa, ronda 4): el item "costs" del checklist
-     ahora refleja el gate REAL (costGateNow().blocked) — antes solo miraba
-     si los campos seguian en el valor de ejemplo, asi que un desglose
-     detallado editado-pero-sin-confirmar pasaba como "costos reales
-     cargados" incorrectamente. */
-  const usingExampleCosts = costGateNow().blocked;
-  const lastReconciliation = state.reconciliations.length
-    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness})
-    : null;
-  const audit = buildAuditChecklist({
-    usingExampleCosts, readiness: model.readiness, lmBlocked: model.lmBlocked,
-    channels: state.channels, currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, lastReconciliation
-  });
-  const STATUS_CLS = {simulacion:'warn', datos_parciales:'warn', listo_supervisado:'ok'};
-  box.innerHTML = `
-    <div class="alert ${STATUS_CLS[audit.status]}"><span class="tag">${audit.status.toUpperCase().replace('_',' ')}</span><span>${escapeHtml(audit.statusLabel)}</span></div>
-    <div class="kpis" style="margin-top:10px;">
-      ${audit.items.map(i=>`<div class="kpi"><span class="l">${i.ok?'✓':'—'} ${escapeHtml(i.label)}</span><span class="s">${escapeHtml(i.detail)}</span></div>`).join('')}
-    </div>
-  `;
+  box.innerHTML = `<div class="alert bad"><span class="tag">REQUIERE REVISIÓN MANUAL</span><span>Esta unidad está marcada "requiere revisión manual" — ${escapeHtml(usdGate.reason||'')} Esta versión solo admite USD, así que NO se convierte ni se asume una equivalencia. Min Price, Base Price, Matriz y Alertas quedan bloqueados para esta unidad hasta que la corrijas: exporta sus datos si los necesitas, corrige el dato manualmente en el archivo exportado y vuelve a importarlo, usa el botón de abajo para crear una copia nueva directamente en USD (sin conversión automática, pendiente de revisión), o si esta unidad YA es esa copia, confírmala una vez hayas revisado tú mismo cada valor monetario.${copyBtn}${finalizeBtn}</span></div>`;
 }
 
 function hydrate(){
@@ -1447,7 +1195,6 @@ function hydrate(){
   const cbConfirmChk = document.getElementById('costBreakdownConfirmedChk');
   if(cbConfirmChk) cbConfirmChk.checked = !!state.costBreakdownConfirmed;
   simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
-  if(typeof recChId!=='undefined') recChId.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 buildTabbar();
 
@@ -1487,8 +1234,7 @@ document.addEventListener('change',e=>{
       margin:{min:0,max:99.999,label:'Margen objetivo'},
       marketWindow:{min:0,max:9999,integer:true,label:'Ventana de reserva del mercado'},
       avgNights:{min:1,max:365,integer:true,label:'Estadía promedio (noches)'},
-      marketBase:{min:0,max:1e7,label:'Base de mercado'},
-      matrixNights:{min:1,max:365,integer:true,label:'Noches a evaluar'}
+      marketBase:{min:0,max:1e7,label:'Base de mercado'}
     };
     const r = readNumField(t, state[key], KEY_OPTS[key]||{label:key});
     if(!r.ok) return;
@@ -1651,80 +1397,6 @@ document.addEventListener('change',e=>{
     const entry = verifEntryRef(t.dataset.verifNote, t.dataset.verifCh);
     if(entry) entry.note = t.value;
   }
-  /* PLANIFICACIÓN MENSUAL: mismo patrón que todo lo demás (Bloqueante
-     MEDIO ronda 2) — cero `parseFloat(t.value)||0` silencioso, siempre
-     readNumField()/parseValue() con rango y motivo explícito. */
-  else if(t.dataset.mon){
-    const key = t.dataset.mon;
-    const sc = state.monthlyIncomeScenario;
-    if(key==='incomeType'){ sc.type = t.value; renderAll(); return; }
-    if(key==='manualNetPerNight'){
-      /* P2 (revision externa): vacio es un estado VALIDO ("todavia no lo
-         configuraste"), no un error — allowEmpty/emptyValue:null en vez de
-         revertir al valor anterior o forzar un 0 silencioso. */
-      const r = readNumField(t, sc.manualNetPerNight, {min:-1e7, max:1e7, allowEmpty:true, emptyValue:null, label:'Neto por noche (planificación mensual)'});
-      if(!r.ok) return;
-      sc.manualNetPerNight = r.value; renderAll();
-    }
-    else if(key==='channelChId'){ sc.channel.chId = t.value; renderAll(); }
-    else if(key==='channelDays'){
-      const r = readNumField(t, sc.channel.days, {min:0, max:9999, integer:true, label:'Días de anticipación (planificación mensual)'});
-      if(!r.ok) return;
-      sc.channel.days = r.value; renderAll();
-    }
-    else if(key==='channelNights'){
-      const r = readNumField(t, sc.channel.nights, {min:1, max:365, integer:true, label:'Noches del escenario (planificación mensual)'});
-      if(!r.ok) return;
-      sc.channel.nights = r.value; renderAll();
-    }
-    else if(key==='channelPrice'){
-      const r = readNumField(t, sc.channel.price, {min:0, max:1e7, label:'Precio PriceLabs del escenario (planificación mensual)'});
-      if(!r.ok) return;
-      sc.channel.price = r.value; renderAll();
-    }
-    else if(key==='distConfigured'){ state.monthlyDistribution.configured = t.checked; renderAll(); }
-    else if(['ownerTargetPct','managerTargetPct','reservePct','taxReservePct'].includes(key)){
-      const LABELS = {ownerTargetPct:'Propietario %', managerTargetPct:'Administrador/PM %', reservePct:'Reserva %', taxReservePct:'Impuestos %'};
-      const r = readNumField(t, state.monthlyDistribution[key], {min:0, max:100, label:LABELS[key]+' (reparto mensual)'});
-      if(!r.ok) return;
-      state.monthlyDistribution[key] = r.value; renderAll();
-    }
-  }
-  else if(t.dataset.monMix){
-    const chId = t.dataset.monCh;
-    const row = state.monthlyIncomeScenario.mix.find(m=>m.chId===chId);
-    if(!row) return;
-    const f = t.dataset.monMix;
-    const chName = (state.channels.find(c=>c.id===chId)||{}).name || chId;
-    if(f==='on'){ row.on = t.checked; renderAll(); }
-    else if(f==='weightPct'){
-      const r = readNumField(t, row.weightPct, {min:0, max:100, label:`${chName} — % peso (mezcla mensual)`});
-      if(!r.ok) return;
-      row.weightPct = r.value; renderAll();
-    }
-    else if(f==='days'){
-      const r = readNumField(t, row.days, {min:0, max:9999, integer:true, label:`${chName} — días (mezcla mensual)`});
-      if(!r.ok) return;
-      row.days = r.value; renderAll();
-    }
-    else if(f==='nights'){
-      const r = readNumField(t, row.nights, {min:1, max:365, integer:true, label:`${chName} — noches (mezcla mensual)`});
-      if(!r.ok) return;
-      row.nights = r.value; renderAll();
-    }
-    else if(f==='price'){
-      const r = readNumField(t, row.price, {min:0, max:1e7, label:`${chName} — precio (mezcla mensual)`});
-      if(!r.ok) return;
-      row.price = r.value; renderAll();
-    }
-  }
-  /* Validar contra una reserva real: los campos viven fuera de `state` (mismo
-     patron que el Simulador: ids globales via `id=`) — cualquier cambio solo
-     tiene que re-pintar el resultado en vivo, no tocar `state`/renderAll()
-     completo (nada mas depende de estos valores hasta que se guarden). */
-  else if(t.id && t.id.startsWith('rec') && t.id!=='recSaveBtn'){
-    renderReconcileResult(compute());
-  }
 });
 document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
@@ -1771,20 +1443,6 @@ document.addEventListener('click',e=>{
   if(down){ const i=parseInt(down.dataset.tierDown,10); const arr=state.lmConfig.tiers; if(i<arr.length-1){[arr[i+1],arr[i]]=[arr[i],arr[i+1]]; renderAll();} }
   const del=e.target.closest('[data-tier-del]');
   if(del){ const i=parseInt(del.dataset.tierDel,10); state.lmConfig.tiers.splice(i,1); renderAll(); }
-  /* Validar contra una reserva real: "Guardar" solo agrega a
-     `state.reconciliations` si reconcileReservation() confirma que hay algo
-     calculable (evita guardar un registro roto que despues se muestre como
-     "no calculable" en la lista) — nunca cambia comisiones/descuentos, solo
-     archiva el dato real que Dani ingreso. */
-  if(e.target.id==='recSaveBtn'){
-    const real = readReconcileForm();
-    const check = reconcileReservation({real, quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: compute().readiness});
-    if(!check.ok){ showInputError('No se pudo guardar la conciliación: ' + check.reason); return; }
-    state.reconciliations.push({...real, id:'rec'+Date.now(), savedAt:new Date().toISOString()});
-    renderAll();
-  }
-  const recDel=e.target.closest('[data-rec-del]');
-  if(recDel){ state.reconciliations = state.reconciliations.filter(r=>r.id!==recDel.dataset.recDel); renderAll(); }
 });
 const slug=n=>n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 function status(m){saveStatus.textContent=m;setTimeout(()=>{if(saveStatus.textContent===m)saveStatus.textContent='';},2500);}
@@ -1842,7 +1500,7 @@ deleteUnit.addEventListener('click',async()=>{
 document.addEventListener('click', async e=>{
   if(e.target.id!=='createUsdCopyBtn') return;
   if(state.currency==='USD') return; // defensivo — el boton solo deberia existir si la unidad no esta en USD
-  if(!confirm(`Se creará una COPIA nueva de "${state.name||'esta unidad'}" directamente en USD, marcada "pendiente de revisión manual". NO se convierte ningún valor — los números quedan EXACTAMENTE como están hoy en ${state.currency}, así que debes revisarlos y corregirlos tú mismo (incluyendo los costos) antes de confiar en cualquier recomendación. Mientras no confirmes esa revisión, Piso/Base/Offset/Matriz/Alertas/planificación mensual/conciliación seguirán BLOQUEADOS en la copia, aunque su moneda ya diga USD. La unidad original en ${state.currency} NO se toca ni se borra. ¿Continuar?`)) return;
+  if(!confirm(`Se creará una COPIA nueva de "${state.name||'esta unidad'}" directamente en USD, marcada "pendiente de revisión manual". NO se convierte ningún valor — los números quedan EXACTAMENTE como están hoy en ${state.currency}, así que debes revisarlos y corregirlos tú mismo (incluyendo los costos) antes de confiar en cualquier recomendación. Mientras no confirmes esa revisión, Piso/Base/Offset/Matriz/Alertas seguirán BLOQUEADOS en la copia, aunque su moneda ya diga USD. La unidad original en ${state.currency} NO se toca ni se borra. ¿Continuar?`)) return;
   try{
     const {state: copy} = normalizeUnit({
       ...state,

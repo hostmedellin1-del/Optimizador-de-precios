@@ -8,16 +8,12 @@
    es el gate que cierra ese hueco — bloquea aunque `unitCurrency` YA sea
    'USD', porque la moneda por sí sola no prueba que alguien revisó los
    números. Este archivo prueba el contrato completo contra compute()
-   (engine.js), reconcileReservation() y computeMonthlyEconomics() — no solo
-   contra evaluateUsdOnlyReadiness() en aislamiento (ver tests/usd-only.test.js
-   para esas pruebas puras). */
+   (engine.js) y evaluateUsdOnlyReadiness() directamente — no solo
+   contra la normalización de persistencia. */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
-import {reconcileReservation} from '../src/domain/reconciliation.js';
-import {quoteScenario} from '../src/domain/quote.js';
-import {computeMonthlyEconomics} from '../src/domain/monthly-economics.js';
-import {buildAuditChecklist} from '../src/domain/audit.js';
+import {evaluateUsdOnlyReadiness} from '../src/domain/usd-only.js';
 import {defaultVerification} from '../src/domain/verification.js';
 import {freshChannels, freshDiscounts, freshWindows, defaultCeilings} from './helpers/state-factory.js';
 
@@ -83,96 +79,22 @@ test('dos unidades simultáneas: una copia USD pendiente y una unidad USD normal
   assert.ok(normal.floor > 0);
 });
 
-/* ======================= reconciliation.js ======================= */
-
-function quoteConfigFor(overrides={}){
-  return {
-    channels: freshChannels(), discounts: freshDiscounts().map(d=>({...d, on:false})),
-    windows: freshWindows(), ceilings: defaultCeilings(),
-    fixedCost:40, varCost:25, ...overrides
-  };
-}
-
-test('BLOQUEANTE 3: reconcileReservation() bloquea con usdManualReviewPending:true aunque currency ya sea USD', () => {
-  const quoteConfig = quoteConfigFor();
-  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
-  const r = reconcileReservation({
-    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'USD', payoutReceived: est.payout},
-    quoteConfig, currency:'USD', usdManualReviewPending: true
-  });
-  assert.equal(r.ok, true);
-  assert.equal(r.currencyBlocked, true);
-  assert.match(r.currencyBlockedReason, /revisión manual/);
-  assert.equal(r.diff, null, 'no debe calcular ninguna diferencia mientras la revisión siga pendiente');
+test('BLOQUEANTE 3: evaluateUsdOnlyReadiness bloquea con usdManualReviewPending:true aunque currency ya sea USD', () => {
+  const gate = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels:freshChannels(), usdManualReviewPending:true});
+  assert.equal(gate.blocked, true);
+  assert.match(gate.reason, /revisión manual/);
 });
 
-test('reconcileReservation() con usdManualReviewPending:false conciliaciones funcionan con normalidad', () => {
-  const quoteConfig = quoteConfigFor();
-  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
-  const r = reconcileReservation({
-    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'USD', payoutReceived: est.payout},
-    quoteConfig, currency:'USD', usdManualReviewPending: false
-  });
-  assert.equal(r.currencyBlocked, false);
-  assert.equal(r.diff.absolute, 0);
-});
-
-/* ======================= monthly-economics.js ======================= */
-
-test('BLOQUEANTE 3: computeMonthlyEconomics() bloquea con usdManualReviewPending:true aunque currency ya sea USD', () => {
-  const quoteConfig = quoteConfigFor();
-  const res = computeMonthlyEconomics({
-    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
-    avgNights: 3,
-    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
-    quoteConfig, currency:'USD', usdManualReviewPending: true
-  });
-  assert.equal(res.ok, false);
-  assert.match(res.reason, /revisión manual/);
-});
-
-test('computeMonthlyEconomics() con usdManualReviewPending:false calcula con normalidad', () => {
-  const quoteConfig = quoteConfigFor();
-  const res = computeMonthlyEconomics({
-    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
-    avgNights: 3,
-    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
-    quoteConfig, currency:'USD', usdManualReviewPending: false
-  });
-  assert.equal(res.ok, true);
-});
-
-/* ======================= audit.js ======================= */
-
-test('BLOQUEANTE 3: buildAuditChecklist() nunca marca "listo_supervisado" mientras usdManualReviewPending sea true', () => {
-  const channels = freshChannels();
-  const verification = resolveAll(defaultVerification());
-  const audit = buildAuditChecklist({
-    usingExampleCosts: false, readiness: null, lmBlocked: false,
-    channels, currency:'USD', usdManualReviewPending: true, lastReconciliation: null
-  });
-  const currencyItem = audit.items.find(i=>i.key==='currency');
-  assert.equal(currencyItem.ok, false);
-  assert.match(currencyItem.detail, /revisión manual/);
-  assert.notEqual(audit.status, 'listo_supervisado');
-});
-
-test('buildAuditChecklist() con usdManualReviewPending:false — el item de moneda pasa (si el resto también aplica)', () => {
-  const channels = freshChannels();
-  const audit = buildAuditChecklist({
-    usingExampleCosts: false, readiness: null, lmBlocked: false,
-    channels, currency:'USD', usdManualReviewPending: false, lastReconciliation: null
-  });
-  const currencyItem = audit.items.find(i=>i.key==='currency');
-  assert.equal(currencyItem.ok, true);
+test('evaluateUsdOnlyReadiness con usdManualReviewPending:false permite una unidad USD limpia', () => {
+  const gate = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels:freshChannels(), usdManualReviewPending:false});
+  assert.equal(gate.blocked, false);
 });
 
 /* ======================= BLOQUEANTE (ronda 6) — bypass por importación ===
    Reproduce el hallazgo exacto: JSON con usdManualReviewPending:false pero
    usdManualReviewLog con un copy_created SIN review_confirmed posterior —
    a nivel de DOMINIO (sin pasar por persistence.js/normalizeUnit()), para
-   confirmar que compute()/reconcileReservation()/computeMonthlyEconomics()/
-   buildAuditChecklist() NUNCA confían en el booleano crudo por su cuenta —
+   confirmar que compute()/evaluateUsdOnlyReadiness() NUNCA confían en el booleano crudo por su cuenta —
    la defensa vive en evaluateUsdOnlyReadiness() (via
    evaluateUsdManualReviewState()), no solo en la capa de persistencia. */
 
@@ -197,38 +119,10 @@ test('compute() con log copy_created + review_confirmed VÁLIDO posterior y usdM
   assert.ok(model.floor > 0);
 });
 
-test('BYPASS: reconcileReservation() con usdManualReviewPending:false + log sin confirmar — sigue bloqueada', () => {
-  const quoteConfig = quoteConfigFor();
-  const est = quoteScenario({chId:'airbnb', days:20, nights:3, price:150}, quoteConfig);
-  const r = reconcileReservation({
-    real: {chId:'airbnb', price:150, nights:3, days:20, currency:'USD', payoutReceived: est.payout},
-    quoteConfig, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog
-  });
-  assert.equal(r.currencyBlocked, true);
-  assert.equal(r.diff, null);
-});
-
-test('BYPASS: computeMonthlyEconomics() con usdManualReviewPending:false + log sin confirmar — sigue bloqueada', () => {
-  const quoteConfig = quoteConfigFor();
-  const res = computeMonthlyEconomics({
-    costBreakdown: {rent:500, admin:100, utilities:50, insurance:30, tech:20, occNights:22, cleaning:40, laundry:10, consumables:5, supplies:5},
-    avgNights: 3,
-    incomeScenario: {type:'manual', manualNetPerNight:100, mix:[]},
-    quoteConfig, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog
-  });
-  assert.equal(res.ok, false);
-  assert.match(res.reason, /revisión manual/);
-});
-
-test('BYPASS: buildAuditChecklist() con usdManualReviewPending:false + log sin confirmar — item de moneda sigue fallando, nunca "listo_supervisado"', () => {
-  const channels = freshChannels();
-  const audit = buildAuditChecklist({
-    usingExampleCosts: false, readiness: null, lmBlocked: false,
-    channels, currency:'USD', usdManualReviewPending: false, usdManualReviewLog: bypassLog, lastReconciliation: null
-  });
-  const currencyItem = audit.items.find(i=>i.key==='currency');
-  assert.equal(currencyItem.ok, false);
-  assert.notEqual(audit.status, 'listo_supervisado');
+test('BYPASS: evaluateUsdOnlyReadiness con booleano falso y log sin confirmar sigue bloqueada', () => {
+  const gate = evaluateUsdOnlyReadiness({unitCurrency:'USD', channels:freshChannels(), usdManualReviewPending:false, usdManualReviewLog:bypassLog});
+  assert.equal(gate.blocked, true);
+  assert.match(gate.reason, /revisión manual/);
 });
 
 test('unidad USD normal (sin log, sin usdManualReviewPending) sigue funcionando exactamente igual — cero regresión del cruce nuevo', () => {

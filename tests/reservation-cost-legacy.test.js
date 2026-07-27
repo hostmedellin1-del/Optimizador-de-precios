@@ -5,8 +5,17 @@
    entre avgNights y que ESO es incorrecto para una reserva concreta. */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {costCalcTotals} from '../src/domain/costs-legacy.js';
 import {reservationCost, reservationCostBreakdown} from '../src/domain/costs.js';
+
+function costCalcTotals(costBreakdown, avgNights){
+  const cb=costBreakdown;
+  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(avgNights)||1);
+  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
+  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
+  const turnoPerNight=turnoSum/avgN;
+  const consumptionPerNight=parseFloat(cb.consumables)||0;
+  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
+}
 
 test('legado vs correcto — costCalcTotals divide limpieza 90 entre avgNights=3 y da 30; eso es incorrecto para una reserva concreta de 1 noche', () => {
   const cb = {rent:0, admin:0, utilities:0, insurance:0, tech:0, occNights:22, cleaning:90, laundry:0, consumables:0, supplies:0};

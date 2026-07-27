@@ -12,8 +12,6 @@
                               schemaVersion, savedAt, migratedFromV2Key?}. */
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
-import {defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './monthly-economics.js';
-import {defaultFxEntry} from './currency.js';
 import {evaluateUsdManualReviewState} from './usd-only.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
@@ -34,18 +32,6 @@ function safeNum(v, fallback){
 }
 function numField(raw, key, fallback, warnings, path){
   if(!(key in raw)) return fallback;
-  const r = safeNum(raw[key], fallback);
-  if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
-  return r;
-}
-/* P2 (revision externa) — para campos donde `null` es un estado VALIDO de
-   "todavia no configurado" (ej. monthlyIncomeScenario.manualNetPerNight),
-   distinto de un valor invalido. Si `raw[key]` es null explicito, se preserva
-   tal cual, sin warning — un warning ahi seria un falso positivo cada vez que
-   se exporta/reimporta una unidad que nunca configuro este campo. */
-function nullableNumField(raw, key, fallback, warnings, path){
-  if(!(key in raw)) return fallback;
-  if(raw[key]===null) return null;
   const r = safeNum(raw[key], fallback);
   if(r && r.invalid){ warnings.push(`${path}.${key}: valor no numerico ("${String(raw[key]).slice(0,60)}") — se uso el default (${fallback}).`); return fallback; }
   return r;
@@ -110,7 +96,7 @@ function normalizeChannel(raw, def, warnings){
   }
   /* Contrato de moneda (revision externa): null = "misma moneda que la
      unidad" (el default seguro) — solo 'USD'/'COP' son valores validos
-     (unica whitelist que soporta la app, ver currency.js). Cualquier otra
+     (única whitelist que soporta la app). Cualquier otra
      cosa (string invalido, numero, objeto) cae a null, nunca se inventa. */
   const rawSettlement = raw && raw.settlementCurrency;
   if(rawSettlement===null || rawSettlement===undefined) out.settlementCurrency = null;
@@ -221,162 +207,14 @@ function normalizeVerification(raw, warnings){
   return out;
 }
 
-const MONTHLY_INCOME_TYPES = ['manual', 'channel', 'mix'];
 const CHANNEL_IDS = CHANNELS.map(c => c.id);
-
-function normalizeMonthlyChannelScenario(raw, def, warnings, path){
-  const out = {...def};
-  if(!raw || typeof raw!=='object') return out;
-  if(CHANNEL_IDS.includes(raw.chId)) out.chId = raw.chId;
-  else if(raw.chId!==undefined) warnings.push(`${path}.chId: "${String(raw.chId).slice(0,40)}" no es un canal conocido — se uso "${def.chId}".`);
-  out.days = Math.round(nonNegField(raw, 'days', def.days, warnings, path, {min:0}));
-  out.nights = Math.round(nonNegField(raw, 'nights', def.nights, warnings, path, {min:1}));
-  out.price = nonNegField(raw, 'price', def.price, warnings, path, {min:0});
-  return out;
-}
-
-/* Fase "planificación mensual" — igual disciplina que discounts/channels
-   arriba: solo canales CONOCIDOS (whitelist contra CHANNEL_IDS), nunca se
-   inventa una fila de mezcla nueva desde un import; un `type` desconocido cae
-   a 'manual' (el mas seguro — nunca calcula sin que Dani escriba un numero
-   el mismo), nunca se ejecuta ni preserva el valor crudo. */
-function normalizeMonthlyIncomeScenario(raw, warnings){
-  const def = defaultMonthlyIncomeScenario(CHANNEL_IDS);
-  if(!raw || typeof raw!=='object') return def;
-  const type = MONTHLY_INCOME_TYPES.includes(raw.type) ? raw.type : 'manual';
-  if(raw.type!==undefined && type!==raw.type) warnings.push(`monthlyIncomeScenario.type: "${String(raw.type).slice(0,40)}" no es un tipo reconocido — se uso 'manual'.`);
-  const manualNetPerNight = nullableNumField(raw, 'manualNetPerNight', def.manualNetPerNight, warnings, 'monthlyIncomeScenario');
-  const channel = normalizeMonthlyChannelScenario(raw.channel, def.channel, warnings, 'monthlyIncomeScenario.channel');
-  const rawMixById = Object.fromEntries((Array.isArray(raw.mix) ? raw.mix : []).filter(m => m && CHANNEL_IDS.includes(m.chId)).map(m => [m.chId, m]));
-  if(!Array.isArray(raw.mix) && raw.mix!==undefined) warnings.push('monthlyIncomeScenario.mix: no es un arreglo — se uso el default (todos apagados).');
-  const mix = def.mix.map(defRow => {
-    const rawRow = rawMixById[defRow.chId];
-    if(!rawRow || typeof rawRow!=='object') return {...defRow};
-    const path = `monthlyIncomeScenario.mix.${defRow.chId}`;
-    return {
-      chId: defRow.chId,
-      on: boolField(rawRow, 'on', defRow.on),
-      weightPct: pctField(rawRow, 'weightPct', defRow.weightPct, warnings, path, {min:0, max:100}),
-      days: Math.round(nonNegField(rawRow, 'days', defRow.days, warnings, path, {min:0})),
-      nights: Math.round(nonNegField(rawRow, 'nights', defRow.nights, warnings, path, {min:1})),
-      price: nonNegField(rawRow, 'price', defRow.price, warnings, path, {min:0})
-    };
-  });
-  return {type, manualNetPerNight, channel, mix};
-}
-
-/* reservePct/taxReservePct/ownerTargetPct/managerTargetPct: 0-100 estricto —
-   un valor fuera de rango se descarta a favor de 0 (nunca inventa un reparto).
-   `configured` migra a `false` para cualquier unidad que no lo tenga — jamas
-   `true` por defecto (ver CLAUDE.md: nunca repartir el margin viejo solo). */
-function normalizeMonthlyDistribution(raw, warnings){
-  const def = defaultMonthlyDistribution();
-  if(!raw || typeof raw!=='object') return def;
-  return {
-    configured: boolField(raw, 'configured', def.configured),
-    ownerTargetPct: pctField(raw, 'ownerTargetPct', def.ownerTargetPct, warnings, 'monthlyDistribution', {min:0, max:100}),
-    managerTargetPct: pctField(raw, 'managerTargetPct', def.managerTargetPct, warnings, 'monthlyDistribution', {min:0, max:100}),
-    reservePct: pctField(raw, 'reservePct', def.reservePct, warnings, 'monthlyDistribution', {min:0, max:100}),
-    taxReservePct: pctField(raw, 'taxReservePct', def.taxReservePct, warnings, 'monthlyDistribution', {min:0, max:100})
-  };
-}
-
-const FX_CURRENCIES = ['USD', 'COP'];
-
-/* fxRates: {[currencyCode]: {rate, source, date, status}} — solo se preservan
-   claves de moneda CONOCIDAS (whitelist FX_CURRENCIES, ver currency.js). Un
-   `rate` invalido/negativo/cero NO se descarta a favor de un default numerico
-   (no hay un "tipo de cambio por defecto" seguro que inventar) — se preserva
-   como null y status cae a 'no_verificado', para que resolveConversion() lo
-   bloquee explicitamente en vez de que normalizeUnit() decida un numero por
-   su cuenta. */
-function normalizeFxEntry(raw, warnings, path){
-  if(!raw || typeof raw!=='object') return defaultFxEntry();
-  const status = VERIFICATION_STATUSES.includes(raw.status) ? raw.status : 'no_verificado';
-  if(raw.status!==undefined && status!==raw.status) warnings.push(`${path}.status: "${String(raw.status).slice(0,40)}" no es un estado reconocido — se uso 'no_verificado'.`);
-  let rate = null;
-  if(raw.rate!==undefined && raw.rate!==null){
-    const n = safeNum(raw.rate, null);
-    if(n && n.invalid){ warnings.push(`${path}.rate: valor no numerico ("${String(raw.rate).slice(0,60)}") — se uso null (sin tipo de cambio).`); }
-    else if(typeof n==='number' && n>0) rate = n;
-    else warnings.push(`${path}.rate: ${n} no es un tipo de cambio valido (debe ser > 0) — se uso null.`);
-  }
-  const source = strField(raw, 'source', '', warnings, path, 200);
-  const date = strField(raw, 'date', '', warnings, path, 20);
-  return {rate, source, date, status: rate===null ? 'no_verificado' : status};
-}
-function normalizeFxRates(raw, warnings){
-  const out = {};
-  if(!raw || typeof raw!=='object') return out;
-  FX_CURRENCIES.forEach(code=>{
-    if(raw[code]!==undefined) out[code] = normalizeFxEntry(raw[code], warnings, `fxRates.${code}`);
-  });
-  Object.keys(raw).forEach(code=>{
-    if(!FX_CURRENCIES.includes(code)) warnings.push(`fxRates: moneda desconocida "${String(code).slice(0,20)}" descartada.`);
-  });
-  return out;
-}
-
-/* reconciliations: datos LOCALES de auditoria que Dani ingresa a mano para
-   comparar una reserva real contra el estimado del motor (ver
-   src/domain/reconciliation.js) — nunca datos sensibles de huesped (nombre/
-   email/telefono), solo numeros financieros + referencia de reserva libre
-   (opcional). Un elemento malformado se descarta entero (no se intenta
-   reparar campo por campo) — es un registro de auditoria, no una
-   configuracion que deba sobrevivir a toda costa; preservar una entrada a
-   medias podria mostrar una reconciliacion enganosa. */
-function normalizeReconciliation(raw, warnings, idx){
-  if(!raw || typeof raw!=='object'){ warnings.push(`reconciliations[${idx}]: no es un objeto — descartado.`); return null; }
-  const path = `reconciliations[${idx}]`;
-  if(!CHANNEL_IDS.includes(raw.chId)){ warnings.push(`${path}.chId: "${String(raw.chId).slice(0,40)}" no es un canal conocido — entrada descartada.`); return null; }
-  const price = safeNum(raw.price, null);
-  const nights = safeNum(raw.nights, null);
-  const payoutReceived = safeNum(raw.payoutReceived, null);
-  if(typeof price!=='number' || price<=0){ warnings.push(`${path}.price: falta un precio real (> 0) — entrada descartada.`); return null; }
-  if(typeof nights!=='number' || nights<1){ warnings.push(`${path}.nights: faltan noches reales (>= 1) — entrada descartada.`); return null; }
-  if(typeof payoutReceived!=='number' || !Number.isFinite(payoutReceived)){ warnings.push(`${path}.payoutReceived: falta el payout real recibido — entrada descartada.`); return null; }
-  const daysN = safeNum(raw.days, 0);
-  const days = typeof daysN==='number' ? Math.max(0, Math.round(daysN)) : 0;
-  /* Simplificacion a USD unico (revision externa): se PRESERVA cualquier
-     moneda no vacia tal cual (no solo 'USD'/'COP') — nunca se reinterpreta
-     un valor real como null ("sin dato" = se asumira USD en
-     reconciliation.js). Ausente/vacio si cae a null (equivalente a "no
-     especificado", que reconciliation.js SI trata como USD por defecto,
-     porque el formulario ya no ofrece otra moneda). */
-  const currency = (typeof raw.currency==='string' && raw.currency.trim()!=='') ? raw.currency.trim().slice(0,10) : null;
-  const optionalPct = (key)=>{
-    if(raw[key]===undefined || raw[key]===null || raw[key]==='') return null;
-    const n = safeNum(raw[key], null);
-    return (typeof n==='number' && Number.isFinite(n)) ? n : null;
-  };
-  return {
-    id: (typeof raw.id==='string' && raw.id) ? raw.id.slice(0,80) : `rec${idx}_${Date.now()}`,
-    savedAt: (typeof raw.savedAt==='string') ? raw.savedAt.slice(0,40) : new Date().toISOString(),
-    chId: raw.chId,
-    price, nights: Math.round(nights), days,
-    currency,
-    otaCommissionPct: optionalPct('otaCommissionPct'),
-    bankFeePct: optionalPct('bankFeePct'),
-    cleaningFeeCharged: optionalPct('cleaningFeeCharged'),
-    nativeDiscountPct: optionalPct('nativeDiscountPct'),
-    payoutReceived,
-    reference: strField(raw, 'reference', '', warnings, path, 120)
-  };
-}
-function normalizeReconciliations(raw, warnings){
-  if(!Array.isArray(raw)){
-    if(raw!==undefined) warnings.push('reconciliations: no es un arreglo — se uso una lista vacia.');
-    return [];
-  }
-  return raw.map((r,i)=>normalizeReconciliation(r, warnings, i)).filter(Boolean).slice(0, 200);
-}
 
 /* usdManualReviewLog: bitácora de auditoria de la revisión manual COP→USD
    (BLOQUEANTE 3, auditoria externa ronda 5) — cada entrada registra CUANDO y
    QUE paso ('copy_created' al crear la copia sin convertir nada,
    'review_confirmed' cuando Dani confirma haber revisado uno por uno los
    valores copiados). Es APEND-ONLY desde la UI (index.html nunca borra
-   entradas, solo agrega) — pero la normalizacion, como con reconciliations,
+   entradas, solo agrega) — pero la normalizacion
    descarta entradas malformadas ENTERAS (nunca repara un evento desconocido
    o una fecha invalida a medias: seria una nota de auditoria enganosa).
 
@@ -391,7 +229,7 @@ function normalizeReconciliations(raw, warnings){
    dentro de normalizeUnit(): si `evaluateUsdManualReviewState()` detecta
    esa contradicción, `usdManualReviewPending` se CORRIGE a `true` aquí
    mismo (defensa en la capa de persistencia) con un warning explícito —
-   ademas de que engine.js/reconciliation.js/monthly-economics.js/audit.js
+   ademas de que engine.js
    NUNCA confían en el booleano crudo por su cuenta (defensa en la capa de
    dominio, la autoritativa incluso si algo llega a `compute()` sin pasar
    por aquí). La fecha (`at`) ahora debe ser un valor REALMENTE parseable
@@ -488,10 +326,6 @@ export function normalizeUnit(raw){
   const costBreakdownConfirmed = boolField(raw, 'costBreakdownConfirmed', false);
   const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
   const verification = normalizeVerification(raw.verification, warnings);
-  const monthlyIncomeScenario = normalizeMonthlyIncomeScenario(raw.monthlyIncomeScenario, warnings);
-  const monthlyDistribution = normalizeMonthlyDistribution(raw.monthlyDistribution, warnings);
-  const fxRates = normalizeFxRates(raw.fxRates, warnings);
-  const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
   /* BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js:
      `usdManualReviewPending` es EXPLICITO, nunca inferido. Una unidad sin
      este campo (normal, preexistente, o nueva) cae a `false` — no queda
@@ -547,9 +381,7 @@ export function normalizeUnit(raw){
     marketWindow: nonNegField(raw, 'marketWindow', 16, warnings, 'unidad', {min:0}),
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
-    matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
-    monthlyIncomeScenario, monthlyDistribution, fxRates, reconciliations,
     usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
