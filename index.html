@@ -1483,7 +1483,7 @@ saveUnit.addEventListener('click',async()=>{
    costos reales y confirmaciones de descuentos; esta UI solo persiste el
    candidato después de comprobar que normalizeUnit() mantuvo esos reseteos. */
 duplicateUnit.addEventListener('click', async()=>{
-  if(!unitList.value){
+  if(!state.id && !unitList.value){
     status('Carga o guarda una unidad antes de duplicarla.');
     return;
   }
