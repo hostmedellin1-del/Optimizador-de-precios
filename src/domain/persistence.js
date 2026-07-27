@@ -13,6 +13,7 @@
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
 import {evaluateUsdManualReviewState} from './usd-only.js';
+import {EXAMPLE_COST_DEFAULTS} from './cost-mode.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
 
@@ -406,6 +407,43 @@ export function buildV3Record(state, {id, migratedFromV2Key} = {}){
     schemaVersion: SCHEMA_VERSION,
     savedAt: new Date().toISOString(),
     ...(migratedFromV2Key ? {migratedFromV2Key} : {})
+  };
+}
+
+/* Crea una copia de CONFIGURACION, nunca una copia de afirmaciones verificadas.
+   Se devuelve {ok, state|reason} en vez de lanzar para que la UI pueda explicar
+   por qué no puede continuar sin tocar el estado actual. La función es pura:
+   no lee ni escribe storage, DOM, ni muta la unidad de origen. */
+export function buildDuplicateUnit(state, newName){
+  if(state.usdManualReviewPending===true){
+    return {ok:false, reason:'No se puede duplicar una copia USD que todavía está pendiente de revisión manual.'};
+  }
+  const sourceLm = state.lmConfig || defaultLmConfig();
+  return {
+    ok:true,
+    state:{
+      ...state,
+      name:newName,
+      id:undefined,
+      channels:(Array.isArray(state.channels) ? state.channels : []).map(channel=>({...channel})),
+      discounts:(Array.isArray(state.discounts) ? state.discounts : []).map(discount=>({...discount, verified:false})),
+      ceilings:{...(state.ceilings||{})},
+      lmConfig:{
+        ...sourceLm,
+        verified:false,
+        flat:{...(sourceLm.flat||{})},
+        gradual:{...(sourceLm.gradual||{})},
+        fixedPrice:{...(sourceLm.fixedPrice||{})},
+        tiers:(Array.isArray(sourceLm.tiers) ? sourceLm.tiers : []).map(tier=>({...tier}))
+      },
+      verification:defaultVerification(),
+      costBreakdownConfirmed:false,
+      costBreakdown:defaultCostBreakdown(),
+      fixedCost:EXAMPLE_COST_DEFAULTS.fixedCost,
+      varCost:EXAMPLE_COST_DEFAULTS.varCost,
+      usdManualReviewPending:false,
+      usdManualReviewLog:[]
+    }
   };
 }
 
