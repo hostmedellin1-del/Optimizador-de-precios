@@ -272,6 +272,15 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
   <div id="lmModeFields"></div>
 </section>
+<section class="card" id="ceilingsSection">
+  <h2>Techo total por ventana <span class="hint">el % máximo de descuento total que aceptas ver en el precio del huésped, sumando nativos + LM</span></h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ventana</th><th>Techo total %</th></tr></thead>
+      <tbody id="ceilingsEditor"></tbody>
+    </table>
+  </div>
+</section>
 <section class="card" id="verificationSection">
   <h2 id="verificationSectionHeading" tabindex="-1">Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
   <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y reglas de Hospy/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Hospy — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
@@ -287,7 +296,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div class="tab-panel" data-tab="comparacion">
 <section class="card">
   <h2>Panel de decisión por ventana de reserva <span class="hint">qué poner en PriceLabs, canal por canal</span></h2>
-  <p class="hint">Cada fila es una ventana de anticipación (días antes del check-in). Lee primero el <strong>Veredicto</strong>: te dice en una frase si algo necesita tu atención en esa ventana. El Techo % lo pones tú (cuánto descuento total le aceptas al huésped); el detalle por canal está colapsado — ábrelo solo si el veredicto te manda a revisar algo puntual.</p>
+  <p class="hint">Cada fila es una ventana de anticipación (días antes del check-in). Lee primero el <strong>Veredicto</strong>: te dice en una frase si algo necesita tu atención en esa ventana. El techo total configurado en Resumen define cuánto descuento total le aceptas al huésped; el detalle por canal está colapsado — ábrelo solo si el veredicto te manda a revisar algo puntual.</p>
   <div class="matrix-intro" id="matrixIntro"></div>
   <div class="table-wrap">
     <table>
@@ -698,6 +707,12 @@ function renderChannelPages(model){
       </section>`;
   });
 }
+function renderCeilingsEditor(){
+  ceilingsEditor.innerHTML = WINDOWS.map(w=>`<tr>
+    <td>${w.label}</td>
+    <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
+  </tr>`).join('');
+}
 function renderMatrix(model){
   /* Simplificacion a USD unico (revision externa): una unidad "requiere
      revision manual" no puede mostrar NINGUNA fila de la Matriz — ni
@@ -762,7 +777,7 @@ function renderMatrix(model){
        Fix: usar los campos reales que la funcion realmente devuelve. */
     return `<tr>
       <td>${w.label}</td>
-      <td><input type="number" data-ceil="${w.id}" value="${escapeHtml(state.ceilings[w.id])}" style="width:58px"></td>
+      <td>${fP(state.ceilings[w.id])}</td>
       <td><div class="verdict ${vLvl}"><span class="v-tag">${vTag}</span><span class="v-msg">${escapeHtml(vMsg)}</span></div></td>
       <td>
         <details class="matrix-detail"><summary>Ver por canal</summary>
@@ -957,7 +972,7 @@ function buildTabbar(){
 function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance();
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig(); renderVerification();
   renderCurrencyReviewBanner(model);
 }
@@ -1049,7 +1064,7 @@ function renderLmConfig(){
         </div>`).join('') || '<p class="hint">Sin tramos todavía.</p>'}
       <button type="button" class="ghost" id="addTierBtn" style="margin-top:8px;">+ Agregar tramo</button>`;
   } else {
-    box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Comparación, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
+    box.innerHTML = '<p class="hint">Modo automático: LM = lo que hace falta para llegar al techo configurado en Resumen, canal por canal. No verificable matemáticamente sin el precio diario real de PriceLabs.</p>';
   }
 }
 function verifEntryHTML(key, chId, entry){

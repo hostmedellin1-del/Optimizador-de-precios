@@ -8,6 +8,21 @@
    cualquier número al azar). */
 import {test, expect} from '@playwright/test';
 
+test('Techos por ventana: se editan en Resumen con el mismo control y la Matriz conserva su valor sin editor', async ({page}) => {
+  await page.goto('/index.html');
+
+  const ceiling = page.locator('#ceilingsSection [data-ceil="w0"]');
+  await expect(ceiling).toBeVisible();
+  await expect(ceiling).toHaveValue('35');
+  await ceiling.fill('41');
+  await ceiling.dispatchEvent('change');
+  await expect(page.locator('#ceilingsSection [data-ceil="w0"]')).toHaveValue('41');
+
+  await page.locator('[data-tabbtn="comparacion"]').click();
+  await expect(page.locator('#matrixBody [data-ceil]')).toHaveCount(0);
+  await expect(page.locator('#matrixBody tr').first().locator('td').nth(1)).toHaveText('41%');
+});
+
 test('Matriz: el detalle de cada ventana muestra día/noches reales, nunca "undefined", y coincide con el canal de peor payout', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="comparacion"]').click();
