@@ -1,8 +1,31 @@
 # Changelog
 
-Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditoria`
-(no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
-auditoría técnica → qué cambió → por qué.
+Las entradas describen rondas de auditoría y su contexto histórico. La versión vigente
+es la entrada superior junto con el contenido de `main`; las referencias a módulos
+retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
+la auditoría técnica → qué cambió → por qué.
+
+## [0.16.0] — Duplicar unidad y cierre de auditoría documental
+
+**Documentado** — se incorporó el contrato vigente de **Duplicar**: copia configuración
+operativa (canales, 37 descuentos, techos y parámetros LM), pero reinicia toda
+confirmación financiera, LM, descuentos y costos reales; la copia empieza bloqueada y no
+puede cambiar el origen. Se aclaró además que la advertencia superior de `CLAUDE.md` lista
+solo eliminaciones, no funcionalidades agregadas después.
+
+**Corregido en documentación** — Booking mostraba el nombre histórico “Getaway Deal” en
+lugar del catálogo actual “Limited-time Deal”; el inventario vigente de `state` aún
+incluía `matrixNights`, eliminado en 0.15.0; y RUNBOOK/encabezado del changelog seguían
+afirmando que el trabajo no estaba mergeado a `main` y describían pantallas retiradas
+(planificación mensual, conciliación y auditoría).
+
+**Auditoría estática** — 37 descuentos revisados contra `src/catalog/discounts.js`
+(Airbnb 18, Booking 10, Expedia 8, Directo 1), incluida la sección completa de
+`ab_topguest`; imports relativos y referencias estáticas a IDs DOM sin roturas. Se
+mantienen, por decisión documentada, comentarios históricos en `engine.js`/`usd-only.js`
+sobre módulos retirados; no alteran ejecución. También queda un comentario histórico no
+ejecutable en un E2E que nombra la antigua sección mensual: se reporta, no se modifica,
+para preservar el alcance documental.
 
 ## [0.15.0] — Simplificación: recorte de funciones ajenas al precio
 

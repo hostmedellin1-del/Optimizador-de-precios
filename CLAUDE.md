@@ -16,7 +16,9 @@ Expedia y canal Directo, no con supuestos genéricos.
 > datos reales (`audit.js`), `currency.js`/`fxRates`, `simulate-legacy.js`,
 > `costs-legacy.js` y `state.matrixNights`. Toda la prosa anterior que los describa es
 > **historia, no estado actual**. El motor, los 4 canales y los gates de verificación
-> quedaron intactos.
+> quedaron intactos. Este aviso enumera únicamente **eliminaciones**: una adición
+> posterior como **Duplicar unidad** no pertenece a esta lista y se documenta en la
+> arquitectura vigente más abajo.
 
 ---
 
@@ -132,7 +134,7 @@ Categorías DISTINTAS se MULTIPLICAN entre sí; la MISMA categoría no combina:
 - Mobile Rate (`group:'proactive-mobile'`) apila sobre Genius, pero no combina con
   Country Rate ni con Limited-time Deal — si cualquiera de esos dos está activo, Mobile
   se ignora (ya implementado, ver el `ignored[]` que devuelve el motor).
-- Reactivos (Basic Deal / Early Booker Deal / Last-Minute Deal / Getaway Deal,
+- Reactivos (Basic Deal / Early Booker Deal / Last-Minute Deal / Limited-time Deal,
   `group:'reactive'` o `'reactive-limited'`): solo UNO a la vez puede estar activo; el
   motor usa el de mayor % que aplique en esa ventana de días.
 - Duración de estadía (`bk_los1/2/3`, `group:'los'`, jul 2026, a pedido de Dani): NO es un
@@ -346,6 +348,17 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   archivo real en disco con estructura correcta → borrar → importar → unidades vuelven
   exactas). Recomendarle a Dani exportar periódicamente y guardar el `.json` en Drive o
   donde respalde su negocio — la app no lo hace sola, es manual.
+- **Duplicar unidad (0.16.0)**: el botón **Duplicar** es una alta rápida, no una copia
+  certificada. Conserva únicamente la configuración operativa: los 4 canales (comisión,
+  banco, Offset y aseo), los 37 descuentos y sus porcentajes/ventanas, los techos y los
+  parámetros del modo Last-Minute. La nueva unidad recibe una identidad nueva y conserva
+  la moneda del origen, pero **nunca** hereda hechos: reinicia toda la Verificación de
+  datos financieros a `No verificado`, la confirmación de Last-Minute, la verificación de
+  cada descuento, el desglose confirmado y los costos reales (vuelve al ejemplo 32/22).
+  Por eso nace bloqueada para Min Price/Base Price hasta revisar y confirmar sus propios
+  datos. Si el origen ya es una copia USD pendiente de revisión manual, ni siquiera se
+  permite duplicarlo: primero hay que terminar esa revisión. La unidad original nunca se
+  modifica.
 - v1 fue descartada por completo, no parcheada. La v1 tenía "% nativo constante" y "%
   por ventana" como dos conceptos separados sin reglas de combinación reales —
   estructuralmente inválido. Se reescribió desde cero como v2 con un catálogo único de
@@ -381,10 +394,12 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 
 ## 4. Arquitectura técnica del archivo actual
 
-- `state` — objeto único: `fixedCost`, `varCost`, `margin`, `marketWindow`, `marketBase`,
-  `avgNights` (estadía promedio, jul 2026), `currency`, `matrixNights`, `channels[]` (cada
-  uno con `comm`, `bankFeePct`, `offsetPct`), `discounts[]` (catálogo completo, cada uno
-  con `ch`/`kind`/`group`/`prio`/ventana o duración), `ceilings` (techo % por ventana).
+- `state` — objeto único: `id`, `name`, `fixedCost`, `varCost`, `margin`, `marketWindow`,
+  `marketBase`, `avgNights` (estadía promedio), `currency`, `channels[]` (cada uno con
+  `comm`, `bankFeePct`, `offsetPct`), `discounts[]` (catálogo completo, cada uno con
+  `ch`/`kind`/`group`/`prio`/ventana o duración), `ceilings` (techo % por ventana),
+  `lmConfig`, `verification`, `costBreakdown` y su confirmación, y la bitácora de revisión
+  manual USD cuando aplique. `state.matrixNights` fue eliminado y no debe reintroducirse.
 - `combineChannel(chId, daysOut, nights)` — el motor central. Aplica las reglas de la
   sección 2 según el canal. Devuelve `{factor, totalPct, applied[], ignored[]}` —
   `applied`/`ignored` traen el porqué de cada decisión (para el simulador y las alertas).
@@ -565,9 +580,10 @@ probarlo numéricamente primero.
 
 ## 9. Auditoría técnica jul 2026 (Fases 1-7) — arquitectura modular, motor, seguridad
 
-Trabajo hecho en la rama `fix/motor-financiero-auditoria` (NO mergeado a `main`, sin
-push) contra el hallazgo de una auditoría técnica independiente. Ver `CHANGELOG.md`
-para el resumen fase por fase y `RUNBOOK.md` para QA manual/rollback/despliegue.
+Trabajo originalmente hecho en la rama `fix/motor-financiero-auditoria` contra el
+hallazgo de una auditoría técnica independiente; esta sección conserva el contexto de
+esas rondas, no el estado de publicación de hoy. Ver `CHANGELOG.md` para el resumen fase
+por fase y `RUNBOOK.md` para QA manual/rollback/despliegue.
 
 ### Arquitectura: de un solo `<script>` a módulos ES puros
 `index.html` ahora es un `<script type="module">` que importa de `src/catalog/` (datos)
