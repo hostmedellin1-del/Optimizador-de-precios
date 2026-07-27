@@ -385,7 +385,6 @@ import {pct} from './src/domain/percent.js';
 import {f$ as f$base, fP} from './src/domain/format.js';
 import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
 import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
-import {costCalcTotals as costCalcTotalsBase} from './src/domain/costs-legacy.js';
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
 import {worstScenariosInWindow, buildMatrixVerdict} from './src/domain/matrix.js';
@@ -1049,7 +1048,13 @@ function renderAll(){
    directo, sin dividir — meterlo en el mismo balde que limpieza lo distorsiona en ambos
    extremos (lo infla en estadías cortas, lo diluye de más en las largas). */
 function costCalcTotals(){
-  return costCalcTotalsBase(state.costBreakdown, state.avgNights);
+  const cb=state.costBreakdown;
+  const occ=Math.max(1,parseFloat(cb.occNights)||1), avgN=Math.max(1,parseFloat(state.avgNights)||1);
+  const fixedSum=(parseFloat(cb.rent)||0)+(parseFloat(cb.admin)||0)+(parseFloat(cb.utilities)||0)+(parseFloat(cb.insurance)||0)+(parseFloat(cb.tech)||0);
+  const turnoSum=(parseFloat(cb.cleaning)||0)+(parseFloat(cb.laundry)||0)+(parseFloat(cb.supplies)||0);
+  const turnoPerNight=turnoSum/avgN;
+  const consumptionPerNight=parseFloat(cb.consumables)||0;
+  return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
 }
 function renderCostCalc(){
   const t=costCalcTotals();
