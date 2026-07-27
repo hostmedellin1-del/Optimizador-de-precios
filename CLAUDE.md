@@ -9,6 +9,15 @@ Expedia y canal Directo, no con supuestos genéricos.
 **Sitio publicado**: https://hostmedellin1-del.github.io/Optimizador-de-precios/
 **Deploy**: automático vía GitHub Pages en cada push a `main`. No hace falta build ni CI.
 
+> ⚠ **LEER ANTES QUE NADA (jul 2026)** — este documento crece por rondas y las secciones
+> viejas describen el estado de SU ronda, no el de hoy. En la **simplificación de jul 2026**
+> (última sección del archivo) se ELIMINARON del código: planificación mensual
+> (`monthly-economics.js`), conciliación de reservas (`reconciliation.js`), auditoría de
+> datos reales (`audit.js`), `currency.js`/`fxRates`, `simulate-legacy.js`,
+> `costs-legacy.js` y `state.matrixNights`. Toda la prosa anterior que los describa es
+> **historia, no estado actual**. El motor, los 4 canales y los gates de verificación
+> quedaron intactos.
+
 ---
 
 ## 1. Para qué existe esto (contexto de negocio, resumido)
@@ -1711,3 +1720,72 @@ unitarias + 1 e2e) lo detectan. **320/320 unitarios, 75/75 e2e, sin
 regresión.** Alcance de esta ronda, a pedido explícito: NO se tocó
 `currency.js` ni la limpieza de multimoneda — sigue exactamente igual que en
 la ronda 5.
+
+### Simplificación (jul 2026) — recorte de funciones ajenas al precio
+
+**Motivación**: tras 6 rondas de auditoría externa la herramienta acumuló 7 pestañas y
+~3.460 líneas de dominio. Cada ronda agregó módulos legítimos, pero nunca se revisó si
+TODOS aportan a la única decisión que la herramienta existe para resolver: **qué precio
+poner en PriceLabs**. Se hizo una auditoría de necesidad real clasificando cada sección
+como NÚCLEO (alimenta Min/Base Price o la decisión por canal), SOPORTE (valida pero no
+decide) o PRESCINDIBLE (no cambia ninguna recomendación, o duplica otra sección).
+
+**Confirmado por Dani antes de cortar** (no inferido): los 4 canales (Airbnb, Booking.com,
+Expedia, Directo) se operan de verdad hoy → ninguno se toca. Nunca usó Rentabilidad
+mensual, Conciliación, Auditoría ni la Matriz — *"me parece compleja de usar"* (el motivo
+es usabilidad, no que el dato sobre; queda anotado para no confundir "no lo usa" con "no
+le sirve").
+
+**Qué se eliminó y por qué era seguro** — los tres primeros eran hojas puras: nada en
+`compute()`/`quoteScenario()` los importaba, así que no podían mover ningún número:
+- `src/domain/monthly-economics.js` + sección "Rentabilidad mensual y punto de equilibrio"
+  + `state.monthlyIncomeScenario`/`monthlyDistribution`. Respondía *"¿cierro el mes en
+  positivo?"*, no *"qué precio pongo"*.
+- `src/domain/reconciliation.js` + sección "Validar contra una reserva real" +
+  `state.reconciliations`. **Pérdida real y consciente**: era el único mecanismo que
+  detectaba que el modelo se desvió de la realidad. Se aceptó porque nunca se cargó
+  ninguna conciliación (CLAUDE.md §5 punto 11 ya lo documentaba) y los gates de
+  Verificación siguen forzando confirmar cada supuesto. **Es lo primero que habría que
+  re-agregar** si algún día se quiere contrastar contra liquidaciones reales.
+- `src/domain/audit.js` + sección "Auditoría de datos reales". Duplicación pura: era un
+  rollup de señales que ya muestran los banners y la sección de Verificación. Costo cero.
+- `src/domain/currency.js` + `state.fxRates`: `resolveConversion()` no tenía ningún
+  llamador fuera de su test y `fxRates` no lo leía nadie. Vuelve desde git cuando exista
+  la fase multimoneda.
+- `src/domain/simulate-legacy.js`: cero importadores, ni siquiera en tests.
+- `src/domain/costs-legacy.js`: vivía solo para 3 líneas de previsualización; su cálculo
+  se inlineó en `costCalcTotals()` (`index.html`) sin cambiar la fórmula.
+- `state.matrixNights`: persistido, editable y validado, pero **no lo leía ningún
+  cálculo** — un campo que engañaba (se editaba y no pasaba nada).
+
+**Techos por ventana — el punto de riesgo, y cómo se manejó.** `state.ceilings` SÍ entra
+en la aritmética del Piso bajo el modo LM `ceiling_auto` (`worstcase.js`, `engine.js`),
+pero su único editor vivía dentro de la pestaña Comparación. Borrar esa pestaña sin más
+habría borrado el único control de un input que mueve el Min Price. Por eso el editor se
+**movió** (no se rediseñó) a Resumen, justo debajo de "Last-Minute de PriceLabs", que es
+donde `ceiling_auto` los consume — mismos `data-ceil`, mismo handler delegado, misma
+validación, misma ruta a `compute()`. La Matriz ahora los muestra en solo lectura.
+**La pestaña Comparación NO se eliminó** — esa decisión queda para después de que Dani
+use la versión simplificada.
+
+**Garantía de no-regresión, verificada dos veces (Codex ejecutó, Claude verificó aparte)**:
+- Los 8 archivos del motor (`engine`, `quote`, `worstcase`, `thresholds`, `costs`,
+  `pricelabs-lm`, `percent`, `catalog/discounts`) y los 5 de gates (`readiness`,
+  `verification`, `cost-mode`, `usd-only`, `validate`) quedaron **byte-idénticos** —
+  comprobado comparando SHA de blob con `git ls-tree`, no solo con un diff vacío.
+  `persistence.js` es el ÚNICO archivo de `src/` modificado, y solo con eliminaciones.
+- `compute()` con el catálogo de fábrica sigue dando exactamente
+  `Piso 110.76923076923076 / Base 163.6363636363636 / Costo 54 / Neto 98.18181818181817`.
+- El gate de seguridad USD (bypass de copia COP→USD, ronda 6) **no perdió cobertura**:
+  los casos que entraban por los módulos borrados se reescribieron contra `compute()` y
+  `evaluateUsdOnlyReadiness()` en vez de eliminarse.
+- Unidades viejas que traigan cualquiera de los campos retirados siguen cargando: se
+  ignoran en silencio, sin warning falso (4 tests dedicados en
+  `tests/real-data-persistence.test.js`).
+
+**Deuda conocida que queda**: `engine.js` y `usd-only.js` tienen comentarios que
+mencionan `reconciliation.js`/`monthly-economics.js`/`audit.js` como si existieran — se
+dejaron así a propósito porque esos dos archivos estaban prohibidos de tocar en este
+recorte (son el motor y un gate). No afectan nada ejecutable.
+
+**234/234 unitarios, lint limpio, 60/60 e2e, cero skip.**

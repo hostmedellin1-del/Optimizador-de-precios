@@ -4,6 +4,45 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.15.0] — Simplificación: recorte de funciones ajenas al precio
+
+Auditoría de necesidad real tras 6 rondas de auditoría técnica: se clasificó cada
+sección como NÚCLEO (alimenta Min/Base Price o la decisión por canal), SOPORTE
+(valida pero no decide) o PRESCINDIBLE. Se eliminó todo lo PRESCINDIBLE. Ver
+CLAUDE.md, sección final, para el detalle completo y el porqué de cada corte.
+
+**Eliminado** — los tres primeros eran hojas puras (nada en `compute()`/
+`quoteScenario()` los importaba, así que no podían mover ningún número):
+planificación mensual (`monthly-economics.js` + su sección + sus 2 campos
+persistidos), conciliación de reservas (`reconciliation.js` + su sección +
+`state.reconciliations`), auditoría de datos reales (`audit.js` + su sección),
+`currency.js` + `state.fxRates` (sin ningún consumidor activo),
+`simulate-legacy.js` (cero importadores) y `state.matrixNights` (persistido y
+editable, pero no lo leía ningún cálculo). `costs-legacy.js` se inlineó en
+`costCalcTotals()` sin cambiar la fórmula.
+
+**Movido, no rediseñado**: el editor de Techos por ventana pasó de la pestaña
+Comparación a Resumen, bajo "Last-Minute de PriceLabs" — los techos SÍ entran en
+la aritmética del Piso bajo `ceiling_auto`, así que borrar esa pestaña sin mover
+el editor habría dejado sin control un input que mueve el Min Price. Mismos
+`data-ceil`, mismo handler, misma validación. La Matriz los muestra en solo
+lectura. **La pestaña Comparación NO se eliminó.**
+
+**Intacto**: motor financiero, los 4 canales, catálogo de descuentos, reglas de
+combinación, Last-Minute, costos, gates de verificación financiera, Alertas,
+Simulador, Exportar/Importar.
+
+**Garantía de no-regresión, verificada de forma independiente**: los 8 archivos
+del motor y los 5 de gates quedaron **byte-idénticos** (comparación de SHA de
+blob, no solo diff vacío); `persistence.js` es el único archivo de `src/`
+modificado. `compute()` con el catálogo de fábrica sigue dando exactamente
+`Piso 110.76923076923076 / Base 163.6363636363636 / Costo 54 / Neto 98.18181818181817`.
+El gate de seguridad USD (bypass COP→USD, ronda 6) no perdió cobertura: sus casos
+se reescribieron contra `compute()`/`evaluateUsdOnlyReadiness()` en vez de
+eliminarse. Unidades viejas con campos retirados siguen cargando sin warning falso.
+
+**234/234 unitarios, lint limpio, 60/60 e2e, cero skip.**
+
 ## [0.14.0] — Nuevo descuento de catálogo: Airbnb "Top Rated Guest Discount" (sin confirmar)
 
 Dani reportó un descuento nuevo de Airbnb: 15% para huéspedes con más de 3 reseñas.
