@@ -61,36 +61,10 @@ test('settlementCurrency: un valor no soportado (moneda inventada, número, obje
   }
 });
 
-test('fxRates: entrada bien formada (rate/source/date/status) sobrevive el ciclo exacto, sin warnings', () => {
-  const fxRates = {USD: {rate:4000, source:'extracto Bancolombia', date:'2026-07-15', status:'verificado'}};
-  const {state, warnings} = normalizeUnit({name:'X', fxRates});
-  assert.deepEqual(state.fxRates.USD, fxRates.USD);
-  assert.equal(warnings.filter(w=>w.startsWith('fxRates')).length, 0);
-});
-
-test('fxRates: una moneda desconocida (no USD/COP) se descarta con warning, nunca se inventa un tercer par', () => {
-  const {state, warnings} = normalizeUnit({name:'Evil', fxRates:{EUR:{rate:1, status:'verificado', source:'', date:''}}});
-  assert.equal(state.fxRates.EUR, undefined);
-  assert.ok(warnings.some(w=>w.includes('fxRates')));
-});
-
-test('fxRates: rate invalido (0/negativo/NaN/texto) NUNCA sobrevive como numero — cae a null y status a no_verificado, incluso si el status crudo decia "verificado"', () => {
-  for(const badRate of [0, -100, 'texto', null]){
-    const {state} = normalizeUnit({name:'Evil', fxRates:{USD:{rate:badRate, status:'verificado', source:'x', date:'2026-01-01'}}});
-    assert.equal(state.fxRates.USD.rate, null, `rate=${JSON.stringify(badRate)} debe caer a null`);
-    assert.equal(state.fxRates.USD.status, 'no_verificado', 'sin un rate valido, el status NUNCA puede quedar en verificado');
-  }
-});
-
-test('fxRates: status inventado cae a no_verificado con warning', () => {
-  const {state, warnings} = normalizeUnit({name:'Evil', fxRates:{USD:{rate:4000, status:'TOTALMENTE_CONFIABLE', source:'', date:''}}});
-  assert.equal(state.fxRates.USD.status, 'no_verificado');
-  assert.ok(warnings.some(w=>w.includes('fxRates.USD.status')));
-});
-
-test('fxRates ausente por completo (unidad vieja): recibe {} — nunca inventa una moneda ni un tipo de cambio', () => {
-  const {state} = normalizeUnit({name:'Unidad vieja', channels:[], discounts:[]});
-  assert.deepEqual(state.fxRates, {});
+test('unidad vieja con fxRates: el campo retirado se ignora sin warning ni ruptura', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad vieja', fxRates:{USD:{rate:4000, status:'verificado'}}});
+  assert.equal('fxRates' in state, false);
+  assert.equal(warnings.some(w=>w.includes('fxRates')), false);
 });
 
 test('reconciliations: entrada bien formada sobrevive el ciclo exacto (campos financieros + referencia opcional)', () => {

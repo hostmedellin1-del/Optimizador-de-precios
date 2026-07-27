@@ -13,7 +13,6 @@
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
 import {defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './monthly-economics.js';
-import {defaultFxEntry} from './currency.js';
 import {evaluateUsdManualReviewState} from './usd-only.js';
 
 const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
@@ -281,42 +280,6 @@ function normalizeMonthlyDistribution(raw, warnings){
   };
 }
 
-const FX_CURRENCIES = ['USD', 'COP'];
-
-/* fxRates: {[currencyCode]: {rate, source, date, status}} — solo se preservan
-   claves de moneda CONOCIDAS (whitelist FX_CURRENCIES, ver currency.js). Un
-   `rate` invalido/negativo/cero NO se descarta a favor de un default numerico
-   (no hay un "tipo de cambio por defecto" seguro que inventar) — se preserva
-   como null y status cae a 'no_verificado', para que resolveConversion() lo
-   bloquee explicitamente en vez de que normalizeUnit() decida un numero por
-   su cuenta. */
-function normalizeFxEntry(raw, warnings, path){
-  if(!raw || typeof raw!=='object') return defaultFxEntry();
-  const status = VERIFICATION_STATUSES.includes(raw.status) ? raw.status : 'no_verificado';
-  if(raw.status!==undefined && status!==raw.status) warnings.push(`${path}.status: "${String(raw.status).slice(0,40)}" no es un estado reconocido — se uso 'no_verificado'.`);
-  let rate = null;
-  if(raw.rate!==undefined && raw.rate!==null){
-    const n = safeNum(raw.rate, null);
-    if(n && n.invalid){ warnings.push(`${path}.rate: valor no numerico ("${String(raw.rate).slice(0,60)}") — se uso null (sin tipo de cambio).`); }
-    else if(typeof n==='number' && n>0) rate = n;
-    else warnings.push(`${path}.rate: ${n} no es un tipo de cambio valido (debe ser > 0) — se uso null.`);
-  }
-  const source = strField(raw, 'source', '', warnings, path, 200);
-  const date = strField(raw, 'date', '', warnings, path, 20);
-  return {rate, source, date, status: rate===null ? 'no_verificado' : status};
-}
-function normalizeFxRates(raw, warnings){
-  const out = {};
-  if(!raw || typeof raw!=='object') return out;
-  FX_CURRENCIES.forEach(code=>{
-    if(raw[code]!==undefined) out[code] = normalizeFxEntry(raw[code], warnings, `fxRates.${code}`);
-  });
-  Object.keys(raw).forEach(code=>{
-    if(!FX_CURRENCIES.includes(code)) warnings.push(`fxRates: moneda desconocida "${String(code).slice(0,20)}" descartada.`);
-  });
-  return out;
-}
-
 /* reconciliations: datos LOCALES de auditoria que Dani ingresa a mano para
    comparar una reserva real contra el estimado del motor (ver
    src/domain/reconciliation.js) — nunca datos sensibles de huesped (nombre/
@@ -490,7 +453,6 @@ export function normalizeUnit(raw){
   const verification = normalizeVerification(raw.verification, warnings);
   const monthlyIncomeScenario = normalizeMonthlyIncomeScenario(raw.monthlyIncomeScenario, warnings);
   const monthlyDistribution = normalizeMonthlyDistribution(raw.monthlyDistribution, warnings);
-  const fxRates = normalizeFxRates(raw.fxRates, warnings);
   const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
   /* BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js:
      `usdManualReviewPending` es EXPLICITO, nunca inferido. Una unidad sin
@@ -549,7 +511,7 @@ export function normalizeUnit(raw){
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
-    monthlyIncomeScenario, monthlyDistribution, fxRates, reconciliations,
+    monthlyIncomeScenario, monthlyDistribution, reconciliations,
     usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
