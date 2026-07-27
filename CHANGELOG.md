@@ -5,6 +5,16 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.17.0] — Guía de uso HTML accesible desde la aplicación
+
+**Agregado** — `guia.html` presenta el mismo contenido de `GUIA_DE_USO.md` en una página
+HTML de lectura cómoda: resumen rápido, índice con anclas, avisos destacados y enlace de
+vuelta al sitio principal. El encabezado de la calculadora incorpora **Guía de uso →**,
+que abre esa página en una pestaña nueva para no interrumpir una unidad sin guardar.
+
+**Contrato documental** — `CLAUDE.md` establece que ambas presentaciones de la guía deben
+mantener el mismo contenido. Se agregó una prueba E2E mínima del enlace de encabezado.
+
 ## [0.16.0] — Duplicar unidad y cierre de auditoría documental
 
 **Documentado** — se incorporó el contrato vigente de **Duplicar**: copia configuración

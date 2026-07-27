@@ -394,6 +394,9 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 
 ## 4. Arquitectura técnica del archivo actual
 
+- **Guía de uso — regla de sincronización**: `guia.html` y `GUIA_DE_USO.md` contienen la
+  misma guía en dos presentaciones. Todo cambio futuro de contenido debe aplicarse a
+  **AMBOS** archivos; si se actualiza solo uno, se desalinean.
 - `state` — objeto único: `id`, `name`, `fixedCost`, `varCost`, `margin`, `marketWindow`,
   `marketBase`, `avgNights` (estadía promedio), `currency`, `channels[]` (cada uno con
   `comm`, `bankFeePct`, `offsetPct`), `discounts[]` (catálogo completo, cada uno con

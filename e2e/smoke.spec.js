@@ -25,6 +25,16 @@ test('carga limpia: cero errores de consola, alertas render — Min Price/Base P
   expect(page.__errors, 'no debe haber errores de consola en carga limpia').toEqual([]);
 });
 
+test('Guía de uso: el enlace del encabezado abre la guía HTML en una pestaña nueva', async ({page}) => {
+  await page.goto('/index.html');
+  const guide = page.locator('header a.ghost');
+  await expect(guide).toHaveText('Guía de uso →');
+  await expect(guide).toHaveAttribute('href', 'guia.html');
+  await expect(guide).toHaveAttribute('target', '_blank');
+  await expect(guide).toHaveAttribute('rel', 'noopener');
+  expect(page.__errors).toEqual([]);
+});
+
 test('Simulador: cambiar canal/días/noches recalcula y muestra Margen y Markup distintos', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="simulador"]').click();
