@@ -80,6 +80,12 @@ test('unidad vieja con conciliaciones: el campo retirado se ignora sin warning n
   assert.equal(warnings.some(w=>w.includes('reconciliations')), false);
 });
 
+test('unidad vieja con matrixNights: el campo retirado se ignora sin warning ni ruptura', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad vieja', matrixNights:7});
+  assert.equal('matrixNights' in state, false);
+  assert.equal(warnings.some(w=>w.includes('matrixNights')), false);
+});
+
 /* ============================================================================
    Simplificación a USD único (revisión externa): la moneda GUARDADA de una
    unidad NUNCA se convierte ni se reinterpreta en normalizeUnit() — un
