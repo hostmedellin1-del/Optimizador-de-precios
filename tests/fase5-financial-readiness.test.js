@@ -1,5 +1,5 @@
 /* Fase 5 (revision externa — "datos financieros verificados"): el codigo YA
-   reconocia que ciertos datos (comision bancaria real, si Hospy aisla el
+   reconocia que ciertos datos (comision bancaria real, si Kunas aisla el
    Offset por canal, mezcla VIP de Expedia, Genius+Mobile de Booking,
    no-reembolsable de Airbnb) estaban "no verificados" (src/domain/
    verification.js), pero NINGUNA vista lo usaba para bloquear nada — era una
@@ -35,7 +35,7 @@ function config(overrides={}){
   return {fixedCost:32, varCost:22, margin:45, marketBase:0, lmConfig: verifiedLmConfig(), ...overrides, channels, discounts, windows, ceilings, verification};
 }
 
-test('un Offset distinto de cero sin hospyOffsetIsolated verificado bloquea SOLO el canal con ese Offset', () => {
+test('un Offset distinto de cero sin verificación de Kunas bloquea SOLO el canal con ese Offset', () => {
   const channels = freshChannels().map(c => c.id==='booking' ? {...c, offsetPct:-15} : c);
   const r = evaluateRecommendationReadiness({channels, discounts: freshDiscounts(), verification: defaultVerification()});
   assert.equal(r.byChannel.booking.ready, false, 'Booking tiene Offset != 0 y el dato no esta verificado');
@@ -45,10 +45,10 @@ test('un Offset distinto de cero sin hospyOffsetIsolated verificado bloquea SOLO
   assert.ok(!r.byChannel.expedia.missing.some(m=>m.key==='hospyOffsetIsolated'));
 });
 
-test('marcar hospyOffsetIsolated como verificado desbloquea el canal con Offset (y solo ese motivo)', () => {
+test('marcar la verificación de Kunas como verificada desbloquea el canal con Offset (y solo ese motivo)', () => {
   const channels = freshChannels().map(c => c.id==='booking' ? {...c, offsetPct:-15} : c);
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated = {status:'verificado', source:'soporte Hospy', date:'2026-07-20', note:'confirmado por chat'};
+  verification.hospyOffsetIsolated = {status:'verificado', source:'soporte Kunas', date:'2026-07-20', note:'confirmado por chat'};
   const r = evaluateRecommendationReadiness({channels, discounts: freshDiscounts(), verification});
   assert.ok(!r.byChannel.booking.missing.some(m=>m.key==='hospyOffsetIsolated'), 'el motivo Offset debe desaparecer');
 });

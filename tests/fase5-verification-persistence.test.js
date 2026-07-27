@@ -19,7 +19,7 @@ import {defaultVerification, isVerified} from '../src/domain/verification.js';
 
 test('formato NUEVO (fase 5): status/source/date/note sobreviven el ciclo de normalizeUnit exactamente, para claves globales y por canal', () => {
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated = {status:'verificado', source:'chat soporte Hospy #4521', date:'2026-07-10', note:'confirmado por escrito'};
+  verification.hospyOffsetIsolated = {status:'verificado', source:'chat soporte Kunas #4521', date:'2026-07-10', note:'confirmado por escrito'};
   verification.bankFeePctByChannel.booking = {status:'verificado', source:'extracto Bancolombia', date:'2026-07-15', note:''};
   verification.bankFeePctByChannel.airbnb = {status:'no_aplica', source:'', date:'', note:'Airbnb no cobra comision bancaria en este listing'};
   const {state, warnings} = normalizeUnit({name:'Unidad nueva', verification});

@@ -1,7 +1,7 @@
 /* evaluateRecommendationReadiness() — Fase 5 (revision externa): contrato unico
    de "recomendacion confiable". El motor podia calcular una formula
    correctamente y aun asi dar una recomendacion incorrecta si un dato
-   financiero del que depende (comision bancaria real, si Hospy aisla el
+   financiero del que depende (comision bancaria real, si Kunas aisla el
    Offset por canal, la mezcla VIP real de Expedia, si Booking realmente tiene
    Genius+Mobile activos, un descuento no reembolsable de Airbnb) no
    representa la cuenta real de Dani. Antes, `verification.js` guardaba el
@@ -28,9 +28,9 @@ function offsetFact(c, verification){
   return {
     key: 'hospyOffsetIsolated',
     severity: 'error',
-    label: 'Offset de Hospy/PriceLabs sin confirmar si se aísla por canal',
-    reason: `${c.name} tiene un Offset configurado de ${off>0?'+':''}${off}% — si Hospy en realidad distribuye ese Offset a TODOS los canales conectados (no solo ${c.name}), el precio que de verdad se publica en ${c.name} no es el que calculan Piso/Base/Offset aquí.`,
-    where: 'Verificación de datos financieros (Resumen) → "Offset de Hospy/PriceLabs se aísla por canal"'
+    label: 'Offset de Kunas/PriceLabs sin confirmar si se aísla por canal',
+    reason: `${c.name} tiene un Offset configurado de ${off>0?'+':''}${off}% — si Kunas en realidad distribuye ese Offset a TODOS los canales conectados (no solo ${c.name}), el precio que de verdad se publica en ${c.name} no es el que calculan Piso/Base/Offset aquí.`,
+    where: 'Verificación de datos financieros (Resumen) → "Offset de Kunas/PriceLabs se aísla por canal"'
   };
 }
 

@@ -1,5 +1,5 @@
 /* Fase 5 (revision externa — "datos financieros verificados"): el codigo ya
-   reconocia que ciertos datos (comision bancaria real, si Hospy aisla el
+   reconocia que ciertos datos (comision bancaria real, si Kunas aisla el
    Offset por canal, mezcla VIP de Expedia, Genius+Mobile de Booking,
    no-reembolsable de Airbnb) estaban "no verificados", pero ninguna vista lo
    usaba para bloquear nada — era una etiqueta, no una regla financiera. Este
@@ -214,7 +214,7 @@ test('exportar/importar conserva status, fuente, fecha y nota de verificación e
   await page.goto('/index.html');
   await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'verificado');
   const sourceInput = page.locator('input[data-verif-source="hospyOffsetIsolated"]');
-  await sourceInput.click(); await sourceInput.fill('chat de soporte Hospy #4521'); await sourceInput.dispatchEvent('change');
+  await sourceInput.click(); await sourceInput.fill('chat de soporte Kunas #4521'); await sourceInput.dispatchEvent('change');
   const dateInput = page.locator('input[data-verif-date="hospyOffsetIsolated"]');
   await dateInput.fill('2026-07-15'); await dateInput.dispatchEvent('change');
   const noteInput = page.locator('input[data-verif-note="hospyOffsetIsolated"]');
@@ -229,7 +229,7 @@ test('exportar/importar conserva status, fuente, fecha y nota de verificación e
   await page.selectOption('#unitList', {label: name});
   await expect(page.locator('#unitName')).toHaveValue(name, {timeout: 5000});
   await expect(page.locator('select[data-verif-status="hospyOffsetIsolated"]')).toHaveValue('verificado');
-  await expect(page.locator('input[data-verif-source="hospyOffsetIsolated"]')).toHaveValue('chat de soporte Hospy #4521');
+  await expect(page.locator('input[data-verif-source="hospyOffsetIsolated"]')).toHaveValue('chat de soporte Kunas #4521');
   await expect(page.locator('input[data-verif-date="hospyOffsetIsolated"]')).toHaveValue('2026-07-15');
   await expect(page.locator('input[data-verif-note="hospyOffsetIsolated"]')).toHaveValue('confirmado por escrito');
 

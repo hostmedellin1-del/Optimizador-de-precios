@@ -381,7 +381,7 @@ export function compute(config){
   /* Fase 5 (revision externa — "datos financieros verificados"):
      evaluateRecommendationReadiness() (src/domain/readiness.js) es la fuente
      UNICA que decide, por canal, si falta un dato financiero de NEGOCIO
-     (comision bancaria real, si Hospy aisla el Offset por canal, mezcla VIP
+     (comision bancaria real, si Kunas aisla el Offset por canal, mezcla VIP
      de Expedia, Genius+Mobile de Booking, no-reembolsable de Airbnb) para
      tratar Piso/Base como recomendacion confiable. Es ORTOGONAL a
      lmBlocked/baseBlocked (arriba): esos cubren Last-Minute; esto cubre

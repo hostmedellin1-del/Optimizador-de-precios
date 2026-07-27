@@ -159,7 +159,7 @@ export function buildAlerts(config, model){
       /* Fase 5 (revision externa — "datos financieros verificados"): mismo
          espiritu que el bloqueante CRITICO de LM (arriba) — "sin conflictos"
          tambien depende de datos de negocio (comision bancaria, Offset
-         aislado en Hospy, mezcla VIP de Expedia, Genius+Mobile de Booking,
+         aislado en Kunas, mezcla VIP de Expedia, Genius+Mobile de Booking,
          no-reembolsable de Airbnb) que ningun canal afectado tiene todavia
          confirmados. unreadyChannels() (src/domain/readiness.js) es la unica
          fuente que decide esto — la misma que usa engine.js para el gate

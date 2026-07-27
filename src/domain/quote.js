@@ -24,7 +24,7 @@
    (ab_nonref, catalogo) ya se aplica dentro de combineChannel() como capa
    apilable post-promo — no necesita codigo aparte aqui, ya viene incluido en
    `r.applied`/`r.factor`. config.verification (opcional, src/domain/verification.js)
-   agrega una nota explicita cuando el Offset de Hospy no esta confirmado.
+   agrega una nota explicita cuando el Offset de Kunas no esta confirmado.
 
    Deliberadamente NO toca en esta fase (fuera de alcance, ver reglas del
    encargo):
@@ -95,8 +95,8 @@ export function quoteScenario(scenario, config){
   const priceAfterOffset = priceAfterLm*(1+off/100);
   const offsetResolved = config.verification ? isResolved(config.verification, 'hospyOffsetIsolated') : false;
   assumptions.push(offsetResolved
-    ? 'Offset por canal confirmado/resuelto en Hospy (verification.hospyOffsetIsolated).'
-    : 'Offset se asume especifico por canal (Pricing Offset de PriceLabs) — NO CONFIRMADO en Hospy si realmente se aisla por canal o se distribuye a todos los conectados (ver src/domain/verification.js, clave hospyOffsetIsolated). No trates el Offset como garantia hasta confirmarlo.');
+    ? 'Offset por canal confirmado/resuelto en Kunas.'
+    : 'Offset se asume especifico por canal (Pricing Offset de PriceLabs) — NO CONFIRMADO en Kunas si realmente se aisla por canal o se distribuye a todos los conectados. No trates el Offset como garantia hasta confirmarlo.');
 
   /* 3. Descuentos nativos del canal, a los dias/noches REALES del escenario. */
   const r = combineChannel(discounts, chId, days, nights);
