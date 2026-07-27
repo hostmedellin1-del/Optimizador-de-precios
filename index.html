@@ -173,6 +173,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div class="unit-bar">
   <input type="text" id="unitName" placeholder="Unidad (ej. Alcázar 902)">
   <button id="saveUnit">Guardar</button>
+  <button class="ghost" id="duplicateUnit" title="Crea una nueva unidad con la misma configuración; tendrás que confirmar sus propios datos y costos.">Duplicar</button>
   <select id="unitList"><option value="">Cargar unidad…</option></select>
   <button class="ghost" id="deleteUnit">Eliminar</button>
   <span class="unit-bar-sep"></span>
@@ -352,7 +353,7 @@ import {worstScenariosInWindow, buildMatrixVerdict} from './src/domain/matrix.js
 import {defaultVerification, VERIFICATION_KEYS} from './src/domain/verification.js';
 import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
-import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
+import {newUnitId, buildDuplicateUnit, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
@@ -1475,6 +1476,66 @@ saveUnit.addEventListener('click',async()=>{
     const r = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
     if(r){status('Guardado ✓');refreshList();}else status('Error');
   }catch(e){console.error(e);status('Error al guardar');}
+});
+/* Duplicar conserva únicamente la CONFIGURACIÓN operativa (canales,
+   descuentos, techos y parámetros LM). Jamás hereda hechos confirmados de
+   otra unidad: el constructor puro resetea verificación, LM verificado,
+   costos reales y confirmaciones de descuentos; esta UI solo persiste el
+   candidato después de comprobar que normalizeUnit() mantuvo esos reseteos. */
+duplicateUnit.addEventListener('click', async()=>{
+  if(!state.id){
+    status('Carga o guarda una unidad antes de duplicarla.');
+    return;
+  }
+  if(state.usdManualReviewPending===true){
+    status('No se puede duplicar una copia USD pendiente de revisión manual. Finaliza esa revisión primero.');
+    return;
+  }
+  const promptedName = prompt('Nombre de la nueva unidad:');
+  if(promptedName===null) return;
+  const newName = promptedName.trim();
+  if(!newName) return;
+  if(!confirm(`Se creará una nueva unidad llamada "${newName}". Se copiarán canales, descuentos, techos y parámetros de Last-Minute, pero NO se copiarán confirmaciones financieras, verificación de Last-Minute, costos reales ni revisiones de descuentos. La nueva unidad empezará bloqueada hasta que confirmes sus propios datos. ¿Continuar?`)) return;
+  try{
+    // 1-2. Construir un candidato aislado y normalizarlo, sin mutar `state`.
+    const duplicate = buildDuplicateUnit(state, newName);
+    if(!duplicate.ok){ status(duplicate.reason); return; }
+    const {state: normalized} = normalizeUnit(duplicate.state);
+    // 3. Si un normalizador futuro reintroduce una confirmación, no guardar nada.
+    const allVerificationsReset = Object.entries(VERIFICATION_KEYS).every(([key, meta]) => meta.scope==='channel'
+      ? Object.values(normalized.verification[key]).every(entry=>entry.status==='no_verificado')
+      : normalized.verification[key].status==='no_verificado');
+    const resetsPreserved = allVerificationsReset
+      && normalized.id===undefined
+      && normalized.lmConfig.verified===false
+      && normalized.costBreakdownConfirmed===false
+      && normalized.fixedCost===EXAMPLE_COST_DEFAULTS.fixedCost
+      && normalized.varCost===EXAMPLE_COST_DEFAULTS.varCost
+      && normalized.discounts.every(discount=>discount.verified===false)
+      && normalized.usdManualReviewPending===false
+      && normalized.usdManualReviewLog.length===0;
+    if(!resetsPreserved){
+      status('Error de seguridad: la copia no conservó todos los reseteos requeridos. No se guardó ningún cambio.');
+      return;
+    }
+    // 4. Persistir primero; hasta una respuesta exitosa, `state` sigue intacto.
+    const record = buildV3Record(normalized);
+    const saved = await window.storage.set(v3Key(record.id), JSON.stringify(record), false);
+    if(!saved){
+      status('Error al guardar la copia — la unidad original sigue intacta y no se aplicó ningún cambio.');
+      return;
+    }
+    // 5. Solo después de guardar: adoptar la nueva unidad y refrescar la UI.
+    state = record;
+    unitName.value = state.name;
+    await refreshList();
+    unitList.value = v3Key(record.id);
+    hydrate(); renderAll();
+    status('Unidad duplicada ✓ — confirma sus datos propios antes de usar recomendaciones.');
+  }catch(error){
+    console.error(error);
+    status('Error al duplicar — la unidad original sigue intacta y no se aplicó ningún cambio.');
+  }
 });
 deleteUnit.addEventListener('click',async()=>{
   const k=unitList.value; if(!k){alert('Selecciona una unidad.');return;}
