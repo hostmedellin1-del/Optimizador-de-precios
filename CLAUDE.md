@@ -25,7 +25,7 @@ Expedia y canal Directo, no con supuestos genéricos.
 ## 1. Para qué existe esto (contexto de negocio, resumido)
 
 Dani opera Host Medellín, ~36 apartamentos de renta corta (principalmente El Poblado,
-Medellín), gestionados con PriceLabs (motor de pricing dinámico) + Hospy (PMS/channel
+Medellín), gestionados con PriceLabs (motor de pricing dinámico) + Kunas (PMS/channel
 manager) que sincroniza a Airbnb, Booking.com y Expedia. El problema que esta herramienta
 resuelve: PriceLabs empuja un precio dinámico por canal, pero cada OTA tiene su propia
 comisión, sus propios descuentos nativos, y ahora también un "Pricing Offset" configurable
@@ -192,10 +192,10 @@ publicado, por canal, DESPUÉS de todo lo que PriceLabs calcula internamente (ba
 Esto es lo que permite compensar comisiones distintas por canal SIN inflar el precio
 compartido para todos.
 
-Advertencia sin confirmar, importante: soporte de PriceLabs avisó que si el PMS (Hospy,
+Advertencia sin confirmar, importante: soporte de PriceLabs avisó que si el PMS (Kunas,
 en este caso) no distribuye el offset por canal de forma aislada, podría aplicarse a
 todos los canales conectados a la vez, rompiendo el supuesto central de esta función.
-Dani debe verificarlo directamente en Hospy antes de confiar en la separación. Está
+Dani debe verificarlo directamente en Kunas antes de confiar en la separación. Está
 documentado en la UI (pestaña de cada canal) — no quitar esa advertencia.
 
 `suggestedOffset(chId, effBase, netObjetivo)` calcula matemáticamente el % a subir/bajar
@@ -474,7 +474,7 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
 5. Multi-unidad simultánea: el sistema permite guardar/cargar unidades por nombre, pero
    no comparar varias a la vez en una sola vista (portafolio). No construir esto sin que
    Dani lo pida — es una función nueva, no un arreglo.
-6. Verificar en Hospy si el Offset por canal de PriceLabs realmente se aísla por canal o
+6. Verificar en Kunas si el Offset por canal de PriceLabs realmente se aísla por canal o
    se distribuye a todos los conectados (ver advertencia sección 2).
    **(clave `hospyOffsetIsolated` — bloquea cualquier canal con Offset ≠ 0% mientras esté
    pendiente.)**
@@ -657,7 +657,7 @@ por defecto: nadie inventó un 10%, Dani debe confirmar por listing si aplica y 
 
 ### Verificado / No-verificado (`src/domain/verification.js`) y bloqueo real por canal (`src/domain/readiness.js`, FASE 5)
 Registro por unidad para hechos que la app NUNCA puede confirmar sola (Genius+Mobile
-ambos activos en Booking, aislamiento real del Offset en Hospy, comisión bancaria real
+ambos activos en Booking, aislamiento real del Offset en Kunas, comisión bancaria real
 por canal, mezcla de niveles VIP de Expedia, modo real de Last-Minute, no-reembolsable de
 Airbnb). Cada clave declara un `scope`: `'global'` (un registro para toda la unidad) o
 `'channel'` (un registro POR CANAL — hoy solo `bankFeePctByChannel`, porque la comisión
@@ -1119,7 +1119,7 @@ recomendado, en orden):
    activos hoy (cambia cuál canal fija el Piso).
 3. Expedia: mezcla real de niveles VIP de tus huéspedes (hoy se asume el
    peor caso, 20%).
-4. Hospy/PriceLabs: si el Offset por canal se aísla de verdad por canal o se
+4. Kunas/PriceLabs: si el Offset por canal se aísla de verdad por canal o se
    distribuye a todos los conectados; el modo real de Last-Minute que usa la
    cuenta.
 5. Extractos bancarios/pasarela: comisión real por transacción. **[Esta
@@ -1326,7 +1326,7 @@ nunca se mezcla), `e2e/monthly-economics.spec.js` (8). 155/155 unitarios, 42/42 
   tramos). El resto del formulario (pre-existente, antes de esta auditoría) usa `<span>`
   en vez de `<label for>` — auditoría completa queda pendiente si se prioriza.
 - Todo lo de la sección 5 (costos reales, comisión bancaria real, multi-moneda,
-  multi-unidad, verificación real en Hospy/Booking/PriceLabs) sigue exactamente igual de
+  multi-unidad, verificación real en Kunas/Booking/PriceLabs) sigue exactamente igual de
   pendiente — esta auditoría (y la Fase 5) construyeron la INFRAESTRUCTURA para que esos
   datos entren sin inventar nada, y AHORA ADEMÁS bloquean la recomendación de los canales
   afectados mientras sigan pendientes — pero ningún dato de negocio real fue inventado ni

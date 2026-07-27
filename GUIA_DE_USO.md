@@ -21,7 +21,7 @@ Offset por canal. Con esa configuración calcula:
   objetivo con la configuración real cargada.
 - **Offset**: ajuste específico por canal que se aplica después del precio de PriceLabs.
 
-No publica precios, no cambia nada en PriceLabs, Hospy, Airbnb, Booking.com o Expedia, y
+No publica precios, no cambia nada en PriceLabs, Kunas, Airbnb, Booking.com o Expedia, y
 no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal.
 
 ## 2. Primer uso en el sitio publicado
@@ -123,7 +123,7 @@ En **Verificación de datos financieros**, cada fila tiene estado, fuente, fecha
 - **No aplica**: confirmaste que ese dato no corresponde a esa unidad. No significa
   “no lo sé”.
 
-Los puntos que aparecen incluyen Offset por canal en Hospy, comisión bancaria/pasarela por
+Los puntos que aparecen incluyen Offset por canal en Kunas, comisión bancaria/pasarela por
 canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, no reembolsable y Top Rated
 Guest de Airbnb, y la nota de confirmación del modo Last-Minute. Un único canal pendiente
 puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.
@@ -235,7 +235,7 @@ Last-Minute con la cuenta real y registrar la fuente/fecha en Verificación.
 
 ## 9. Límites importantes
 
-- No hay integración automática con PriceLabs, Hospy, Airbnb, Booking.com, Expedia,
+- No hay integración automática con PriceLabs, Kunas, Airbnb, Booking.com, Expedia,
   bancos ni pasarelas.
 - No hay nube, usuarios múltiples ni sincronización; funciona para tu uso individual en
   el navegador donde guardas las unidades.

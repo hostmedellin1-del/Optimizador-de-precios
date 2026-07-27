@@ -502,7 +502,7 @@ verde (incluye los fixes de rondas 2/3 y Fase 5, sin regresión).
 ## [0.6.0] — Verificación de datos financieros como regla real, no etiqueta
 
 La revisión externa señaló que `src/domain/verification.js` reconocía datos "no
-verificados" (comisión bancaria real, aislamiento del Offset en Hospy, mezcla VIP
+verificados" (comisión bancaria real, aislamiento del Offset en Kunas, mezcla VIP
 de Expedia, Genius+Mobile de Booking, no-reembolsable de Airbnb) pero ningún
 cálculo se bloqueaba por eso — el motor podía ser matemáticamente correcto y aun
 así dar una recomendación incorrecta.
