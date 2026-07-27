@@ -32,7 +32,7 @@
    "listo_supervisado" en el checklist, aunque su `currency` ya diga 'USD'. */
 import {evaluateUsdOnlyReadiness} from './usd-only.js';
 
-const PROMO_KEYS = ['bookingGeniusMobileBoth', 'expediaVipTierMix', 'airbnbNonRefundable'];
+const PROMO_KEYS = ['bookingGeniusMobileBoth', 'expediaVipTierMix', 'airbnbNonRefundable', 'airbnbTopRatedGuest'];
 
 /* config = {usingExampleCosts, readiness, lmBlocked, channels, currency,
    usdManualReviewPending, usdManualReviewLog, lastReconciliation} */

@@ -118,6 +118,32 @@ test('Airbnb: descuento no reembolsable activo sin airbnbNonRefundable verificad
   assert.ok(r.byChannel.airbnb.missing.some(m=>m.key==='airbnbNonRefundable'));
 });
 
+test('Airbnb: descuento "Top Rated Guest" activo sin airbnbTopRatedGuest verificado bloquea SOLO Airbnb', () => {
+  const discounts = freshDiscounts();
+  findDiscount(discounts, 'ab_topguest').on = true;
+  findDiscount(discounts, 'ab_topguest').pct = 15;
+  const r = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification: defaultVerification()});
+  assert.equal(r.byChannel.airbnb.ready, false);
+  assert.ok(r.byChannel.airbnb.missing.some(m=>m.key==='airbnbTopRatedGuest'));
+});
+
+test('Airbnb: "Top Rated Guest" activo Y verificado (o marcado no_aplica) deja de bloquear', () => {
+  const discounts = freshDiscounts();
+  findDiscount(discounts, 'ab_topguest').on = true;
+  findDiscount(discounts, 'ab_topguest').pct = 15;
+  const verification = defaultVerification();
+  verification.airbnbTopRatedGuest.status = 'verificado';
+  const r = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
+  assert.ok(!r.byChannel.airbnb.missing.some(m=>m.key==='airbnbTopRatedGuest'));
+});
+
+test('Airbnb: "Top Rated Guest" APAGADO (default) no exige nada — el canal queda listo si no tiene otros pendientes', () => {
+  const channels = freshChannels();
+  const discounts = freshDiscounts().map(d=>d.id==='ex_mod'?{...d,on:false}:d); // apaga el unico pendiente de otro canal, sin efecto en airbnb
+  const r = evaluateRecommendationReadiness({channels, discounts, verification: defaultVerification()});
+  assert.equal(r.byChannel.airbnb.ready, true);
+});
+
 test('Airbnb: no reembolsable APAGADO (default) no exige nada — el canal queda listo si no tiene otros pendientes', () => {
   const channels = freshChannels();
   const discounts = freshDiscounts().map(d=>d.id==='ex_mod'?{...d,on:false}:d); // apaga el unico pendiente de otro canal, sin efecto en airbnb

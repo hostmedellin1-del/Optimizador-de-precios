@@ -4,6 +4,36 @@ Todo el trabajo de este changelog vive en la rama `fix/motor-financiero-auditori
 (no mergeado a `main`, sin push, pendiente de tu revisión). Formato: fase de la
 auditoría técnica → qué cambió → por qué.
 
+## [0.14.0] — Nuevo descuento de catálogo: Airbnb "Top Rated Guest Discount" (sin confirmar)
+
+Dani reportó un descuento nuevo de Airbnb: 15% para huéspedes con más de 3 reseñas.
+Investigado (Airbnb Help Center todavía no lo documenta; fuentes: NextPax, GuestArk,
+SmoothStay, jul 2026) — es el **"Top-Rated Guest Discount"**, un programa en prueba
+limitada de Airbnb (huésped 4,8★+ y 3+ reseñas, decidido por Airbnb, no por el host).
+Las fuentes se contradicen sobre el % (15% fijo vs 10/15/20% elegible por el host) y
+ninguna confirma si compite con las demás promos o se apila aparte — ver CLAUDE.md
+sección 2 para el detalle completo de la investigación.
+
+Se agregó siguiendo exactamente el mismo patrón ya usado para el descuento no
+reembolsable de Airbnb (`ab_nonref`): nueva entrada de catálogo `ab_topguest`
+(`src/catalog/discounts.js`, `group:'stackable-post'` — capa aparte, se apila DESPUÉS
+de la promo ganadora, decisión conservadora ante la incertidumbre de si compite),
+**apagada, `pct:0`, `verified:false`** por defecto — no afecta ningún número hasta que
+Dani confirme disponibilidad/%/comportamiento real en su cuenta de Airbnb y lo active
+él mismo. Nueva clave de verificación `airbnbTopRatedGuest`
+(`src/domain/verification.js`) con su gate en `src/domain/readiness.js` (bloquea
+Airbnb si se activa sin confirmar, igual que `ab_nonref`) y en `src/domain/audit.js`
+(`PROMO_KEYS`). Cero cambios a `combineChannel()` — el grupo `'stackable-post'` ya
+existía. Cero cambios de UI — el catálogo de descuentos y el formulario de
+verificación son genéricos, la fila nueva aparece sola.
+
+Verificado con Node que el catálogo por defecto (descuento apagado) da exactamente
+los mismos números que antes — cero regresión. Tests nuevos: 2 en
+`tests/fase4-lm-nonref.test.js` (apilamiento post-promo, apagado por defecto), 3 en
+`tests/fase5-financial-readiness.test.js` (bloquea solo Airbnb si se activa sin
+confirmar, deja de bloquear al verificar/marcar no aplica, no exige nada apagado).
+**325/325 unitarios** (subió de 320), lint limpio, sin regresión.
+
 ## [0.13.0] — Servidor local de desarrollo (`npm run dev`)
 
 Cambio operativo, sin tocar fórmulas, gates ni datos de negocio — la auditoría
