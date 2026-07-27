@@ -1,7 +1,7 @@
 /* Persistencia de los datos nuevos de la ronda "preparación para datos
    reales" (revision externa) — normalizeUnit() sigue siendo la ÚNICA puerta
-   de entrada. Prueba: channels[].settlementCurrency, state.fxRates,
-   state.reconciliations sobreviven el ciclo exacto con datos bien formados,
+   de entrada. Prueba: channels[].settlementCurrency sobrevive el ciclo exacto
+   con datos bien formados; los campos retirados se ignoran,
    y NUNCA rompen normalizeUnit() ni marcan nada como verificado/válido con
    un payload malformado o malicioso (XSS incluido, vía escapeHtml() en la
    capa de render — aquí se prueba que el dato crudo nunca se ejecuta como
@@ -74,70 +74,10 @@ test('unidad vieja con planificación mensual: los campos retirados se ignoran s
   assert.equal(warnings.some(w=>w.includes('monthly')), false);
 });
 
-test('reconciliations: entrada bien formada sobrevive el ciclo exacto (campos financieros + referencia opcional)', () => {
-  const rec = {id:'rec1', savedAt:'2026-07-20T00:00:00.000Z', chId:'airbnb', price:150, nights:3, days:20, currency:'USD',
-    otaCommissionPct:15.5, bankFeePct:null, cleaningFeeCharged:40, nativeDiscountPct:null, payoutReceived:126.75, reference:'HMABC123'};
-  const {state, warnings} = normalizeUnit({name:'X', reconciliations:[rec]});
-  assert.equal(state.reconciliations.length, 1);
-  assert.deepEqual(state.reconciliations[0], rec);
-  assert.equal(warnings.filter(w=>w.startsWith('reconciliations')).length, 0);
-});
-
-test('reconciliations: una entrada SIN price/nights/payoutReceived se descarta ENTERA (no se intenta reparar campo por campo, evita mostrar una reconciliación engañosa)', () => {
-  const {state, warnings} = normalizeUnit({name:'Evil', reconciliations:[
-    {chId:'airbnb', nights:3, days:20, payoutReceived:100}, // falta price
-    {chId:'airbnb', price:150, days:20, payoutReceived:100}, // falta nights
-    {chId:'airbnb', price:150, nights:3, days:20} // falta payoutReceived
-  ]});
-  assert.equal(state.reconciliations.length, 0);
-  assert.equal(warnings.filter(w=>w.startsWith('reconciliations')).length, 3);
-});
-
-test('reconciliations: chId desconocido/inventado se descarta la entrada entera', () => {
-  const {state} = normalizeUnit({name:'Evil', reconciliations:[{chId:'canal-inventado', price:150, nights:3, days:20, payoutReceived:100}]});
-  assert.equal(state.reconciliations.length, 0);
-});
-
-test('reconciliations: un elemento no-objeto (string, número, null) en el arreglo no rompe normalizeUnit, se descarta', () => {
-  assert.doesNotThrow(() => normalizeUnit({name:'Evil', reconciliations:['texto', 42, null, [1,2,3]]}));
-  const {state} = normalizeUnit({name:'Evil', reconciliations:['texto', 42, null, [1,2,3]]});
-  assert.equal(state.reconciliations.length, 0);
-});
-
-test('reconciliations: no es un arreglo (objeto, string, número) — no rompe, cae a lista vacía', () => {
-  for(const bad of [{a:1}, 'texto', 42, true]){
-    assert.doesNotThrow(() => normalizeUnit({name:'Evil', reconciliations:bad}));
-    const {state} = normalizeUnit({name:'Evil', reconciliations:bad});
-    assert.deepEqual(state.reconciliations, []);
-  }
-});
-
-test('reconciliations: un payload de reserva "malformado" con intento de XSS en la referencia nunca se ejecuta como HTML — sobrevive como TEXTO plano truncado, y escapeHtml() lo neutraliza al renderizar', () => {
-  const evilRef = '<img src=x onerror=alert(1)>'.repeat(5); // > 120 chars tras repetir, prueba tambien el truncado
-  const {state} = normalizeUnit({name:'Evil', reconciliations:[
-    {chId:'airbnb', price:150, nights:3, days:20, payoutReceived:100, reference: evilRef}
-  ]});
-  assert.equal(state.reconciliations.length, 1);
-  assert.ok(state.reconciliations[0].reference.length <= 120, 'la referencia se trunca, nunca se guarda sin límite');
-  // La cadena cruda SI puede contener "<img" (normalizeUnit no es un sanitizador de HTML,
-  // solo de forma/tipo) — lo que garantiza que nunca se ejecute es escapeHtml() en la
-  // capa de render (ya probado exhaustivamente en fase6-persistence-security.test.js /
-  // sanitize.test.js); aquí solo se confirma que el campo llega como STRING, nunca como
-  // markup ya insertado o como otro tipo de dato.
-  assert.equal(typeof state.reconciliations[0].reference, 'string');
-  const rendered = escapeHtml(state.reconciliations[0].reference);
-  assert.ok(!rendered.includes('<img'), 'escapeHtml() neutraliza cualquier tag antes de insertarse en el DOM');
-});
-
-test('reconciliations ausente por completo (unidad vieja): recibe [] — nunca inventa una conciliación', () => {
-  const {state} = normalizeUnit({name:'Unidad vieja', channels:[], discounts:[]});
-  assert.deepEqual(state.reconciliations, []);
-});
-
-test('reconciliations: más de 200 entradas se recortan (limite de sanidad, no crece sin fin con un import repetido)', () => {
-  const many = Array.from({length: 250}, (_,i)=>({chId:'airbnb', price:150, nights:3, days:20, payoutReceived:100+i}));
-  const {state} = normalizeUnit({name:'X', reconciliations: many});
-  assert.equal(state.reconciliations.length, 200);
+test('unidad vieja con conciliaciones: el campo retirado se ignora sin warning ni ruptura', () => {
+  const {state, warnings} = normalizeUnit({name:'Unidad vieja', reconciliations:[{chId:'airbnb', price:150, nights:3, payoutReceived:100}]});
+  assert.equal('reconciliations' in state, false);
+  assert.equal(warnings.some(w=>w.includes('reconciliations')), false);
 });
 
 /* ============================================================================
@@ -178,13 +118,6 @@ test('unidad con currency de tipo inválido (número, objeto, array, boolean): c
     const {state} = normalizeUnit({name:'Evil', currency: bad});
     assert.equal(state.currency, 'USD');
   }
-});
-
-test('reconciliations[].currency: un valor real distinto de USD/COP (ej. "EUR") se preserva tal cual, nunca se reinterpreta como "sin dato"', () => {
-  const {state} = normalizeUnit({name:'X', reconciliations:[
-    {chId:'airbnb', price:150, nights:3, days:20, payoutReceived:100, currency:'EUR'}
-  ]});
-  assert.equal(state.reconciliations[0].currency, 'EUR');
 });
 
 /* BLOQUEANTE 3 (auditoria externa, ronda 5) — usdManualReviewPending: mismo

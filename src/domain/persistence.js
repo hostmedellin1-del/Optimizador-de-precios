@@ -96,7 +96,7 @@ function normalizeChannel(raw, def, warnings){
   }
   /* Contrato de moneda (revision externa): null = "misma moneda que la
      unidad" (el default seguro) — solo 'USD'/'COP' son valores validos
-     (unica whitelist que soporta la app, ver currency.js). Cualquier otra
+     (única whitelist que soporta la app). Cualquier otra
      cosa (string invalido, numero, objeto) cae a null, nunca se inventa. */
   const rawSettlement = raw && raw.settlementCurrency;
   if(rawSettlement===null || rawSettlement===undefined) out.settlementCurrency = null;
@@ -209,66 +209,12 @@ function normalizeVerification(raw, warnings){
 
 const CHANNEL_IDS = CHANNELS.map(c => c.id);
 
-/* reconciliations: datos LOCALES de auditoria que Dani ingresa a mano para
-   comparar una reserva real contra el estimado del motor (ver
-   src/domain/reconciliation.js) — nunca datos sensibles de huesped (nombre/
-   email/telefono), solo numeros financieros + referencia de reserva libre
-   (opcional). Un elemento malformado se descarta entero (no se intenta
-   reparar campo por campo) — es un registro de auditoria, no una
-   configuracion que deba sobrevivir a toda costa; preservar una entrada a
-   medias podria mostrar una reconciliacion enganosa. */
-function normalizeReconciliation(raw, warnings, idx){
-  if(!raw || typeof raw!=='object'){ warnings.push(`reconciliations[${idx}]: no es un objeto — descartado.`); return null; }
-  const path = `reconciliations[${idx}]`;
-  if(!CHANNEL_IDS.includes(raw.chId)){ warnings.push(`${path}.chId: "${String(raw.chId).slice(0,40)}" no es un canal conocido — entrada descartada.`); return null; }
-  const price = safeNum(raw.price, null);
-  const nights = safeNum(raw.nights, null);
-  const payoutReceived = safeNum(raw.payoutReceived, null);
-  if(typeof price!=='number' || price<=0){ warnings.push(`${path}.price: falta un precio real (> 0) — entrada descartada.`); return null; }
-  if(typeof nights!=='number' || nights<1){ warnings.push(`${path}.nights: faltan noches reales (>= 1) — entrada descartada.`); return null; }
-  if(typeof payoutReceived!=='number' || !Number.isFinite(payoutReceived)){ warnings.push(`${path}.payoutReceived: falta el payout real recibido — entrada descartada.`); return null; }
-  const daysN = safeNum(raw.days, 0);
-  const days = typeof daysN==='number' ? Math.max(0, Math.round(daysN)) : 0;
-  /* Simplificacion a USD unico (revision externa): se PRESERVA cualquier
-     moneda no vacia tal cual (no solo 'USD'/'COP') — nunca se reinterpreta
-     un valor real como null ("sin dato" = se asumira USD en
-     reconciliation.js). Ausente/vacio si cae a null (equivalente a "no
-     especificado", que reconciliation.js SI trata como USD por defecto,
-     porque el formulario ya no ofrece otra moneda). */
-  const currency = (typeof raw.currency==='string' && raw.currency.trim()!=='') ? raw.currency.trim().slice(0,10) : null;
-  const optionalPct = (key)=>{
-    if(raw[key]===undefined || raw[key]===null || raw[key]==='') return null;
-    const n = safeNum(raw[key], null);
-    return (typeof n==='number' && Number.isFinite(n)) ? n : null;
-  };
-  return {
-    id: (typeof raw.id==='string' && raw.id) ? raw.id.slice(0,80) : `rec${idx}_${Date.now()}`,
-    savedAt: (typeof raw.savedAt==='string') ? raw.savedAt.slice(0,40) : new Date().toISOString(),
-    chId: raw.chId,
-    price, nights: Math.round(nights), days,
-    currency,
-    otaCommissionPct: optionalPct('otaCommissionPct'),
-    bankFeePct: optionalPct('bankFeePct'),
-    cleaningFeeCharged: optionalPct('cleaningFeeCharged'),
-    nativeDiscountPct: optionalPct('nativeDiscountPct'),
-    payoutReceived,
-    reference: strField(raw, 'reference', '', warnings, path, 120)
-  };
-}
-function normalizeReconciliations(raw, warnings){
-  if(!Array.isArray(raw)){
-    if(raw!==undefined) warnings.push('reconciliations: no es un arreglo — se uso una lista vacia.');
-    return [];
-  }
-  return raw.map((r,i)=>normalizeReconciliation(r, warnings, i)).filter(Boolean).slice(0, 200);
-}
-
 /* usdManualReviewLog: bitácora de auditoria de la revisión manual COP→USD
    (BLOQUEANTE 3, auditoria externa ronda 5) — cada entrada registra CUANDO y
    QUE paso ('copy_created' al crear la copia sin convertir nada,
    'review_confirmed' cuando Dani confirma haber revisado uno por uno los
    valores copiados). Es APEND-ONLY desde la UI (index.html nunca borra
-   entradas, solo agrega) — pero la normalizacion, como con reconciliations,
+   entradas, solo agrega) — pero la normalizacion
    descarta entradas malformadas ENTERAS (nunca repara un evento desconocido
    o una fecha invalida a medias: seria una nota de auditoria enganosa).
 
@@ -283,7 +229,7 @@ function normalizeReconciliations(raw, warnings){
    dentro de normalizeUnit(): si `evaluateUsdManualReviewState()` detecta
    esa contradicción, `usdManualReviewPending` se CORRIGE a `true` aquí
    mismo (defensa en la capa de persistencia) con un warning explícito —
-   ademas de que engine.js/reconciliation.js
+   ademas de que engine.js
    NUNCA confían en el booleano crudo por su cuenta (defensa en la capa de
    dominio, la autoritativa incluso si algo llega a `compute()` sin pasar
    por aquí). La fecha (`at`) ahora debe ser un valor REALMENTE parseable
@@ -380,7 +326,6 @@ export function normalizeUnit(raw){
   const costBreakdownConfirmed = boolField(raw, 'costBreakdownConfirmed', false);
   const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
   const verification = normalizeVerification(raw.verification, warnings);
-  const reconciliations = normalizeReconciliations(raw.reconciliations, warnings);
   /* BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js:
      `usdManualReviewPending` es EXPLICITO, nunca inferido. Una unidad sin
      este campo (normal, preexistente, o nueva) cae a `false` — no queda
@@ -437,7 +382,6 @@ export function normalizeUnit(raw){
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
-    reconciliations,
     usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
