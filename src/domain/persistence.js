@@ -509,7 +509,6 @@ export function normalizeUnit(raw){
     marketWindow: nonNegField(raw, 'marketWindow', 16, warnings, 'unidad', {min:0}),
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
-    matrixNights: nonNegField(raw, 'matrixNights', 1, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
     monthlyIncomeScenario, monthlyDistribution, reconciliations,
     usdManualReviewPending, usdManualReviewLog,

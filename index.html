@@ -337,7 +337,6 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <h2>Panel de decisión por ventana de reserva <span class="hint">qué poner en PriceLabs, canal por canal</span></h2>
   <p class="hint">Cada fila es una ventana de anticipación (días antes del check-in). Lee primero el <strong>Veredicto</strong>: te dice en una frase si algo necesita tu atención en esa ventana. El Techo % lo pones tú (cuánto descuento total le aceptas al huésped); el detalle por canal está colapsado — ábrelo solo si el veredicto te manda a revisar algo puntual.</p>
   <div class="matrix-intro" id="matrixIntro"></div>
-  <div class="field" style="max-width:320px;"><span>Noches de estadía a evaluar <span class="hint">activa descuentos por duración si califican</span></span><input type="number" data-k="matrixNights" step="1" min="1"></div>
   <div class="table-wrap">
     <table>
       <thead><tr>
@@ -436,7 +435,7 @@ if (typeof window.storage === 'undefined') {
    src/catalog/discounts.js (import arriba) — ver ese archivo para el catálogo completo. */
 let state = {
   name:'', currency:'USD', fixedCost:32, varCost:22, margin:45, marketWindow:16, marketBase:100,
-  avgNights:3, matrixNights:1,
+  avgNights:3,
   costBreakdown: defaultCostBreakdown(),
   costBreakdownConfirmed:false, // BLOQUEANTE 2 (auditoria externa, ronda 4) — ver src/domain/cost-mode.js
   channels: CHANNELS.map(c=>({...c})),
@@ -812,9 +811,6 @@ function renderMatrix(model){
      Ahora se enumera dia critico x noche critica x canal (OTA + LM), se cotiza
      CADA combinacion con quoteScenario(), y la fila se arma sobre el escenario
      que realmente da el PEOR NETO, no el que solo tiene mas descuento nativo.
-     `matrixNights` (el input de "noches a evaluar") ya no filtra el peor caso —
-     se mantiene solo como referencia manual de Dani, el veredicto siempre usa
-     el peor caso real encontrado.
      El veredicto (vLvl/vTag/vMsg) ya NO se arma inline aqui — vive en
      buildMatrixVerdict() (src/domain/matrix.js), pura y testeada sin DOM, para
      que Min Price/Base/Offset/Matriz nunca puedan desalinearse en como tratan
@@ -1487,8 +1483,7 @@ document.addEventListener('change',e=>{
       margin:{min:0,max:99.999,label:'Margen objetivo'},
       marketWindow:{min:0,max:9999,integer:true,label:'Ventana de reserva del mercado'},
       avgNights:{min:1,max:365,integer:true,label:'Estadía promedio (noches)'},
-      marketBase:{min:0,max:1e7,label:'Base de mercado'},
-      matrixNights:{min:1,max:365,integer:true,label:'Noches a evaluar'}
+      marketBase:{min:0,max:1e7,label:'Base de mercado'}
     };
     const r = readNumField(t, state[key], KEY_OPTS[key]||{label:key});
     if(!r.ok) return;
