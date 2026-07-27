@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guía de uso — Optimizador de precios | Host Medellín</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F2F2F0; --surface:#FFFFFF; --surface-2:#ECECE9; --border:#DDDFE3;
+  --text:#1B1D24; --dim:#565A64; --faint:#8F939C;
+  --accent:#D6412C; --accent-soft:rgba(214,65,44,0.10);
+  --safe:#1B7A45; --safe-soft:rgba(27,122,69,0.12); --safe-chip:#3FB876;
+  --warn:#8A5A0A; --warn-soft:rgba(138,90,10,0.12); --warn-chip:#E8A23D;
+  --radius:10px;
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Space Grotesk',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.6;}
+.app{max-width:760px;margin:0 auto;padding:32px 20px 72px;}
+header{margin-bottom:20px;}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.14em;color:var(--accent);font-weight:600;margin-bottom:8px;}
+h1{font-size:32px;font-weight:700;line-height:1.15;margin:0 0 8px;letter-spacing:-.01em;}
+.sub{color:var(--dim);font-size:16px;margin:0;max-width:640px;line-height:1.55;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px;}
+h2{font-size:18px;font-weight:700;line-height:1.3;margin:38px 0 14px;letter-spacing:-.01em;}
+h3{font-size:16px;font-weight:700;line-height:1.35;margin:28px 0 10px;}
+p{margin:0 0 14px;}
+ul,ol{margin:0 0 16px;padding-left:24px;}
+li{margin:7px 0;}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px;font-weight:600;}
+a:hover{color:var(--text);}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px;}
+.hint{font-size:14px;font-weight:400;color:var(--faint);}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:8px;font-size:15px;line-height:1.55;border:1px solid;margin:18px 0;}
+.alert.warn{background:var(--warn-soft);border-color:rgba(232,162,61,.4);}
+.alert.ok{background:var(--safe-soft);border-color:rgba(63,184,118,.35);color:var(--dim);}
+.alert .tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;margin-top:2px;}
+.alert.warn .tag{background:var(--warn-chip);color:#14151A;}
+.alert.ok .tag{background:var(--safe-chip);color:#14151A;}
+.index{margin:0;padding-left:22px;}
+.index li{margin:5px 0;}
+.back-link{display:inline-block;margin-top:10px;}
+code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--surface-2);padding:1px 4px;border-radius:4px;}
+@media(max-width:720px){.app{padding:24px 16px 56px;}h1{font-size:27px;}h2{margin-top:32px;}.card{padding:17px 18px;}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <div class="eyebrow">HOST MEDELLÍN · REVENUE OPS</div>
+    <h1>Guía de uso — Optimizador de precios</h1>
+    <p class="sub">Esta guía es para gestionar tus unidades, no para programar.</p>
+    <p class="hint">La aplicación publicada está en <a href="https://hostmedellin1-del.github.io/Optimizador-de-precios/">hostmedellin1-del.github.io/Optimizador-de-precios</a>.</p>
+  </header>
+
+  <section class="card" aria-labelledby="resumen-rapido">
+    <h2 id="resumen-rapido">Resumen rápido</h2>
+    <p>Abre el sitio publicado para calcular precios y guarda ahí cada unidad.</p>
+    <p>El botón <strong>Duplicar</strong> sirve para dar de alta rápido una unidad parecida, pero sus datos deben revisarse por separado.</p>
+    <p>Si ves <code>—</code> en Min Price o Base Price, falta confirmar algo: no significa que la herramienta esté rota.</p>
+    <p>Todos los valores se ingresan en USD; antes de usar una recomendación confirma costos, Last-Minute y datos financieros.</p>
+  </section>
+
+  <nav class="card" aria-label="Índice de la guía">
+    <h2>Índice</h2>
+    <ol class="index">
+      <li><a href="#que-es">Qué es y qué no es</a></li>
+      <li><a href="#primer-uso">Primer uso en el sitio publicado</a></li>
+      <li><a href="#crear-propiedad">Crear una propiedad: dos caminos</a></li>
+      <li><a href="#desbloquear">Cómo desbloquear recomendaciones</a></li>
+      <li><a href="#pestanas">Para qué sirve cada pestaña</a></li>
+      <li><a href="#gestionar">Gestionar y respaldar propiedades</a></li>
+      <li><a href="#github">El repositorio de GitHub y cómo se publican los cambios</a></li>
+      <li><a href="#preguntas">Preguntas frecuentes</a></li>
+      <li><a href="#limites">Límites importantes</a></li>
+    </ol>
+  </nav>
+
+  <section id="que-es">
+    <h2>1. Qué es y qué no es</h2>
+    <p>La herramienta toma el precio por noche que pondrías en PriceLabs y estima cuánto queda después de descuentos nativos, comisión OTA, comisión bancaria/pasarela, Last-Minute y Offset por canal. Con esa configuración calcula:</p>
+    <ul>
+      <li><strong>Min Price → PriceLabs</strong>: el mínimo que debería cubrir el costo incluso en el escenario más exigente que encuentre entre los canales.</li>
+      <li><strong>Base Price → PriceLabs</strong>: una referencia para que el precio base alcance el neto objetivo con la configuración real cargada.</li>
+      <li><strong>Offset</strong>: ajuste específico por canal que se aplica después del precio de PriceLabs.</li>
+    </ul>
+    <p>No publica precios, no cambia nada en PriceLabs, Hospy, Airbnb, Booking.com o Expedia, y no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal.</p>
+  </section>
+
+  <section id="primer-uso">
+    <h2>2. Primer uso en el sitio publicado</h2>
+    <ol>
+      <li>Abre la URL publicada.</li>
+      <li>En la barra superior escribe el nombre en <strong>Unidad (ej. Alcázar 902)</strong>.</li>
+      <li>Pulsa <strong>Guardar</strong> para crear la unidad en este navegador.</li>
+      <li>Al principio verás <code>—</code> en <strong>Min Price → PriceLabs</strong> y <strong>Base Price → PriceLabs</strong>. Es normal y seguro: una unidad nueva trae costos de ejemplo, Last-Minute sin confirmar y datos financieros sin verificar.</li>
+      <li>No copies esos valores como recomendaciones hasta completar los tres bloqueos de la sección 4.</li>
+    </ol>
+    <div class="alert warn"><span class="tag">USD</span><span>Todos los valores se ingresan en <strong>USD</strong>. La aplicación no convierte COP, no consulta PriceLabs ni las OTAs y no inventa ningún dato pendiente.</span></div>
+    <p>La app guarda unidades solo en el almacenamiento local de ese navegador. Antes de empezar con datos reales, usa <strong>Exportar todo</strong> y guarda el archivo descargado fuera del navegador.</p>
+  </section>
+
+  <section id="crear-propiedad">
+    <h2>3. Crear una propiedad: dos caminos</h2>
+    <h3>Desde cero</h3>
+    <p>Este es el orden recomendado. Aunque hay alrededor de 74 campos configurables entre costos, descuentos y canales, no hace falta llenar todo a la vez: completa primero lo que realmente usa cada unidad.</p>
+    <ol>
+      <li>En <strong>Resumen → Costos por noche</strong>, ingresa <strong>Fijos</strong> y <strong>Variables</strong>, o abre <strong>Calcular a partir de costos detallados</strong>.</li>
+      <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones.</li>
+      <li>Completa <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong>, <strong>Estadía promedio (noches)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
+      <li>Configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
+      <li>Ve a <strong>Verificación de datos financieros</strong> y resuelve los datos aplicables con fuente y fecha.</li>
+      <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset y el catálogo de descuentos de cada canal.</li>
+      <li>Revisa <strong>Techo total por ventana</strong> en Resumen. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
+      <li>Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
+    </ol>
+    <h3>Duplicar una unidad parecida</h3>
+    <ol>
+      <li>Carga primero la unidad origen con <strong>Cargar unidad…</strong>.</li>
+      <li>Pulsa <strong>Duplicar</strong>, escribe el nombre de la nueva unidad y confirma.</li>
+      <li>La copia conserva la <strong>configuración operativa</strong>: canales (incluidos comisión, banco, Offset y aseo), los 37 descuentos con sus porcentajes/ventanas, techos y parámetros de Last-Minute.</li>
+      <li>La copia <strong>no</strong> conserva confirmaciones: Verificación de datos financieros vuelve a <strong>No verificado</strong>, Last-Minute queda sin confirmar, los descuentos quedan sin verificar y los costos reales/desglose confirmado se reinician al ejemplo. Por eso Min Price y Base Price comienzan bloqueados.</li>
+      <li>Revisa sus costos, LM y datos financieros propios antes de usar una recomendación.</li>
+    </ol>
+    <div class="alert warn"><span class="tag">REVISAR</span><span>Duplicar nunca modifica la unidad original. Tampoco permite duplicar otra copia USD que esté pendiente de revisión manual.</span></div>
+  </section>
+
+  <section id="desbloquear">
+    <h2>4. Cómo desbloquear recomendaciones</h2>
+    <p>Los avisos rojos no son errores técnicos: previenen que una simulación se presente como una recomendación real. Resuélvelos en este orden.</p>
+    <h3>A. Costos sin confirmar</h3>
+    <ul>
+      <li><strong>EJEMPLO</strong>: los valores de fábrica (Fijos 32 y Variables 22) no son costos reales. Reemplázalos por los de la unidad, o usa el desglose detallado y confirma la casilla.</li>
+      <li><strong>COSTOS SIN CONFIRMAR</strong>: editaste una línea del desglose, pero no confirmaste que está revisado. Marca la casilla de revisión solo después de comprobar todos los valores, incluso los ceros.</li>
+    </ul>
+    <p>Cada edición posterior del desglose invalida la confirmación; vuelve a revisarlo y marca la casilla de nuevo.</p>
+    <h3>B. LM SIN VERIFICAR</h3>
+    <p>En <strong>Last-Minute de PriceLabs</strong>, el modo predeterminado es <strong>Automático (PriceLabs decide, no verificable matemáticamente)</strong>. No basta con asumir que el descuento será un porcentaje fijo.</p>
+    <p>En PriceLabs confirma qué usa esa unidad y elige aquí el equivalente:</p>
+    <ul>
+      <li><strong>Descuento plano (% fijo entre dos días)</strong>.</li>
+      <li><strong>Descuento gradual (decae día a día hasta 0)</strong>.</li>
+      <li><strong>Precio Last-Minute fijo</strong>.</li>
+      <li><strong>Tramos personalizados</strong>.</li>
+    </ul>
+    <p>Después marca <strong>Confirmé este modo directamente en PriceLabs</strong>. Si usas el modo Automático, la app no puede verificar matemáticamente una curva que PriceLabs decide por día y las recomendaciones permanecen bloqueadas por diseño.</p>
+    <h3>C. DATO FINANCIERO SIN VERIFICAR</h3>
+    <p>En <strong>Verificación de datos financieros</strong>, cada fila tiene estado, fuente, fecha y nota.</p>
+    <ul>
+      <li><strong>No verificado</strong>: falta comprobarlo; bloquea la recomendación afectada.</li>
+      <li><strong>Verificado</strong>: lo confirmaste en extranet, factura, soporte u otra fuente real.</li>
+      <li><strong>No aplica</strong>: confirmaste que ese dato no corresponde a esa unidad. No significa “no lo sé”.</li>
+    </ul>
+    <p>Los puntos que aparecen incluyen Offset por canal en Hospy, comisión bancaria/pasarela por canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, no reembolsable y Top Rated Guest de Airbnb, y la nota de confirmación del modo Last-Minute. Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.</p>
+    <h3>Caso excepcional: revisión de moneda</h3>
+    <p>Si cargas una unidad antigua con una moneda distinta de USD, verás <strong>REQUIERE REVISIÓN MANUAL</strong>. No hay conversión automática. Puedes corregir los datos manualmente o crear una copia en USD y revisar cada valor antes de pulsar <strong>Ya revisé manualmente todos los valores en USD →</strong>. Hasta entonces, los números quedan bloqueados.</p>
+  </section>
+
+  <section id="pestanas">
+    <h2>5. Para qué sirve cada pestaña</h2>
+    <h3>Resumen</h3>
+    <p>Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute, techos y verificación. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
+    <h3>¿Cómo se calcula?</h3>
+    <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio calculado por PriceLabs (antes de LM/offset)</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global está bloqueada, por lo que debes leer sus avisos de confiabilidad.</p>
+    <h3>Airbnb, Booking.com, Expedia y Directo</h3>
+    <p>Cada pestaña contiene la configuración de ese canal:</p>
+    <ul>
+      <li><strong>Comisión [canal] %</strong> y <strong>Comisión bancaria/pasarela %</strong>.</li>
+      <li><strong>Offset % sobre PriceLabs (tu markup real)</strong>.</li>
+      <li>En Airbnb, <strong>Tarifa de aseo — reservas 1–2 noches</strong> y <strong>Tarifa de aseo — reservas 3+ noches</strong>.</li>
+      <li><strong>Descuentos activos hoy</strong> y <strong>Ver catálogo completo</strong> para el resto.</li>
+    </ul>
+    <p>No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está activo para ese listing/canal y usa el porcentaje y la ventana reales.</p>
+    <h3>Comparación</h3>
+    <p><strong>Panel de decisión por ventana de reserva</strong> resume cada ventana. Lee primero <strong>Veredicto</strong>. Si pide atención, abre <strong>Ver por canal</strong> para ver el detalle. Los veredictos pueden señalar techo excedido, neto bajo costo, neto bajo objetivo o una configuración rentable; un aviso de datos pendientes debe resolverse antes de tratar un resultado positivo como recomendación.</p>
+  </section>
+
+  <section id="gestionar">
+    <h2>6. Gestionar y respaldar propiedades</h2>
+    <ul>
+      <li><strong>Guardar</strong>: guarda la unidad actual con su nombre. Si es una unidad nueva y ya hay otra con el mismo nombre, la aplicación pregunta antes de crear una nueva identidad.</li>
+      <li><strong>Cargar unidad…</strong>: selecciona una unidad previamente guardada en este navegador.</li>
+      <li><strong>Eliminar</strong>: borra la unidad seleccionada después de pedir confirmación. Exporta antes si necesitas conservarla.</li>
+      <li><strong>Duplicar</strong>: crea una unidad nueva desde una configuración existente; revisa la sección 3 para saber qué se copia y qué se reinicia.</li>
+      <li><strong>Exportar todo</strong>: descarga un JSON con las unidades guardadas. Úsalo como respaldo periódico, especialmente antes de cambios grandes o de limpiar el navegador.</li>
+      <li><strong>Importar</strong>: restaura un JSON exportado. La app valida y normaliza los datos; si ya existe una unidad con la misma clave, se sobrescribe tras confirmación.</li>
+      <li><strong>Migrar unidades antiguas</strong>: crea copias en el formato actual de las unidades antiguas (v2) sin borrar las originales.</li>
+    </ul>
+    <div class="alert warn"><span class="tag">RESPALDO</span><span>Los datos no se sincronizan entre computadores, perfiles de navegador ni modo incógnito. Guarda los respaldos en una ubicación de confianza, por ejemplo tu almacenamiento habitual de archivos.</span></div>
+  </section>
+
+  <section id="github">
+    <h2>7. El repositorio de GitHub y cómo se publican los cambios</h2>
+    <p>Vas a ver dos links distintos y no son lo mismo. <a href="https://github.com/hostmedellin1-del/Optimizador-de-precios">github.com/hostmedellin1-del/Optimizador-de-precios</a> es donde vive el <strong>CÓDIGO</strong> de la herramienta: es la cocina, no el restaurante; ahí no se usa la herramienta y no hace falta entrar nunca para el trabajo diario. El sitio publicado que usas todos los días para calcular precios es el enlace mencionado al principio de esta guía.</p>
+    <p>Cuando pides un cambio, primero se prueba en un lugar aparte sin afectar el sitio publicado. Solo se publica cuando tú lo apruebas explícitamente; después de confirmar “sí, publicalo”, el sitio publicado se actualiza solo, normalmente en menos de un minuto. No necesitas cuenta de GitHub, saber programar ni tocar nada ahí: solo confirmar cuando te pregunten.</p>
+    <p><code>CHANGELOG.md</code> es el historial de qué cambió y cuándo. Es un archivo de texto dentro del repositorio que puedes abrir directamente en github.com, sin instalar nada, si alguna vez quieres revisar qué se modificó en una fecha puntual.</p>
+  </section>
+
+  <section id="preguntas">
+    <h2>8. Preguntas frecuentes</h2>
+    <h3>¿Por qué Min Price o Base Price muestran <code>—</code>?</h3>
+    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, dato financiero sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la sección exacta que debes revisar.</p>
+    <h3>¿Por qué una unidad duplicada puede tener otro precio?</h3>
+    <p>Porque la copia no hereda hechos confirmados ni costos reales. Aunque conserve descuentos, canales, techos y parámetros LM, debes validar que esos parámetros y los costos sí aplican a la nueva unidad. Hasta hacerlo, la app bloquea Min Price y Base Price.</p>
+    <h3>¿Puedo ingresar COP?</h3>
+    <p>No. Esta versión es solo USD. No conviertas “cambiando la etiqueta”: convierte y verifica los valores con tu fuente antes de cargarlos como USD. La multimoneda se hará en una fase futura, no está activa hoy.</p>
+    <h3>¿La app sabe automáticamente lo que está configurado en PriceLabs o las OTAs?</h3>
+    <p>No. No hay integración. Tú debes comparar cada descuento, comisión, Offset y modo Last-Minute con la cuenta real y registrar la fuente/fecha en Verificación.</p>
+  </section>
+
+  <section id="limites">
+    <h2>9. Límites importantes</h2>
+    <ul>
+      <li>No hay integración automática con PriceLabs, Hospy, Airbnb, Booking.com, Expedia, bancos ni pasarelas.</li>
+      <li>No hay nube, usuarios múltiples ni sincronización; funciona para tu uso individual en el navegador donde guardas las unidades.</li>
+      <li>No convierte monedas ni mezcla USD con COP.</li>
+      <li>No calcula impuestos, contabilidad, flujo de caja mensual, reparto de utilidad ni conciliación automática de reservas: esas funciones no forman parte de esta versión.</li>
+      <li>El resultado es una herramienta de decisión de precios, no una garantía de demanda, ocupación o liquidación final.</li>
+    </ul>
+    <div class="alert ok"><span class="tag">ANTES</span><span>Antes de aplicar una recomendación en PriceLabs: revisa que la unidad tenga costos reales confirmados, modo LM confirmado y todos los datos financieros aplicables resueltos. Solo entonces trata Min Price, Base Price y Offset como recomendaciones operativas.</span></div>
+  </section>
+
+  <a class="back-link" href="https://hostmedellin1-del.github.io/Optimizador-de-precios/">Volver al sitio principal</a>
+</main>
+</body>
+</html>

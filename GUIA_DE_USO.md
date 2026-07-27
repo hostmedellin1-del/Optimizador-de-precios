@@ -1,5 +1,8 @@
 # Guía de uso — Optimizador de precios
 
+Versión con mejor formato: ver `guia.html` en el sitio publicado. Este archivo se lee
+bien directo en github.com; para uso diario, preferí la versión de arriba.
+
 Esta guía es para gestionar tus unidades, no para programar. La aplicación publicada está
 en <https://hostmedellin1-del.github.io/Optimizador-de-precios/>.
 
