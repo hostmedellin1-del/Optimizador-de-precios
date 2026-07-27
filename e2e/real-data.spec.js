@@ -209,20 +209,6 @@ test('reconciliación: guardar y borrar una conciliación funciona, y nunca camb
   await expect(page.locator('#reconciliationsList')).not.toContainText('HM-TEST-001');
 });
 
-test('auditoría: unidad nueva (costos de ejemplo) muestra estado SIMULACION', async ({page}) => {
-  await page.goto('/index.html');
-  const box = page.locator('#auditChecklist');
-  await expect(box).toContainText('SIMULACION');
-});
-
-test('auditoría: con costos reales cargados pero nada más confirmado, el estado pasa a DATOS PARCIALES', async ({page}) => {
-  await page.goto('/index.html');
-  await fillField(page, '[data-k="fixedCost"]', '75');
-  await fillField(page, '[data-k="varCost"]', '30');
-  const box = page.locator('#auditChecklist');
-  await expect(box).toContainText('DATOS PARCIALES');
-});
-
 test('regresión: las secciones nuevas no rompen los bloqueos existentes de Min Price/Base Price (LM sin verificar por defecto)', async ({page}) => {
   await page.goto('/index.html');
   await expect(page.locator('#kFloor')).toHaveText('—');

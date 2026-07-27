@@ -321,10 +321,6 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <h3 style="margin-top:16px;">Conciliaciones guardadas <span class="hint">solo datos locales, en este navegador — bórralas cuando quieras</span></h3>
   <div id="reconciliationsList"></div>
 </section>
-<section class="card">
-  <h2>Auditoría de datos reales <span class="hint">qué falta confirmar antes de confiar en la recomendación</span></h2>
-  <div id="auditChecklist"></div>
-</section>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -395,7 +391,6 @@ import {newUnitId, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHE
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {computeMonthlyEconomics, defaultMonthlyIncomeScenario, defaultMonthlyDistribution} from './src/domain/monthly-economics.js';
 import {reconcileReservation} from './src/domain/reconciliation.js';
-import {buildAuditChecklist} from './src/domain/audit.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
@@ -1039,7 +1034,7 @@ function renderAll(){
   renderValidation(model); renderDataProvenance();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig(); renderVerification(); renderMonthlyIncomeFields(); renderMonthlyDistFields(); renderMonthlyResult(model);
-  renderCurrencyReviewBanner(model); renderReconcileResult(model); renderReconciliationsList(model); renderAuditChecklist(model);
+  renderCurrencyReviewBanner(model); renderReconcileResult(model); renderReconciliationsList(model);
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -1414,32 +1409,6 @@ function renderReconciliationsList(model){
       <button type="button" class="ghost" data-rec-del="${escapeHtml(rec.id)}" aria-label="Eliminar esta conciliación">✕</button>
     </div>`;
   }).join('');
-}
-
-/* ================== AUDITORÍA DE DATOS REALES (revision externa) ========= */
-function renderAuditChecklist(model){
-  const box = document.getElementById('auditChecklist');
-  if(!box) return;
-  /* BLOQUEANTE 2 (auditoria externa, ronda 4): el item "costs" del checklist
-     ahora refleja el gate REAL (costGateNow().blocked) — antes solo miraba
-     si los campos seguian en el valor de ejemplo, asi que un desglose
-     detallado editado-pero-sin-confirmar pasaba como "costos reales
-     cargados" incorrectamente. */
-  const usingExampleCosts = costGateNow().blocked;
-  const lastReconciliation = state.reconciliations.length
-    ? reconcileReservation({real: state.reconciliations[state.reconciliations.length-1], quoteConfig: quoteConfig(), currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, readiness: model.readiness})
-    : null;
-  const audit = buildAuditChecklist({
-    usingExampleCosts, readiness: model.readiness, lmBlocked: model.lmBlocked,
-    channels: state.channels, currency: state.currency, usdManualReviewPending: state.usdManualReviewPending, usdManualReviewLog: state.usdManualReviewLog, lastReconciliation
-  });
-  const STATUS_CLS = {simulacion:'warn', datos_parciales:'warn', listo_supervisado:'ok'};
-  box.innerHTML = `
-    <div class="alert ${STATUS_CLS[audit.status]}"><span class="tag">${audit.status.toUpperCase().replace('_',' ')}</span><span>${escapeHtml(audit.statusLabel)}</span></div>
-    <div class="kpis" style="margin-top:10px;">
-      ${audit.items.map(i=>`<div class="kpi"><span class="l">${i.ok?'✓':'—'} ${escapeHtml(i.label)}</span><span class="s">${escapeHtml(i.detail)}</span></div>`).join('')}
-    </div>
-  `;
 }
 
 function hydrate(){
