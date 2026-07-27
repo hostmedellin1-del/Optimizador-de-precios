@@ -116,15 +116,12 @@ cubre todavía, corre esto a mano en un navegador real:
     datos financieros" para UN solo dato y confirma que solo se desbloquea lo que
     ese dato afecta (no todo a la vez). La Matriz nunca debe decir "RENTABLE EN
     TODOS" mientras falte alguno.
-13. **Rentabilidad mensual (planificación mensual)**: llena la calculadora de
-    costos detallada (Resumen → "Costos por noche") y confirma que "Rentabilidad
-    mensual y punto de equilibrio" deja de decir "NO CALCULABLE". Prueba un neto
-    manual bajo (que la contribución por noche quede <= 0) y confirma que dice
-    "EQUILIBRIO NO ALCANZABLE" (nunca un número de noches roto o "Infinity").
-    Activa el reparto Propietario/PM, pon Propietario+Administrador sumando más
-    de 100% y confirma que vuelve a "NO CALCULABLE" con el motivo exacto.
-    Desactívalo de nuevo y confirma que la utilidad vuelve a mostrarse completa
-    (sin restar una reserva/impuesto que quedó configurado de antes).
+13. **Duplicar unidad**: guarda una unidad origen con datos configurados y pulsa
+    **Duplicar**. Confirma que la nueva unidad conserva canales, descuentos, techos y
+    parámetros de Last-Minute, pero nace con costos de ejemplo, LM sin confirmar,
+    descuentos sin verificar y todos los datos financieros en `No verificado`; Min
+    Price/Base Price deben quedar bloqueados. Cambia algo en la copia y confirma que el
+    origen sigue intacto.
 14. **Piso/Base globales bloqueados por CUALQUIER canal pendiente (P1)**: en una unidad
     nueva, verifica LM (modo plano + "Confirmé...") y resuelve TODOS los datos financieros
     de Booking/Expedia/Airbnb en "Verificación de datos financieros", pero deja SIN
@@ -134,12 +131,10 @@ cubre todavía, corre esto a mano en un navegador real:
     última comisión y verifica que Min Price/Base Price se desbloquean. Verifica también
     que la pestaña de un canal YA confirmado (ej. Airbnb) y el Simulador con ese canal
     siguen funcionando sin la etiqueta de no confiable, pese al bloqueo global.
-15. **Neto manual mensual en blanco/0 nunca calcula (P2)**: en una unidad nueva, llena la
-    calculadora de costos detallada pero NO toques "Neto por noche" en "Rentabilidad
-    mensual". Debe decir "Falta ingresar neto manual por noche" (nunca un número). Escribe
-    0 explícitamente — debe seguir pidiendo el dato. Escribe un neto positivo — debe
-    calcular normalmente. Bórralo de nuevo (deja el campo vacío) — debe volver a pedir el
-    dato, nunca quedar en 0 silencioso.
+15. **Funcionalidades retiradas**: confirma que no aparezcan las secciones
+    "Rentabilidad mensual y punto de equilibrio", "Validar contra una reserva real",
+    "Auditoría de datos reales" ni controles de tipo de cambio. No son bloqueos: fueron
+    eliminadas deliberadamente en 0.15.0 para concentrar la app en decisiones de precio.
 16. **`fixed_price` bloquea SOLO Base, nunca el Piso (refactor de cierre)**: configura
     Last-Minute en "Precio fijo" con un rango que cubra el día 45 (ej. 40-50) y márcalo
     verificado. Base Price debe mostrar "—" ("Precio LM fijo activo"), pero **Min Price
@@ -147,22 +142,15 @@ cubre todavía, corre esto a mano en un navegador real:
     rango para que ya no cubra el día 45: Base Price vuelve a mostrar un número. Esto
     confirma que `baseBlocked` nunca contamina `floorReadinessBlocked` (contrato de
     `evaluateGlobalRecommendationReadiness()`, ver CLAUDE.md).
-17. **Reconciliar una reserva real**: en Resumen → "Validar contra una reserva real",
-    ingresa canal/precio/noches/días y un payout recibido IGUAL al estimado que muestra la
-    app (cópialo del resultado tras escribir cualquier payout) — debe decir "CONFIABLE" y
-    "Diferencia USD 0". Cambia el payout a un valor bien bajo (ej. 10% del estimado) — debe
-    mostrar una alerta roja clara. Escribe una comisión OTA real distinta a la configurada
-    — debe aparecer en el desglose por componente con una causa explícita. Guarda la
-    conciliación (botón "+ Guardar") — debe aparecer en la lista de abajo; bórrala con el
-    botón "✕" y confirma que desaparece. Verifica en la pestaña del canal que su comisión
-    configurada NO cambió por hacer esto — la reconciliación nunca toca la configuración.
+17. **Techos por ventana**: edita un valor en Resumen → "Techo total por ventana" y
+    confirma que el mismo valor aparece como solo lectura en Comparación. Es un control
+    que influye en Last-Minute automático; no debe existir un segundo editor en la Matriz.
 18. **Simplificación a USD único — sin selector de moneda visible en ningún lado**:
     confirma que en Resumen ("Costos por noche") el campo de moneda es un texto fijo
     "USD" (no un `<select>`), con el aviso "Todos los valores deben ingresarse en USD."
     debajo. Revisa la pestaña de cada canal — ya no debe existir un campo "Moneda de
-    liquidación". En "Validar contra una reserva real" ya no debe existir un selector de
-    moneda de la liquidación. Tampoco debe existir ninguna sección "Moneda y tipo de
-    cambio" en Resumen.
+    liquidación". Tampoco debe existir ninguna sección "Moneda y tipo de cambio" ni
+    funcionalidades de conciliación en Resumen.
 19. **Unidad vieja con moneda distinta de USD — "requiere revisión manual"**: exporta el
     JSON de una unidad, edítalo a mano poniendo `"currency":"COP"`, e impórtalo de vuelta
     (o usa el mecanismo de import con un payload de prueba). Al cargar esa unidad debe
@@ -170,15 +158,10 @@ cubre todavía, corre esto a mano en un navegador real:
     moneda debe mostrar "COP (requiere revisión manual)", y Min Price/Base Price deben
     quedar en "—". En la pestaña Comparación, la Matriz debe mostrar el mismo aviso en
     vez de filas — nunca "RENTABLE EN TODOS" ni ningún veredicto. En Resumen, las Alertas
-    tampoco deben mostrar "OK: sin conflictos". Si esa unidad tiene una conciliación
-    guardada de antes con otra moneda, debe verse en la lista como "bloqueada por
-    moneda", nunca con un % de diferencia. Elimina la unidad de prueba al terminar.
-20. **Auditoría de datos reales**: en una unidad nueva, "Auditoría de datos reales" debe
-    decir "SIMULACION". Carga costos reales (o llena la calculadora detallada) — pasa a
-    "DATOS PARCIALES". Verifica todos los datos de negocio pendientes (Verificación de
-    datos financieros), confirma LM, y guarda una conciliación con diferencia baja — el
-    estado debe pasar a "LISTO PARA USO INTERNO SUPERVISADO". En ningún punto debe decir
-    "producción".
+    tampoco deben mostrar "OK: sin conflictos". Elimina la unidad de prueba al terminar.
+20. **Respaldo local**: confirma que **Exportar todo** descarga un JSON y que
+    **Importar** restaura una copia de prueba. La app no tiene nube ni sincronización:
+    conserva el respaldo fuera del navegador antes de cambios grandes.
 21. **BLOQUEANTE 1 corregido — canal histórico no-USD bloquea globalmente**: exporta una
     unidad, edítala a mano agregando `"channels":[{"id":"airbnb","settlementCurrency":"COP"}]`
     (con `"currency":"USD"` en la unidad), e impórtala de vuelta. Debe aparecer el mismo
@@ -221,16 +204,11 @@ cubre todavía, corre esto a mano en un navegador real:
 
 ## Rollback
 
-Todo este trabajo vive en `fix/motor-financiero-auditoria`, nunca se hizo push
-ni se tocó `main`. Si necesitas revertir:
-
-- **Antes de mergear a main**: no hay nada que revertir en `main` — simplemente
-  no mergees la rama, o bórrala si decides no usarla
-  (`git branch -D fix/motor-financiero-auditoria`, solo con tu confirmación).
-- **Después de mergear a main** (si algo sale mal en producción): `git revert`
-  del commit de merge es más seguro que `git reset --hard` (no reescribe
-  historia ya publicada). GitHub Pages redepliega automáticamente al siguiente
-  push a `main`.
+Si necesitas revertir un cambio ya publicado en `main`, usa `git revert` del commit
+correspondiente (o del merge) y luego haz push: es más seguro que `git reset --hard`
+porque no reescribe el historial publicado. GitHub Pages redepliega automáticamente al
+siguiente push a `main`. Si el cambio todavía vive solo en una rama local, no lo merges
+hasta revisarlo; no borres ramas sin confirmar que ya no son necesarias.
 - **Datos de una unidad corrompidos**: usa Exportar ANTES de cualquier cambio
   grande — el `.json` de respaldo permite restaurar exactamente el estado
   anterior vía Importar. El botón "Migrar unidades antiguas" (Fase 6) nunca
@@ -244,18 +222,18 @@ el sitio estático automáticamente. Ningún paso de esta auditoría requiere bu
 
 ## Pendiente (no completado en esta ronda, para no sobre-reportar)
 
-- **Accesibilidad**: ronda 4 agregó `<label for>` a los campos principales de
-  Resumen (costos simples/detallados, margen, ventana de mercado, estadía
-  promedio, base de mercado), Simulador, "Validar contra una reserva real" y
-  planificación mensual. Los campos DINÁMICOS repetidos por canal/descuento
+- **Accesibilidad**: las etiquetas de los campos principales de Resumen
+  (costos simples/detallados, margen, ventana de mercado, estadía promedio y
+  base de mercado) y del Simulador se asociaron con sus controles. Los campos
+  DINÁMICOS repetidos por canal/descuento
   (pestañas de cada canal, catálogo de descuentos, techos por ventana de la
   Matriz) todavía usan `<span>` en vez de `<label for>` — funcionan
   visualmente pero un lector de pantalla no asocia la etiqueta al campo.
   Auditoría completa de accesibilidad de esos campos queda pendiente si la
   priorizas.
-- **`src/domain/currency.js`**: sigue siendo código muerto en el flujo activo
-  (conservado a propósito para una fase multimoneda futura, ver CLAUDE.md) —
-  revisar/reactivar deliberadamente cuando esa fase empiece.
+- **Multimoneda**: esta versión opera solo en USD. No hay conversión ni módulo de
+  moneda activo; una fase futura deberá diseñar y probar conversión, fuentes de tasa y
+  conciliación antes de reintroducirla.
 - **Recuperación de un canal (no la unidad) en otra moneda**: el botón "Crear
   copia en USD" solo resuelve el caso de la unidad MISMA guardada en otra
   moneda — un canal aislado con `settlementCurrency` distinta de USD (dato
