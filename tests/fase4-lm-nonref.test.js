@@ -107,3 +107,27 @@ test('descuento no reembolsable apagado por defecto (0%, on:false) — no invent
   assert.equal(nonref.pct, 0);
   assert.equal(nonref.verified, false);
 });
+
+test('descuento "Top Rated Guest" de Airbnb: se aplica DESPUES de la promo ganadora, no compite con ella (misma capa que el no reembolsable)', () => {
+  const discounts = freshDiscounts();
+  findDiscount(discounts,'ab_los4').on = false; // limpiar defaults para aislar
+  findDiscount(discounts,'ab_eb3').on = true;
+  findDiscount(discounts,'ab_eb3').pct = 20; // promo ganadora: early-bird 20%
+  const topguest = findDiscount(discounts,'ab_topguest');
+  topguest.on = true; topguest.pct = 15; topguest.verified = true;
+
+  const r = combineChannel(discounts, 'airbnb', 100, 1);
+  assert.equal(r.applied.length, 2, 'deben aplicar exactamente 2 capas: la promo ganadora + el Top Rated Guest');
+  assert.equal(r.applied[0].name, 'Early-bird (3 meses / ≥90 días)', 'la promo gana y se aplica PRIMERO');
+  assert.equal(r.applied[1].name, 'Descuento a huésped Top Rated (4,8★+, 3+ reseñas)', 'el Top Rated Guest se aplica DESPUES, como capa aparte');
+  // factor esperado: (1-0.20)*(1-0.15) = 0.68 -> 32% de descuento combinado total (capas multiplicativas, no suma)
+  assert.ok(Math.abs(r.factor - 0.8*0.85) < 1e-12, 'el Top Rated Guest debe multiplicar sobre lo que dejo la promo, no sumarse aparte');
+});
+
+test('descuento "Top Rated Guest" apagado por defecto (0%, on:false, verified:false) — no inventa un 15% de negocio', () => {
+  const discounts = freshDiscounts();
+  const topguest = findDiscount(discounts,'ab_topguest');
+  assert.equal(topguest.on, false);
+  assert.equal(topguest.pct, 0);
+  assert.equal(topguest.verified, false);
+});

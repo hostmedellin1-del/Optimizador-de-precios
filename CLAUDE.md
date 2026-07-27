@@ -95,6 +95,28 @@ misma reserva → solo se aplica el 30%, nunca los dos). Hay reportes de hosts e
 sobre apilamiento fuera de rule sets, sin confirmar al 100% — dejar la nota visible en la
 UI, no borrarla.
 
+### "Top Rated Guest Discount" — nuevo, agregado sin confirmar (jul 2026)
+Dani reportó "un descuento nuevo que salió: 15% para huéspedes con más de 3 reseñas".
+Investigado (Airbnb Help Center no lo documenta todavía; fuentes: NextPax, GuestArk,
+SmoothStay, jul 2026): es el **"Top-Rated Guest Discount"** (o "High Rated Guest
+Discount"), un programa que Airbnb está probando de forma **limitada** — no todos los
+hosts lo ven, no está confirmado que esté disponible en la cuenta de Dani. El "4,8%" del
+mensaje original de Dani no era un segundo dato: es el umbral de **rating** (4,8★+), no un
+porcentaje — la elegibilidad del huésped es 4,8★+ **y** 3+ reseñas, y la decide Airbnb, no
+el host.
+
+**Fuentes contradictorias sobre el %** — no asumir 15% como hecho: una fuente dice que el
+15% viene prefijado y no se puede cambiar; otra dice que el host elige 10/15/20%. Tampoco
+hay confirmación de si compite con las demás promos del grupo `'promo'` (Anuncio
+nuevo/Duración/Early-bird/Last-minute) o si se apila aparte. Ante la incertidumbre, se
+modeló igual que `ab_nonref` (mismo patrón ya establecido para "descuento real pero sin
+confirmar"): **`ab_topguest`, `group:'stackable-post'`** (capa aparte, se aplica DESPUÉS
+de la promo ganadora, no compite con ella — decisión conservadora, a confirmar cuando Dani
+lo vea en su panel de Airbnb), **apagado, `pct:0`, `verified:false`** por defecto. No
+afecta ningún número hasta que Dani confirme disponibilidad/%/comportamiento real y lo
+active él mismo. Bloquea Airbnb (clave `airbnbTopRatedGuest`, `readiness.js`) si se activa
+sin confirmar — mismo mecanismo que `ab_nonref`.
+
 ### Booking.com
 Categorías DISTINTAS se MULTIPLICAN entre sí; la MISMA categoría no combina:
 - Genius (`group:'proactive'`) combina con todo lo demás.
@@ -441,6 +463,13 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
 9. % exacto del descuento no reembolsable de Airbnb, si este listing lo tiene activo.
    Hoy apagado en 0% por defecto (nadie inventó un 10%). **(clave `airbnbNonRefundable` —
    solo bloquea Airbnb si Dani activa este descuento sin confirmar el % real.)**
+12. **[Nuevo, jul 2026]** Confirmar si el "Top Rated Guest Discount" de Airbnb (huésped
+    4,8★+ y 3+ reseñas) está realmente disponible/activo en esta cuenta, el % exacto
+    (fuentes contradicen: 15% fijo vs 10/15/20% elegible por el host), y si compite con
+    las demás promos o se apila aparte (se asumió que se apila, como el no-reembolsable,
+    hasta que Dani lo confirme). Hoy apagado en 0% por defecto (nadie inventó un 15%).
+    **(clave `airbnbTopRatedGuest` — solo bloquea Airbnb si Dani activa este descuento
+    sin confirmar el % real.)**
 10. **[Actualizado de nuevo]** Moneda real y tipo de cambio por canal — la UI para
     configurar esto (`channel.settlementCurrency`, `state.fxRates`) se **eliminó**
     de `index.html` en la simplificación a USD único; los campos siguen
@@ -629,6 +658,7 @@ afecta:
 | `bookingGeniusMobileBoth` | global | Booking | solo si Genius Y Mobile Rate están AMBOS activos |
 | `expediaVipTierMix` | global | Expedia | solo si la Oferta VIP (`ex_mod`) está activa |
 | `airbnbNonRefundable` | global | Airbnb | solo si el no-reembolsable (`ab_nonref`) está activo |
+| `airbnbTopRatedGuest` | global | Airbnb | solo si el "Top Rated Guest Discount" (`ab_topguest`) está activo |
 | `priceLabsLmMode` | global | (informativo) | el bloqueo real de LM ya vive en `lmConfig.verified`/`isLmBlocked()` — esta clave es solo para dejar nota/fuente/fecha de esa confirmación, nunca una segunda fuente de verdad |
 
 `compute()` expone `readiness` (el resultado completo, por canal) y

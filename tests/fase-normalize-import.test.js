@@ -18,7 +18,7 @@ test('normalizeUnit neutraliza un payload XSS en un campo "numerico" (pct) — n
 test('normalizeUnit rechaza discounts con id desconocido (no inventa descuentos nuevos desde un import)', () => {
   const {state} = normalizeUnit({name:'X', discounts:[{id:'evil_injected_discount', pct:50, on:true}]});
   assert.equal(state.discounts.some(d=>d.id==='evil_injected_discount'), false);
-  assert.equal(state.discounts.length, 36, 'debe quedar exactamente el catalogo conocido, ni mas ni menos');
+  assert.equal(state.discounts.length, 37, 'debe quedar exactamente el catalogo conocido, ni mas ni menos');
 });
 
 test('normalizeUnit sobrevive a discounts ausente, no-array, channels no-array, sin romper', () => {
@@ -27,7 +27,7 @@ test('normalizeUnit sobrevive a discounts ausente, no-array, channels no-array, 
   assert.doesNotThrow(() => normalizeUnit({name:'X', channels:{no:'soy un arreglo'}}));
   assert.doesNotThrow(() => normalizeUnit({name:'X', discounts:null, channels:null, lmConfig:null, verification:null, costBreakdown:null}));
   const {state} = normalizeUnit({name:'X', discounts:'no soy un arreglo'});
-  assert.equal(state.discounts.length, 36);
+  assert.equal(state.discounts.length, 37);
 });
 
 test('normalizeUnit sobrevive a tramos LM malformados (fromDay no numerico, pct fuera de rango, entradas null)', () => {

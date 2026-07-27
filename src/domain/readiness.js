@@ -87,11 +87,24 @@ function airbnbNonRefFact(discounts, verification){
   };
 }
 
+function airbnbTopGuestFact(discounts, verification){
+  const topguest = discounts.find(d=>d.id==='ab_topguest');
+  if(!topguest || !topguest.on || pct(topguest.pct)<=0) return null;
+  if(isResolved(verification, 'airbnbTopRatedGuest')) return null;
+  return {
+    key: 'airbnbTopRatedGuest',
+    severity: 'error',
+    label: 'Airbnb: descuento "Top Rated Guest" activo sin confirmar % ni disponibilidad real',
+    reason: `El modelo tiene el descuento "Top Rated Guest" de Airbnb activo (${pct(topguest.pct)}%) sin confirmar que este programa esté realmente disponible en tu cuenta, cuál es el % exacto, ni si compite o se apila con otras promos — un valor real distinto cambia el neto de Airbnb.`,
+    where: 'Verificación de datos financieros (Resumen) → "Airbnb: descuento Top Rated Guest"'
+  };
+}
+
 /* channelFacts: reglas que aplican SOLO al canal indicado por su chId. */
 const CHANNEL_SPECIFIC_FACTS = {
   booking: (c, discounts, verification)=>[bookingGeniusMobileFact(discounts, verification)],
   expedia: (c, discounts, verification)=>[expediaVipFact(discounts, verification)],
-  airbnb: (c, discounts, verification)=>[airbnbNonRefFact(discounts, verification)]
+  airbnb: (c, discounts, verification)=>[airbnbNonRefFact(discounts, verification), airbnbTopGuestFact(discounts, verification)]
 };
 
 export function evaluateRecommendationReadiness(config){

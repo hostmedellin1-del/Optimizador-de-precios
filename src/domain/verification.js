@@ -41,6 +41,10 @@ export const VERIFICATION_KEYS = {
     scope: 'global',
     label: 'Airbnb: ¿este listing tiene descuento no reembolsable activo? ¿cuál es el % exacto?'
   },
+  airbnbTopRatedGuest: {
+    scope: 'global',
+    label: 'Airbnb: ¿el descuento "Top Rated Guest" está realmente activo en este listing? ¿cuál es el % exacto y compite o se apila con otras promos?'
+  },
   priceLabsLmMode: {
     scope: 'global',
     label: 'PriceLabs: ¿qué modo de Last-Minute usa esta unidad realmente (automático/plano/gradual/precio fijo/tramos)? — el bloqueo real de Min Price/Base/Offset ya lo hace la casilla "Confirmé este modo directamente en PriceLabs" (Resumen → Last-Minute); este registro es solo para dejar nota/fuente/fecha de esa confirmación, no una segunda fuente de verdad.'
