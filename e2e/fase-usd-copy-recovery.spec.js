@@ -14,6 +14,11 @@
    pide la auditoría. */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 async function importUnit(page, name, extra){
   let dialogFired = false;
   page.once('dialog', async dialog => { dialogFired = true; await dialog.accept(); });
@@ -34,6 +39,7 @@ async function importUnit(page, name, extra){
    quedara pendiente, un kFloor en "—" no probaría nada sobre BLOQUEANTE 3. */
 async function resolveEverythingExceptCurrency(page){
   await page.locator('[data-tabbtn="resumen"]').click();
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   const pct = page.locator('[data-lmf="flat.pct"]');

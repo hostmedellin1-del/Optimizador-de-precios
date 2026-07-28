@@ -14,6 +14,11 @@
    interacción aquí hace `.click()` antes de `.fill()`. */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 /* P1 (revision externa): floorReadinessBlocked/baseReadinessBlocked ahora
    bloquean Min Price/Base Price GLOBALES si CUALQUIER canal activo tiene un
    dato financiero pendiente — no solo el canal que hoy fija el numero. Este
@@ -50,6 +55,7 @@ async function setupFixedPriceScenario(page){
   await page.goto('/index.html');
   await fillField(page, '[data-k="fixedCost"]', '100');
   await fillField(page, '[data-k="varCost"]', '0');
+  await openStrategy(page);
   await fillField(page, '[data-k="margin"]', '50');
   // apagar todos los descuentos activos por defecto (aisla el efecto del LM fijo)
   await page.evaluate(async () => {

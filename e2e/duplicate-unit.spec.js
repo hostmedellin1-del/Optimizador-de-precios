@@ -65,7 +65,9 @@ test('Duplicar crea una nueva unidad bloqueada: conserva configuración, reinici
   await expect(page.locator('#unitName')).toHaveValue('Origen duplicable');
   await expect(page.locator('#kFloor')).not.toHaveText('—');
   const originalFloor = await page.locator('#kFloor').innerText();
-  const originalBase = await page.locator('#kBase').innerText();
+  // Base Price está dentro de la estrategia avanzada, plegada por defecto.
+  // textContent conserva el dato sin obligar al usuario a abrirla.
+  const originalBase = await page.locator('#kBase').textContent();
 
   // El handler abre confirm() inmediatamente al cerrar prompt(). Un único
   // listener temporal evita una carrera entre ambos diálogos consecutivos.

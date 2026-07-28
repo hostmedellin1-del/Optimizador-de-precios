@@ -53,19 +53,24 @@ realmente usa cada unidad.
 2. Si usas el desglose, llena los costos reales y marca **Revisé estos costos reales en
    USD, incluidos los valores en cero.** Sin esa confirmación, el desglose no alimenta las
    recomendaciones.
-3. Completa **Margen objetivo total %**, **Ventana de reserva del mercado (días, mediana)**,
-   **Estadía promedio (noches)** y **Base que recomienda PriceLabs / mercado**.
-4. Configura **Last-Minute de PriceLabs** con el modo que realmente usa esa unidad y marca
-   **Confirmé este modo directamente en PriceLabs**.
-5. Confirma que **Min Price es el precio final que PriceLabs muestra y respeta como piso**.
+3. Completa **Estadía promedio (noches)**. Es lo único adicional del flujo diario que queda
+   visible junto a los costos y Min Price.
+4. Si vas a definir estrategia de precios, abre **Estrategia de PriceLabs**. Allí están
+   **Margen objetivo total %**, **Ventana de reserva del mercado (días, mediana)** y
+   **Base que recomienda PriceLabs / mercado**.
+5. En esa misma sección configura **Last-Minute de PriceLabs** con el modo que realmente usa
+   esa unidad y marca **Confirmé este modo directamente en PriceLabs**.
+6. Confirma que **Min Price es el precio final que PriceLabs muestra y respeta como piso**.
    Esto solo confirma el significado del número: la app seguirá protegiéndote frente a
    Offset, promociones y comisiones de cada canal.
-6. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
+7. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
    las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones
    aplicables con fuente y fecha para cada canal.
-7. Revisa **Techo total por ventana** en Resumen. Es el máximo descuento total que estás
-   dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.
-8. Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación
+8. Revisa **Techo total por ventana** dentro de **Estrategia de PriceLabs**. Es el máximo
+   descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo
+   Last-Minute automático.
+9. Cuando los bloqueos se resuelvan, revisa Min Price y, si usas estrategia, Base Price,
+   Offset y Comparación
    antes de copiar una configuración a PriceLabs.
 
 ### Duplicar una unidad parecida
@@ -153,8 +158,10 @@ en USD →**. Hasta entonces, los números quedan bloqueados.
 
 ### Resumen
 
-Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos.
-Modifica aquí **Techo total por ventana**; en Comparación solo se muestra.
+Es la pantalla de decisión diaria: costos, estadía promedio, **Costo por noche** y
+**Min Price → PriceLabs** quedan visibles primero. **Estrategia de PriceLabs** está plegada
+para no distraer ese flujo; ábrela cuando necesites Base Price, Last-Minute, techos o el
+análisis por ventana. Modifica allí **Techo total por ventana**; en Comparación solo se muestra.
 
 ### ¿Cómo se calcula?
 

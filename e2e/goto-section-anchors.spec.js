@@ -27,8 +27,10 @@ test('Ir a Last-Minute de PriceLabs: desde Resumen (el caso del bug — ya se es
   await btn.click();
 
   // Sigue en Resumen (no cambia de pestaña porque ya estaba ahí) y el select
-  // de modo LM (dentro de la sección Last-Minute) queda visible y enfocado.
+  // de modo LM (dentro de la estrategia avanzada, plegada de entrada) queda
+  // visible y enfocado. El enlace debe desplegarla antes de llegar.
   await expect(page.locator('.tab-panel[data-tab="resumen"]')).toHaveClass(/active/);
+  await expect(page.locator('#strategySection')).toHaveAttribute('open', '');
   await expect(page.locator('#lmModeSelect')).toBeFocused();
   await expect(page.locator('#lmSection')).toBeInViewport();
 });
@@ -108,6 +110,7 @@ test('la sección destino recibe el resaltado breve (.goto-highlight) al llegar'
 
 test('caso "PRECIO FIJO ACTIVO — BASE NO APLICA" (LM en modo fixed_price cubriendo el día 45): su botón también apunta a la sección Last-Minute, donde ese modo se configura', async ({page}) => {
   await page.goto('/index.html');
+  await page.locator('#strategySection summary').click();
   await page.selectOption('#lmModeSelect', 'fixed_price');
   await page.locator('[data-lmf="fixedPrice.on"]').check();
   const priceInput = page.locator('[data-lmf="fixedPrice.price"]');

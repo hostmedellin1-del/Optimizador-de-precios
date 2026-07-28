@@ -11,6 +11,11 @@
    copia en USD) y una comprobacion basica de accesibilidad (labels). */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 async function fillField(page, selector, value){
   const loc = page.locator(selector);
   await loc.click();
@@ -155,6 +160,7 @@ test('BLOQUEANTE 2: agregar SOLO "Consumos: 5" en la calculadora detallada NO ba
   await page.goto('/index.html');
   // Resolver LM + datos de negocio para poder ver un Piso numérico y aislar
   // el mecanismo de costos bajo prueba.
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   const pct = page.locator('[data-lmf="flat.pct"]');

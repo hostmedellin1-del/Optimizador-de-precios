@@ -110,12 +110,13 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <ol>
       <li>En <strong>Resumen → Costos por noche</strong>, ingresa <strong>Fijos</strong> y <strong>Variables</strong>, o abre <strong>Calcular a partir de costos detallados</strong>.</li>
       <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones.</li>
-      <li>Completa <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong>, <strong>Estadía promedio (noches)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
-      <li>Configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
+      <li>Completa <strong>Estadía promedio (noches)</strong>. Es lo único adicional del flujo diario que queda visible junto a los costos y Min Price.</li>
+      <li>Si vas a definir estrategia de precios, abre <strong>Estrategia de PriceLabs</strong>. Allí están <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
+      <li>En esa misma sección configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
       <li>Confirma que <strong>Min Price es el precio final que PriceLabs muestra y respeta como piso</strong>. Esto solo confirma el significado del número: la app seguirá protegiéndote frente a Offset, promociones y comisiones de cada canal.</li>
       <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones aplicables con fuente y fecha para cada canal.</li>
-      <li>Revisa <strong>Techo total por ventana</strong> en Resumen. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
-      <li>Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
+      <li>Revisa <strong>Techo total por ventana</strong> dentro de <strong>Estrategia de PriceLabs</strong>. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
+      <li>Cuando los bloqueos se resuelvan, revisa Min Price y, si usas estrategia, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
     </ol>
     <h3>Duplicar una unidad parecida</h3>
     <ol>
@@ -165,7 +166,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   <section id="pestanas">
     <h2>5. Para qué sirve cada pestaña</h2>
     <h3>Resumen</h3>
-    <p>Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
+    <p>Es la pantalla de decisión diaria: costos, estadía promedio, <strong>Costo por noche</strong> y <strong>Min Price → PriceLabs</strong> quedan visibles primero. <strong>Estrategia de PriceLabs</strong> está plegada para no distraer ese flujo; ábrela cuando necesites Base Price, Last-Minute, techos o el análisis por ventana. Modifica allí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
     <h3>¿Cómo se calcula?</h3>
     <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio FINAL mostrado por PriceLabs</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global está bloqueada, por lo que debes leer sus avisos de confiabilidad. El simulador no vuelve a aplicar factores internos de PriceLabs a un precio que ya es final.</p>
     <h3>Airbnb, Booking.com, Expedia y Directo</h3>

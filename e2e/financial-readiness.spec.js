@@ -17,7 +17,13 @@
       malformado nunca marca nada como verificado ni rompe la app. */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 async function verifyLm(page){
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   const pct = page.locator('[data-lmf="flat.pct"]');

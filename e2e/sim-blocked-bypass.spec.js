@@ -16,6 +16,11 @@
    prueba dejando esos otros datos ya resueltos. */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 async function resolveAllFinancialFacts(page){
   await page.locator('[data-tabbtn="ch-booking"]').click();
   await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
@@ -48,6 +53,7 @@ test('con un precio fijo LM, el botón tampoco precarga nada mientras falte conf
   await page.goto('/index.html');
   const fc = page.locator('[data-k="fixedCost"]');
   await fc.click(); await fc.fill('100'); await fc.dispatchEvent('change');
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'fixed_price');
   const price = page.locator('[data-lmf="fixedPrice.price"]');
   await price.click(); await price.fill('150'); await price.dispatchEvent('change');
@@ -74,6 +80,7 @@ test('cuando el Min Price final está listo, el botón SÍ lo precarga normalmen
   await fc.click(); await fc.fill('40'); await fc.dispatchEvent('change');
   const vc = page.locator('[data-k="varCost"]');
   await vc.click(); await vc.fill('25'); await vc.dispatchEvent('change');
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   const pct = page.locator('[data-lmf="flat.pct"]');

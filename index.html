@@ -57,6 +57,17 @@ button:hover{background:rgba(214,65,44,.24);}
 .kpi .v{display:block;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600;}
 .kpi.accent .v{color:var(--accent);}
 .kpi .s{display:block;font-size:10.5px;color:var(--faint);margin-top:2px;}
+/* El objetivo diario es encontrar un Min Price seguro. La configuración que
+   sirve para estrategia (Base Price, LM y techos) queda agrupada para no
+   competir visualmente con ese flujo principal, sin eliminarla ni alterar el
+   motor. */
+.strategy-panel{margin-bottom:14px;}
+.strategy-panel>summary{list-style:none;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
+.strategy-panel>summary::-webkit-details-marker{display:none;}
+.strategy-panel>summary::after{content:'Mostrar';float:right;font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--faint);}
+.strategy-panel[open]>summary{margin-bottom:14px;}
+.strategy-panel[open]>summary::after{content:'Ocultar';}
+.strategy-panel .strategy-content{display:flex;flex-direction:column;gap:0;}
 /* alerts */
 .alerts{display:flex;flex-direction:column;gap:8px;}
 .alert{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;border:1px solid;}
@@ -242,23 +253,37 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
         <p class="hint" id="costBreakdownStatusHint"></p>
       </div>
     </details>
-    <div class="field"><label for="f-margin">Margen objetivo total %</label><input id="f-margin" type="number" data-k="margin" step="1"></div>
-    <div class="field"><label for="f-marketWindow">Ventana de reserva del mercado (días, mediana)</label><input id="f-marketWindow" type="number" data-k="marketWindow" step="1"></div>
     <div class="field"><label for="f-avgNights">Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></label><input id="f-avgNights" type="number" data-k="avgNights" step="1" min="1"></div>
-    <div class="field"><label for="f-marketBase">Base que recomienda PriceLabs / mercado</label><input id="f-marketBase" type="number" data-k="marketBase" step="1"></div>
   </div>
   <div class="card">
     <h2>Resultado del modelo</h2>
     <div class="kpis">
       <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
-      <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
       <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que puedes aceptar. Ni un peso menos, en ningún canal, ni con el peor descuento activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
-      <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos, Offset y Last-Minute configurados HOY en cada canal, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
     </div>
-    <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales — YA incorpora el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> y el Last-Minute que tengas configurados hoy en cada canal, así que este número se recalcula solo si cambias cualquiera de los dos. Si un canal necesita más ajuste por su comisión, seguís tocando el Offset % de esa pestaña — Base reacciona automáticamente al valor que pongas ahí.</p>
-    <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
+    <p class="hint" style="margin-top:10px;">Este es el número principal para no vender bajo costo. Configura primero costos, estadía promedio, canales y descuentos activos.</p>
+    <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver una reserva con este Min Price →</button>
   </div>
 </div>
+<section class="card" id="priceLabsMinPriceSection">
+  <h2 id="priceLabsMinPriceHeading" tabindex="-1">Contrato del Min Price de PriceLabs <span class="hint">la protección contra vender bajo costo</span></h2>
+  <p class="hint">El Min Price que calcula esta app es el <strong>precio final mínimo que PriceLabs puede publicar</strong>. No vuelve a restar temporada, demanda, ocupación ni Last-Minute; sí protege contra Offset de Kunas, descuentos OTA, comisiones y costos. Marca esto solo después de comprobar en PriceLabs que su campo “Precio mínimo” no se cruza después de sus ajustes internos. Las OTA aún pueden publicar por debajo por sus propios descuentos: eso ya está incluido en el cálculo.</p>
+  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-floor-contract-confirmed><span>Confirmé en PriceLabs que el “Precio mínimo” es un piso FINAL para esta unidad.</span></label></div>
+</section>
+<details class="strategy-panel" id="strategySection">
+  <summary>Estrategia de PriceLabs <span class="hint">Base Price, Last-Minute, techos y análisis por ventana</span></summary>
+  <div class="strategy-content">
+<section class="card" id="strategyInputsSection">
+  <h2>Base Price y objetivo <span class="hint">opcional: úsalo para optimizar margen y ocupación, no para definir el mínimo seguro</span></h2>
+  <div class="field"><label for="f-margin">Margen objetivo total %</label><input id="f-margin" type="number" data-k="margin" step="1"></div>
+  <div class="field"><label for="f-marketWindow">Ventana de reserva del mercado (días, mediana)</label><input id="f-marketWindow" type="number" data-k="marketWindow" step="1"></div>
+  <div class="field"><label for="f-marketBase">Base que recomienda PriceLabs / mercado</label><input id="f-marketBase" type="number" data-k="marketBase" step="1"></div>
+  <div class="kpis">
+    <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
+    <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos, Offset y Last-Minute configurados HOY en cada canal, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
+  </div>
+  <p class="hint" style="margin-top:10px;">Base Price ya incorpora Offset y Last-Minute reales. Si solo quieres evitar vender bajo costo, no necesitas configurarlo.</p>
+</section>
 <section class="card" id="lmSection">
   <h2 id="lmSectionHeading" tabindex="-1">Last-Minute de PriceLabs <span class="hint">cómo baja el precio cerca del check-in — configúralo si sabes el modo real de tu cuenta</span></h2>
   <p class="hint">Por defecto usa el modo "Automático" (el techo por ventana de siempre) — cámbialo solo si confirmaste en PriceLabs que tu cuenta usa otro modo. Ninguno de estos modos trae un % de ejemplo activado: los llenas tú.</p>
@@ -274,11 +299,6 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
   <div id="lmModeFields"></div>
 </section>
-<section class="card" id="priceLabsMinPriceSection">
-  <h2 id="priceLabsMinPriceHeading" tabindex="-1">Contrato del Min Price de PriceLabs <span class="hint">la protección contra vender bajo costo</span></h2>
-  <p class="hint">El Min Price que calcula esta app es el <strong>precio final mínimo que PriceLabs puede publicar</strong>. No vuelve a restar temporada, demanda, ocupación ni Last-Minute; sí protege contra Offset de Kunas, descuentos OTA, comisiones y costos. Marca esto solo después de comprobar en PriceLabs que su campo “Precio mínimo” no se cruza después de sus ajustes internos. Las OTA aún pueden publicar por debajo por sus propios descuentos: eso ya está incluido en el cálculo.</p>
-  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-floor-contract-confirmed><span>Confirmé en PriceLabs que el “Precio mínimo” es un piso FINAL para esta unidad.</span></label></div>
-</section>
 <section class="card" id="ceilingsSection">
   <h2>Techo total por ventana <span class="hint">el % máximo de descuento total que aceptas ver en el precio del huésped, sumando nativos + LM</span></h2>
   <div class="table-wrap">
@@ -288,6 +308,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     </table>
   </div>
 </section>
+  </div>
+</details>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -978,6 +1000,8 @@ function goToSection(tabId, anchorKey){
   requestAnimationFrame(()=>{
     const section = document.getElementById(anchor.sectionId);
     if(section){
+      const collapsedParent = section.closest('details');
+      if(collapsedParent) collapsedParent.open = true;
       section.scrollIntoView({behavior: prefersReducedMotion ? 'auto' : 'smooth', block:'start'});
       section.classList.add('goto-highlight');
       setTimeout(()=>section.classList.remove('goto-highlight'), 1600);

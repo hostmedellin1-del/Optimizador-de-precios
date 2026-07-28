@@ -20,6 +20,11 @@
    de LM bajo prueba, dejando el resto de los datos ya resueltos. */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 async function resolveAllFinancialFacts(page){
   await page.locator('[data-tabbtn="ch-booking"]').click();
   await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
@@ -58,6 +63,7 @@ test('config por defecto: Min Price exige confirmar el piso final y Base/Offset 
 
 test('marcar el LM automático como "verificado" NO desbloquea Base, y Min Price sigue exigiendo confirmar el piso final', async ({page}) => {
   await page.goto('/index.html');
+  await openStrategy(page);
   await page.locator('[data-lm="verified"]').check();
   await expect(page.locator('#kFloor')).toHaveText('—', {timeout: 3000});
   await expect(page.locator('#validationBanner')).toContainText('LM SIN VERIFICAR');
@@ -75,6 +81,7 @@ test('el Piso final se desbloquea solo tras confirmar su contrato; Base además 
   await fc.click(); await fc.fill('40'); await fc.dispatchEvent('change');
   const vc = page.locator('[data-k="varCost"]');
   await vc.click(); await vc.fill('25'); await vc.dispatchEvent('change');
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
   await page.locator('[data-lmf="flat.pct"]').fill('20');
@@ -109,6 +116,7 @@ test('Matriz: un escenario que SERÍA "RENTABLE EN TODOS" con LM verificado, se 
   await page.locator('[data-k="fixedCost"]').dispatchEvent('change');
   await page.locator('[data-k="varCost"]').fill('0');
   await page.locator('[data-k="varCost"]').dispatchEvent('change');
+  await openStrategy(page);
   await page.locator('[data-k="margin"]').fill('5');
   await page.locator('[data-k="margin"]').dispatchEvent('change');
   await page.evaluate(async () => {

@@ -5,6 +5,17 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.19.0] — Resumen orientado al Min Price diario
+
+**Simplificado** — el Resumen prioriza el flujo que se usa a diario: costos, estadía
+promedio, costo por noche y **Min Price → PriceLabs**. Base Price, margen, Last-Minute,
+techos y análisis por ventana siguen disponibles sin cambios dentro de **Estrategia de
+PriceLabs**, plegada inicialmente.
+
+**Acceso seguro** — los enlaces de avisos hacia Last-Minute despliegan esa sección antes de
+hacer scroll y foco. No se modificó el motor financiero, las configuraciones guardadas ni
+los bloqueos; solo la presentación y su guía de uso.
+
 ## [0.18.0] — Min Price como precio final de PriceLabs
 
 **Corregido** — el motor dejaba que el contrato de Min Price y el del simulador trataran

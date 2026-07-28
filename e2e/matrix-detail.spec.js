@@ -8,8 +8,14 @@
    cualquier número al azar). */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 test('Techos por ventana: se editan en Resumen con el mismo control y la Matriz conserva su valor sin editor', async ({page}) => {
   await page.goto('/index.html');
+  await openStrategy(page);
 
   const ceiling = page.locator('#ceilingsSection [data-ceil="w0"]');
   await expect(ceiling).toBeVisible();
