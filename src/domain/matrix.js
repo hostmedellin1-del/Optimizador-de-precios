@@ -110,7 +110,7 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
     vMsg = `Esta ventana solo sale "rentable en todos" con el costo actual (${f$(model.cost,currency)}), que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar este veredicto como definitivo.`;
   } else if(unready.length){
     vLvl='warn'; vTag='DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
-    vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unready.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unready.map(c=>c.name).join(', ')}: ${unready.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en Resumen → "Verificación de datos financieros" antes de tratar este veredicto como definitivo.`;
+    vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unready.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unready.map(c=>c.name).join(', ')}: ${unready.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en la pestaña del canal correspondiente antes de tratar este veredicto como definitivo.`;
   } else {
     vLvl='ok'; vTag='RENTABLE EN TODOS';
     vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worstAsNet.c.name}, con ${f$(worstAsNet.netV,currency)}.`;

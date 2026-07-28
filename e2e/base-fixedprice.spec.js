@@ -25,13 +25,18 @@ import {test, expect} from '@playwright/test';
    realmente quiere aislar. Mismo patron ya usado en e2e/lm-blocking.spec.js /
    e2e/sim-blocked-bypass.spec.js. */
 async function resolveAllFinancialFacts(page){
-  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-booking"]').click();
   await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-expedia"]').click();
   await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="expedia"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-airbnb"]').click();
   await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
-  for(const chId of ['airbnb','booking','expedia','direct']){
-    await page.selectOption(`select[data-verif-status="bankFeePctByChannel"][data-verif-ch="${chId}"]`, 'no_aplica');
-  }
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-direct"]').click();
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'no_aplica');
+  await page.locator('[data-tabbtn="resumen"]').click();
 }
 
 async function fillField(page, selector, value){

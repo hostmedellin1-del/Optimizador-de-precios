@@ -437,9 +437,9 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 ## 5. Pendiente real — son decisiones de negocio de Dani, no técnicas. NO inventar valores.
 
 **FASE 5: los puntos 2, 3, 6 y 7 de abajo ya NO son solo "pendientes documentados" — desde
-`src/domain/readiness.js`, mientras sigan sin confirmarse en Resumen → "Verificación de
-datos financieros", BLOQUEAN activamente Piso/Base/Offset/"Rentable" de los canales que
-afectan (ver tabla en sección 9). Confirmarlos ahí (marcar "Verificado" con fuente/fecha,
+`src/domain/readiness.js`, mientras sigan sin confirmarse en la pestaña del canal que
+afectan, BLOQUEAN activamente Piso/Base/Offset/"Rentable" de los canales que
+afectan (ver tabla en sección 9). Confirmarlos allí (marcar "Verificado" con fuente/fecha,
 o "No aplica" si Dani confirma que no corresponde a esta unidad) es lo único que los
 desbloquea — nunca se infieren ni se asumen. Corrección P1 (revisión externa): como Min
 Price/Base Price son números GLOBALES (un solo valor para los 4 canales), basta que
@@ -474,10 +474,6 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
 5. Multi-unidad simultánea: el sistema permite guardar/cargar unidades por nombre, pero
    no comparar varias a la vez en una sola vista (portafolio). No construir esto sin que
    Dani lo pida — es una función nueva, no un arreglo.
-6. Verificar en Kunas si el Offset por canal de PriceLabs realmente se aísla por canal o
-   se distribuye a todos los conectados (ver advertencia sección 2).
-   **(clave `hospyOffsetIsolated` — bloquea cualquier canal con Offset ≠ 0% mientras esté
-   pendiente.)**
 8. Revisar los Techos por ventana en Comparación ahora que la Oferta VIP de Expedia es
    real (20%, siempre activa, no editable) — varias ventanas (8-14/15-29/30+ días) tienen
    techo por defecto (8%/0%/15%) más bajo que ese 20%, así que Expedia sale "TECHO
@@ -657,9 +653,9 @@ por defecto: nadie inventó un 10%, Dani debe confirmar por listing si aplica y 
 
 ### Verificado / No-verificado (`src/domain/verification.js`) y bloqueo real por canal (`src/domain/readiness.js`, FASE 5)
 Registro por unidad para hechos que la app NUNCA puede confirmar sola (Genius+Mobile
-ambos activos en Booking, aislamiento real del Offset en Kunas, comisión bancaria real
-por canal, mezcla de niveles VIP de Expedia, modo real de Last-Minute, no-reembolsable de
-Airbnb). Cada clave declara un `scope`: `'global'` (un registro para toda la unidad) o
+ambos activos en Booking, comisión bancaria real por canal, mezcla de niveles VIP de
+Expedia y descuentos de Airbnb). Cada clave declara un `scope`: `'global'` (un registro
+para toda la unidad) o
 `'channel'` (un registro POR CANAL — hoy solo `bankFeePctByChannel`, porque la comisión
 bancaria real puede confirmarse en un canal y no en otro). Cada registro guarda
 `{status, source, date, note}` — no solo `status/note` como antes. `status` puede ser
@@ -681,13 +677,15 @@ afecta:
 
 | Dato (`VERIFICATION_KEYS`) | Alcance | Afecta a... | Cuándo aplica |
 |---|---|---|---|
-| `hospyOffsetIsolated` | global | cualquier canal con Offset ≠ 0% | siempre que ese canal tenga Offset configurado |
 | `bankFeePctByChannel` | **por canal** | el canal cuya comisión bancaria/pasarela > 0% | por defecto Booking y Directo (6%); Airbnb/Expedia en 0% no lo necesitan |
 | `bookingGeniusMobileBoth` | global | Booking | solo si Genius Y Mobile Rate están AMBOS activos |
 | `expediaVipTierMix` | global | Expedia | solo si la Oferta VIP (`ex_mod`) está activa |
 | `airbnbNonRefundable` | global | Airbnb | solo si el no-reembolsable (`ab_nonref`) está activo |
 | `airbnbTopRatedGuest` | global | Airbnb | solo si el "Top Rated Guest Discount" (`ab_topguest`) está activo |
-| `priceLabsLmMode` | global | (informativo) | el bloqueo real de LM ya vive en `lmConfig.verified`/`isLmBlocked()` — esta clave es solo para dejar nota/fuente/fecha de esa confirmación, nunca una segunda fuente de verdad |
+
+El Offset sigue siendo 100% manual por canal (`offsetPct`) y participa en los cálculos
+exactamente como antes; no hay distribución automática de PMS que verificar ni un gate
+adicional para ese ajuste.
 
 `compute()` expone `readiness` (el resultado completo, por canal) y
 `floorReadinessBlocked`/`baseReadinessBlocked` — el gate GLOBAL para Min Price/Base Price.
@@ -881,8 +879,8 @@ reales, cada uno se compara contra lo configurado y aparece en el desglose
 con una causa explícita; si no escribió ninguno, la causa queda genérica
 ("ingresa comisiones/tarifas reales para acotar el motivo"). **La
 reconciliación NUNCA cambia `channels`/`discounts` automáticamente** — solo
-sugiere qué revisar; confirmar un valor real sigue siendo 100% manual en
-Resumen → "Verificación de datos financieros".
+sugiere qué revisar; confirmar un valor real sigue siendo 100% manual en la pestaña del
+canal correspondiente.
 
 **`numericMatch` / `modelVerified` / `reliable` (corrección adicional,
 auditoría externa, ronda 4)**: `reliable` NO puede ser `true` solo porque la

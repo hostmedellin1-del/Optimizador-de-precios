@@ -45,14 +45,15 @@ async function setRealCosts(page){
    exactamente el caso obligatorio del encargo: un canal que NO fija el
    número global hoy, pero sigue pendiente. */
 async function resolveAllExceptDirectBankFee(page){
-  await page.locator('[data-tabbtn="resumen"]').click();
-  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-booking"]').click();
   await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-expedia"]').click();
   await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'verificado');
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="expedia"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-airbnb"]').click();
   await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
-  for(const chId of ['airbnb','booking','expedia']){
-    await page.selectOption(`select[data-verif-status="bankFeePctByChannel"][data-verif-ch="${chId}"]`, 'no_aplica');
-  }
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]', 'no_aplica');
   // Directo se deja EXPLICITAMENTE sin tocar (no_verificado, el default).
 }
 
@@ -67,7 +68,7 @@ test('catálogo de fábrica: con LM ya verificado, Min Price/Base Price siguen b
 
   const banner = page.locator('#validationBanner');
   await expect(banner).toContainText('DATO FINANCIERO SIN VERIFICAR');
-  await expect(banner.locator('button', {hasText: 'Ir a Verificación de datos financieros'}).first()).toBeVisible();
+  await expect(banner.locator('button[data-goto="ch-booking"]').first()).toBeVisible();
 });
 
 test('Booking: el Offset sugerido de su propia pestaña queda etiquetado no confiable por Genius+Mobile/comisión bancaria sin confirmar', async ({page}) => {
@@ -76,13 +77,14 @@ test('Booking: el Offset sugerido de su propia pestaña queda etiquetado no conf
   await page.locator('[data-tabbtn="ch-booking"]').click();
   const hint = page.locator('.tab-panel[data-tab="ch-booking"] .offset-hint');
   await expect(hint).toContainText('NO son una recomendación confiable');
-  await expect(hint).toContainText('Verificación de datos financieros');
+  await expect(hint).toContainText('esta pestaña');
 });
 
 test('confirmar SOLO un dato desbloquea solo lo que ese dato afecta — el resto sigue pendiente', async ({page}) => {
   await page.goto('/index.html');
   await verifyLm(page);
   // Confirma unicamente la mezcla VIP de Expedia.
+  await page.locator('[data-tabbtn="ch-expedia"]').click();
   await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'verificado');
 
   await page.locator('[data-tabbtn="ch-expedia"]').click();
@@ -210,15 +212,16 @@ test('P1: las simulaciones/diagnósticos individuales de Airbnb (canal ya confir
   expect(text).toMatch(/De USD 200 que puso PriceLabs/);
 });
 
-test('exportar/importar conserva status, fuente, fecha y nota de verificación exactamente', async ({page}) => {
+test('exportar/importar conserva status, fuente, fecha y nota de la comisión bancaria de Booking exactamente', async ({page}) => {
   await page.goto('/index.html');
-  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'verificado');
-  const sourceInput = page.locator('input[data-verif-source="hospyOffsetIsolated"]');
-  await sourceInput.click(); await sourceInput.fill('chat de soporte Kunas #4521'); await sourceInput.dispatchEvent('change');
-  const dateInput = page.locator('input[data-verif-date="hospyOffsetIsolated"]');
+  await page.locator('[data-tabbtn="ch-booking"]').click();
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'verificado');
+  const sourceInput = page.locator('input[data-verif-source="bankFeePctByChannel"][data-verif-ch="booking"]');
+  await sourceInput.click(); await sourceInput.fill('extracto Bancolombia'); await sourceInput.dispatchEvent('change');
+  const dateInput = page.locator('input[data-verif-date="bankFeePctByChannel"][data-verif-ch="booking"]');
   await dateInput.fill('2026-07-15'); await dateInput.dispatchEvent('change');
-  const noteInput = page.locator('input[data-verif-note="hospyOffsetIsolated"]');
-  await noteInput.click(); await noteInput.fill('confirmado por escrito'); await noteInput.dispatchEvent('change');
+  const noteInput = page.locator('input[data-verif-note="bankFeePctByChannel"][data-verif-ch="booking"]');
+  await noteInput.click(); await noteInput.fill('confirmado por extracto'); await noteInput.dispatchEvent('change');
 
   const name = 'E2E Verification Test ' + Date.now();
   await page.locator('#unitName').fill(name);
@@ -228,10 +231,11 @@ test('exportar/importar conserva status, fuente, fecha y nota de verificación e
   await page.reload();
   await page.selectOption('#unitList', {label: name});
   await expect(page.locator('#unitName')).toHaveValue(name, {timeout: 5000});
-  await expect(page.locator('select[data-verif-status="hospyOffsetIsolated"]')).toHaveValue('verificado');
-  await expect(page.locator('input[data-verif-source="hospyOffsetIsolated"]')).toHaveValue('chat de soporte Kunas #4521');
-  await expect(page.locator('input[data-verif-date="hospyOffsetIsolated"]')).toHaveValue('2026-07-15');
-  await expect(page.locator('input[data-verif-note="hospyOffsetIsolated"]')).toHaveValue('confirmado por escrito');
+  await page.locator('[data-tabbtn="ch-booking"]').click();
+  await expect(page.locator('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]')).toHaveValue('verificado');
+  await expect(page.locator('input[data-verif-source="bankFeePctByChannel"][data-verif-ch="booking"]')).toHaveValue('extracto Bancolombia');
+  await expect(page.locator('input[data-verif-date="bankFeePctByChannel"][data-verif-ch="booking"]')).toHaveValue('2026-07-15');
+  await expect(page.locator('input[data-verif-note="bankFeePctByChannel"][data-verif-ch="booking"]')).toHaveValue('confirmado por extracto');
 
   // limpieza
   page.once('dialog', d => d.accept());
@@ -251,7 +255,7 @@ test('importar un archivo con verification malformado (status inventado, canal c
     units: [{key: 'v3:e2e-malformed-verification', value: JSON.stringify({
       name: 'Malformada',
       verification: {
-        hospyOffsetIsolated: {status: 'CONFIA_EN_MI_TOTALMENTE', source: 123, date: 'no-es-fecha', note: {a:1}},
+        bookingGeniusMobileBoth: {status: 'CONFIA_EN_MI_TOTALMENTE', source: 123, date: 'no-es-fecha', note: {a:1}},
         bankFeePctByChannel: {booking: 'no soy un objeto', airbnb: null}
       }
     })}]
@@ -264,10 +268,12 @@ test('importar un archivo con verification malformado (status inventado, canal c
   await page.reload();
   await page.selectOption('#unitList', {label: 'Malformada'});
   await expect(page.locator('#unitName')).toHaveValue('Malformada', {timeout: 5000});
-  await expect(page.locator('select[data-verif-status="hospyOffsetIsolated"]')).toHaveValue('no_verificado');
+  await page.locator('[data-tabbtn="ch-booking"]').click();
+  await expect(page.locator('select[data-verif-status="bookingGeniusMobileBoth"]')).toHaveValue('no_verificado');
   await expect(page.locator('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]')).toHaveValue('no_verificado');
   await expect(page.locator('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]')).toHaveValue('no_verificado');
   // La app sigue funcional (no se rompio con el import malformado) — el KPI renderiza algo, no explota.
+  await page.locator('[data-tabbtn="resumen"]').click();
   await expect(page.locator('#kCost')).toBeVisible();
 
   // limpieza
@@ -275,4 +281,17 @@ test('importar un archivo con verification malformado (status inventado, canal c
   await page.selectOption('#unitList', evilValue);
   page.once('dialog', d => d.accept());
   await page.locator('#deleteUnit').click();
+});
+
+test('las verificaciones se muestran solamente en la pestaña correspondiente a cada canal', async ({page}) => {
+  await page.goto('/index.html');
+  await expect(page.locator('#verificationSection')).toHaveCount(0);
+  await page.locator('[data-tabbtn="ch-airbnb"]').click();
+  await expect(page.locator('.tab-panel[data-tab="ch-airbnb"] select[data-verif-status]')).toHaveCount(3);
+  await page.locator('[data-tabbtn="ch-booking"]').click();
+  await expect(page.locator('.tab-panel[data-tab="ch-booking"] select[data-verif-status]')).toHaveCount(2);
+  await page.locator('[data-tabbtn="ch-expedia"]').click();
+  await expect(page.locator('.tab-panel[data-tab="ch-expedia"] select[data-verif-status]')).toHaveCount(2);
+  await page.locator('[data-tabbtn="ch-direct"]').click();
+  await expect(page.locator('.tab-panel[data-tab="ch-direct"] select[data-verif-status]')).toHaveCount(1);
 });

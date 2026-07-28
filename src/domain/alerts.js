@@ -164,7 +164,7 @@ export function buildAlerts(config, model){
          confirmados. unreadyChannels() (src/domain/readiness.js) es la unica
          fuente que decide esto — la misma que usa engine.js para el gate
          global de Piso/Base (revision externa, P1). */
-      A.push({lvl:'warn',tag:'DATOS SIN VERIFICAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero ${unready.map(c=>c.name).join(', ')} depende${unready.length===1?'':'n'} de datos financieros sin confirmar (${unready.map(c=>model.readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}) — confírmalos en Resumen → "Verificación de datos financieros" antes de tratar esto como "sin problemas".`});
+      A.push({lvl:'warn',tag:'DATOS SIN VERIFICAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero ${unready.map(c=>c.name).join(', ')} depende${unready.length===1?'':'n'} de datos financieros sin confirmar (${unready.map(c=>model.readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}) — confírmalos en la pestaña del canal correspondiente antes de tratar esto como "sin problemas".`});
     } else {
       A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
     }

@@ -1,9 +1,9 @@
 /* Bug de UX corregido (revision externa): los botones "Ir a Last-Minute de
-   PriceLabs →" / "Ir a Verificación de datos financieros →" (banners de
-   bloqueo, Alertas, y el mensaje del Simulador bloqueado) solo llamaban a
+   PriceLabs →" (banners de bloqueo, Alertas y el mensaje del Simulador
+   bloqueado) solo llamaban a
    goToTab('resumen') — si el usuario YA estaba en la pestaña Resumen (que
-   es larga, con varias secciones apiladas: Costos, Last-Minute,
-   Verificación, Rentabilidad mensual...), visualmente no pasaba nada y
+   es larga, con varias secciones apiladas: Costos, Last-Minute y
+   Rentabilidad mensual...), visualmente no pasaba nada y
    nunca llegaba a la sección que necesitaba configurar.
 
    goToSection(tabId, anchorKey) (index.html) corrige esto: activa la
@@ -33,19 +33,18 @@ test('Ir a Last-Minute de PriceLabs: desde Resumen (el caso del bug — ya se es
   await expect(page.locator('#lmSection')).toBeInViewport();
 });
 
-test('Ir a Verificación de datos financieros: desde Resumen, la sección de verificación queda visible y su encabezado enfocado', async ({page}) => {
+test('Dato financiero pendiente: desde Resumen, el botón abre la pestaña del primer canal pendiente', async ({page}) => {
   await page.goto('/index.html');
   // Config por defecto: datos de negocio pendientes (Genius+Mobile, VIP
   // Expedia, comisión bancaria) -> el banner "DATO FINANCIERO SIN VERIFICAR"
   // también aparece de entrada.
-  const btn = page.locator('#validationBanner button[data-goto="resumen:verificacion"]').first();
+  const btn = page.locator('#validationBanner button[data-goto="ch-booking"]').first();
   await expect(btn).toBeVisible();
 
   await btn.click();
 
-  await expect(page.locator('.tab-panel[data-tab="resumen"]')).toHaveClass(/active/);
-  await expect(page.locator('#verificationSectionHeading')).toBeFocused();
-  await expect(page.locator('#verificationSection')).toBeInViewport();
+  await expect(page.locator('.tab-panel[data-tab="ch-booking"]')).toHaveClass(/active/);
+  await expect(page.locator('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]')).toBeVisible();
 });
 
 test('Ir a Last-Minute de PriceLabs: tras visitar otra pestaña (Airbnb) y volver a Resumen, el destino sigue siendo correcto (no queda "pegado" a un estado de scroll/foco viejo)', async ({page}) => {
@@ -61,7 +60,7 @@ test('Ir a Last-Minute de PriceLabs: tras visitar otra pestaña (Airbnb) y volve
   await expect(page.locator('#lmModeSelect')).toBeFocused();
 });
 
-test('Ir a Verificación de datos financieros: desde la pestaña Simulador (botón real, sin pasar por Resumen primero), cambia de pestaña y enfoca la sección correcta', async ({page}) => {
+test('Dato financiero pendiente: desde la pestaña Simulador, el botón abre la pestaña del canal simulado', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="simulador"]').click();
   await expect(page.locator('.tab-panel[data-tab="simulador"]')).toHaveClass(/active/);
@@ -69,17 +68,16 @@ test('Ir a Verificación de datos financieros: desde la pestaña Simulador (bot�
 
   // Base Price sigue bloqueado por defecto (LM sin verificar) y no se
   // escribió ningún precio a mano -> el mensaje bloqueado del Simulador,
-  // con su botón hacia Verificación, debe estar visible AQUÍ MISMO, en la
+  // con su botón hacia el canal simulado, debe estar visible AQUÍ MISMO, en la
   // pestaña Simulador — la prueba real de "funciona desde otra pestaña".
-  const btn = page.locator('#simResult button[data-goto="resumen:verificacion"]');
+  const btn = page.locator('#simResult button[data-goto="ch-airbnb"]');
   await expect(btn).toBeVisible();
 
   await btn.click();
 
-  await expect(page.locator('.tab-panel[data-tab="resumen"]')).toHaveClass(/active/);
+  await expect(page.locator('.tab-panel[data-tab="ch-airbnb"]')).toHaveClass(/active/);
   await expect(page.locator('.tab-panel[data-tab="simulador"]')).not.toHaveClass(/active/);
-  await expect(page.locator('#verificationSectionHeading')).toBeFocused();
-  await expect(page.locator('#verificationSection')).toBeInViewport();
+  await expect(page.locator('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]')).toBeVisible();
 });
 
 test('Alertas (panel siempre visible arriba, fuera de la estructura de pestañas): sigue visible y usable al cambiar de pestaña, y el "Ver en Resumen →" sin sección específica (ej. tag INVIABLE) conserva el comportamiento de siempre (solo cambia de pestaña, sin inventar un destino que alerts.js no dio)', async ({page}) => {

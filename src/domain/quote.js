@@ -23,8 +23,7 @@
    automatico de siempre (cero regresion). El descuento no reembolsable de Airbnb
    (ab_nonref, catalogo) ya se aplica dentro de combineChannel() como capa
    apilable post-promo — no necesita codigo aparte aqui, ya viene incluido en
-   `r.applied`/`r.factor`. config.verification (opcional, src/domain/verification.js)
-   agrega una nota explicita cuando el Offset de Kunas no esta confirmado.
+   `r.applied`/`r.factor`.
 
    Deliberadamente NO toca en esta fase (fuera de alcance, ver reglas del
    encargo):
@@ -33,12 +32,11 @@
 
    scenario = {chId, days, nights, price}
    config   = {channels, discounts, windows, ceilings, fixedCost, varCost,
-               costBreakdown?, lmConfig?, verification?} */
+               costBreakdown?, lmConfig?} */
 import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
 import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
-import {isResolved} from './verification.js';
 
 export function quoteScenario(scenario, config){
   const {channels, discounts, windows, ceilings} = config;
@@ -93,10 +91,6 @@ export function quoteScenario(scenario, config){
   /* 2. Offset del canal (PriceLabs Pricing Offset), sobre el precio ya con LM. */
   const off = pct2(ch.offsetPct);
   const priceAfterOffset = priceAfterLm*(1+off/100);
-  const offsetResolved = config.verification ? isResolved(config.verification, 'hospyOffsetIsolated') : false;
-  assumptions.push(offsetResolved
-    ? 'Offset por canal confirmado/resuelto en Kunas.'
-    : 'Offset se asume especifico por canal (Pricing Offset de PriceLabs) — NO CONFIRMADO en Kunas si realmente se aisla por canal o se distribuye a todos los conectados. No trates el Offset como garantia hasta confirmarlo.');
 
   /* 3. Descuentos nativos del canal, a los dias/noches REALES del escenario. */
   const r = combineChannel(discounts, chId, days, nights);

@@ -17,13 +17,13 @@ import assert from 'node:assert/strict';
 import {normalizeUnit} from '../src/domain/persistence.js';
 import {defaultVerification, isVerified} from '../src/domain/verification.js';
 
-test('formato NUEVO (fase 5): status/source/date/note sobreviven el ciclo de normalizeUnit exactamente, para claves globales y por canal', () => {
+test('formato NUEVO (fase 5): status/source/date/note sobreviven el ciclo de normalizeUnit exactamente, para claves por canal y globales vigentes', () => {
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated = {status:'verificado', source:'chat soporte Kunas #4521', date:'2026-07-10', note:'confirmado por escrito'};
+  verification.bookingGeniusMobileBoth = {status:'verificado', source:'extranet de Booking', date:'2026-07-10', note:'ambos activos'};
   verification.bankFeePctByChannel.booking = {status:'verificado', source:'extracto Bancolombia', date:'2026-07-15', note:''};
   verification.bankFeePctByChannel.airbnb = {status:'no_aplica', source:'', date:'', note:'Airbnb no cobra comision bancaria en este listing'};
   const {state, warnings} = normalizeUnit({name:'Unidad nueva', verification});
-  assert.deepEqual(state.verification.hospyOffsetIsolated, verification.hospyOffsetIsolated);
+  assert.deepEqual(state.verification.bookingGeniusMobileBoth, verification.bookingGeniusMobileBoth);
   assert.deepEqual(state.verification.bankFeePctByChannel.booking, verification.bankFeePctByChannel.booking);
   assert.deepEqual(state.verification.bankFeePctByChannel.airbnb, verification.bankFeePctByChannel.airbnb);
   assert.equal(state.verification.bankFeePctByChannel.expedia.status, 'no_verificado', 'un canal que no se toco sigue en el default seguro');
@@ -34,16 +34,10 @@ test('migracion segura: unidad VIEJA con bankFeePctByChannel PLANO (pre-fase-5, 
   const oldShapeUnit = {
     name: 'Unidad vieja',
     verification: {
-      hospyOffsetIsolated: {status:'verificado', note:'ya lo habia confirmado antes'},
       bankFeePctByChannel: {status:'verificado', note:'confirme esto hace meses, formato viejo'}
     }
   };
   const {state, warnings} = normalizeUnit(oldShapeUnit);
-  // Clave global (sin cambio de forma): la migracion SI puede preservar 'verificado' — el
-  // encargo pide "nunca inventar" verificado, no pide destruir uno que ya era legitimo
-  // y de la MISMA forma (global) antes y despues de esta fase.
-  assert.equal(state.verification.hospyOffsetIsolated.status, 'verificado');
-  assert.equal(state.verification.hospyOffsetIsolated.note, 'ya lo habia confirmado antes');
   // Clave que CAMBIO de forma (plana -> por canal): el registro viejo no tiene
   // sub-claves por canal (raw.bankFeePctByChannel.booking es undefined), asi
   // que TODOS los canales deben caer al default seguro, nunca heredar el
@@ -61,25 +55,25 @@ test('unidad completamente vieja (sin claves de verificacion en absoluto) recibe
 
 test('payload malformado: status inventado NUNCA se acepta como verificado — cae a no_verificado con warning', () => {
   const {state, warnings} = normalizeUnit({name:'Evil', verification: {
-    hospyOffsetIsolated: {status:'TOTALMENTE_CONFIABLE_CONFIA_EN_MI', source:'', date:'', note:''}
+    bookingGeniusMobileBoth: {status:'TOTALMENTE_CONFIABLE_CONFIA_EN_MI', source:'', date:'', note:''}
   }});
-  assert.equal(state.verification.hospyOffsetIsolated.status, 'no_verificado');
-  assert.ok(warnings.some(w=>w.includes('hospyOffsetIsolated.status')));
+  assert.equal(state.verification.bookingGeniusMobileBoth.status, 'no_verificado');
+  assert.ok(warnings.some(w=>w.includes('bookingGeniusMobileBoth.status')));
 });
 
 test('payload malformado: source/note no-string, fecha con forma invalida — se descartan a favor del default, con warning, nunca rompen normalizeUnit', () => {
   assert.doesNotThrow(() => normalizeUnit({name:'Evil', verification: {
-    hospyOffsetIsolated: {status:'verificado', source: 12345, date:'no-es-una-fecha', note: {a:1}},
+    bookingGeniusMobileBoth: {status:'verificado', source: 12345, date:'no-es-una-fecha', note: {a:1}},
     bankFeePctByChannel: {booking: {status:'verificado', source: ['a','b'], date:'2026-99-99', note: null}}
   }}));
   const {state, warnings} = normalizeUnit({name:'Evil', verification: {
-    hospyOffsetIsolated: {status:'verificado', source: 12345, date:'no-es-una-fecha', note: {a:1}},
+    bookingGeniusMobileBoth: {status:'verificado', source: 12345, date:'no-es-una-fecha', note: {a:1}},
     bankFeePctByChannel: {booking: {status:'verificado', source: ['a','b'], date:'2026-99-99', note: null}}
   }});
-  assert.equal(state.verification.hospyOffsetIsolated.status, 'verificado', 'un status VALIDO en un objeto que ademas tiene otros campos malformados sigue siendo un status legitimo — solo esos otros campos se descartan');
-  assert.equal(state.verification.hospyOffsetIsolated.source, '', 'source no-string se descarta a favor del default');
-  assert.equal(state.verification.hospyOffsetIsolated.date, '', 'fecha con forma invalida se descarta a favor del default');
-  assert.equal(state.verification.hospyOffsetIsolated.note, '', 'note no-string se descarta a favor del default');
+  assert.equal(state.verification.bookingGeniusMobileBoth.status, 'verificado', 'un status VALIDO en un objeto que ademas tiene otros campos malformados sigue siendo un status legitimo — solo esos otros campos se descartan');
+  assert.equal(state.verification.bookingGeniusMobileBoth.source, '', 'source no-string se descarta a favor del default');
+  assert.equal(state.verification.bookingGeniusMobileBoth.date, '', 'fecha con forma invalida se descarta a favor del default');
+  assert.equal(state.verification.bookingGeniusMobileBoth.note, '', 'note no-string se descarta a favor del default');
   // La validacion de fecha es de FORMA (AAAA-MM-DD), no de calendario real —
   // es un campo de auditoria en texto libre, no un dato que alimente ningun
   // calculo financiero, asi que exigir un calendario 100% valido es

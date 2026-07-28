@@ -21,10 +21,6 @@ import {CHANNELS} from '../catalog/discounts.js';
 export const CHANNEL_IDS = CHANNELS.map(c=>c.id);
 
 export const VERIFICATION_KEYS = {
-  hospyOffsetIsolated: {
-    scope: 'global',
-    label: 'Kunas: ¿el Offset por canal de PriceLabs se aísla de verdad por canal, o se distribuye a todos los conectados?'
-  },
   bankFeePctByChannel: {
     scope: 'channel',
     label: 'Comisión bancaria/pasarela real por canal (hoy son estimados de Dani, no verificados contra facturas)'
@@ -44,10 +40,6 @@ export const VERIFICATION_KEYS = {
   airbnbTopRatedGuest: {
     scope: 'global',
     label: 'Airbnb: ¿el descuento "Top Rated Guest" está realmente activo en este listing? ¿cuál es el % exacto y compite o se apila con otras promos?'
-  },
-  priceLabsLmMode: {
-    scope: 'global',
-    label: 'PriceLabs: ¿qué modo de Last-Minute usa esta unidad realmente (automático/plano/gradual/precio fijo/tramos)? — el bloqueo real de Min Price/Base/Offset ya lo hace la casilla "Confirmé este modo directamente en PriceLabs" (Resumen → Last-Minute); este registro es solo para dejar nota/fuente/fecha de esa confirmación, no una segunda fuente de verdad.'
   }
 };
 
