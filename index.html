@@ -283,11 +283,6 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     </table>
   </div>
 </section>
-<section class="card" id="verificationSection">
-  <h2 id="verificationSectionHeading" tabindex="-1">Verificación de datos financieros <span class="hint">datos de NEGOCIO (no del software) que esta unidad todavía no confirmó contra tu cuenta real</span></h2>
-  <p class="hint">Estos son supuestos, no hechos: comisiones, promos OTA y configuraciones de Kunas/PriceLabs que esta app no puede confirmar por sí sola. Mientras un dato que afecta a un canal quede "No verificado", Piso/Base/Offert/"Rentable" de ESE canal se bloquean como recomendación (la simulación manual sigue disponible, etiquetada como no confiable). Marca "Verificado" solo si lo confirmaste en la extranet real, una factura, o soporte de PriceLabs/Kunas — deja fuente y fecha para que quede auditable. Usa "No aplica" si confirmaste que ese dato no es relevante para esta unidad (ej. este canal no cobra comisión bancaria).</p>
-  <div id="verificationList"></div>
-</section>
 </div>
 
 <div class="tab-panel" data-tab="ch-airbnb"></div>
@@ -568,8 +563,8 @@ function renderValidation(model){
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
     ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
     ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
-    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:verificacion">Ir a Verificación de datos financieros →</button></div>` : ''}
-    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:verificacion">Ir a Verificación de datos financieros →</button></div>` : ''}
+    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> ${financialGateButton(model)}</div>` : ''}
+    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> ${financialGateButton(model)}</div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
 }
@@ -625,6 +620,13 @@ function discountRowHTML(d){
   </div>`;
 }
 const CH_TAB = {airbnb:'ch-airbnb', booking:'ch-booking', expedia:'ch-expedia', direct:'ch-direct'};
+function firstUnreadyChannel(model){
+  return state.channels.find(c=>model.readiness?.byChannel?.[c.id]?.ready===false) || null;
+}
+function financialGateButton(model){
+  const channel = firstUnreadyChannel(model);
+  return channel ? `<button type="button" class="goto" data-goto="${CH_TAB[channel.id]}">Ir a ${escapeHtml(channel.name)} →</button>` : '';
+}
 function renderChannelPages(model){
   state.channels.forEach(c=>{
     const panel = document.querySelector(`.tab-panel[data-tab="${CH_TAB[c.id]}"]`);
@@ -635,6 +637,15 @@ function renderChannelPages(model){
     const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
     const avgN = Math.max(1, parseFloat(state.avgNights)||1);
+    const verificationField = (key, chId=null) => {
+      const entry = verifEntryRef(key, chId);
+      return `<div class="fld verification-field"><span>${escapeHtml(VERIFICATION_KEYS[key].label)}</span>${verifEntryHTML(key, chId, entry)}</div>`;
+    };
+    const bankVerification = verificationField('bankFeePctByChannel', c.id);
+    const channelVerifications = c.id==='booking' ? verificationField('bookingGeniusMobileBoth')
+      : c.id==='expedia' ? verificationField('expediaVipTierMix')
+      : c.id==='airbnb' ? verificationField('airbnbNonRefundable') + verificationField('airbnbTopRatedGuest')
+      : '';
     /* Fase 2.1: netHoy ya no reimplementa la formula aparte (usaba totalPct redondeado
        y omitia el techo/LM de PriceLabs) — sale de quoteScenario(), la fuente unica.
        Dia 45 sigue siendo el mismo escenario de referencia que suggestedOffset()
@@ -645,6 +656,8 @@ function renderChannelPages(model){
         <div class="chpage-head">
           <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${escapeHtml(c.comm)}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${escapeHtml(c.bankFeePct||0)}"></div>
+          ${bankVerification}
+          ${channelVerifications}
           <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${escapeHtml(c.offsetPct||0)}"></div>
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
@@ -652,7 +665,7 @@ function renderChannelPages(model){
           ${(()=>{
             /* Fase 5 (revision externa — "datos financieros verificados"): si
                ESTE canal depende de un dato de negocio sin confirmar (comision
-               bancaria real, Offset aislado en Kunas, VIP de Expedia,
+               bancaria real, VIP de Expedia,
                Genius+Mobile de Booking, no-reembolsable de Airbnb), su Offset
                sugerido/neto estimado tampoco es una recomendacion confiable —
                mismo principio que lmBlocked/baseBlocked, pero para datos que
@@ -665,7 +678,7 @@ function renderChannelPages(model){
                nota adicional, nunca reemplaza la explicacion de LM/precio fijo. */
             const chReady = !model.readiness || !model.readiness.byChannel[c.id] || model.readiness.byChannel[c.id].ready;
             const readinessNote = (!model.lmBlocked && chReady===false)
-              ? ` <span class="hint">(además, sin confirmar: ${model.readiness.byChannel[c.id].missing.map(m=>escapeHtml(m.label)).join('; ')} — ver Resumen → "Verificación de datos financieros")</span>`
+              ? ` <span class="hint">(además, sin confirmar: ${model.readiness.byChannel[c.id].missing.map(m=>escapeHtml(m.label)).join('; ')} — confirma los datos arriba en esta pestaña)</span>`
               : '';
             /* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): el Offset
                sugerido/neto estimado de ESTE canal tampoco es una
@@ -689,7 +702,7 @@ function renderChannelPages(model){
             }
             if(chReady===false){
               const missing = model.readiness.byChannel[c.id].missing;
-              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos en Resumen → "Verificación de datos financieros".</div>`;
+              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos arriba en esta pestaña.</div>`;
             }
             /* BLOQUEANTE 2 (auditoria externa, ronda 4): prioridad MAS BAJA
                (solo se muestra si nada mas arriba ya explico un bloqueo) para
@@ -806,17 +819,20 @@ function renderAlerts(model){
   const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
   /* Bug de UX corregido: "Ver en Resumen →" tenia el mismo problema que los
      banners de bloqueo (goToTab('resumen') sin seccion, ver goToSection()
-     mas arriba) — un tag conocido (LM SIN VERIFICAR/COSTOS SIN CONFIRMAR/
-     DATOS SIN VERIFICAR) SI tiene una seccion concreta que lo resuelve; el
+     mas arriba) — un tag conocido (LM SIN VERIFICAR/COSTOS SIN CONFIRMAR)
+     SI tiene una seccion concreta que lo resuelve; DATOS SIN VERIFICAR va a
+     la primera pestaña de canal pendiente; el
      resto (MODELO/INVIABLE/REALIDAD, sobre el resultado del motor, no sobre
      un dato pendiente puntual) sigue yendo solo a la pestaña, como siempre.
      Esto es routing de UI puro sobre el `tag` que alerts.js YA devuelve —
      no reimplementa ni toca ninguna regla financiera de ese modulo. */
-  const RESUMEN_ALERT_ANCHORS = {'LM SIN VERIFICAR':'lm', 'COSTOS SIN CONFIRMAR':'costos', 'DATOS SIN VERIFICAR':'verificacion'};
+  const RESUMEN_ALERT_ANCHORS = {'LM SIN VERIFICAR':'lm', 'COSTOS SIN CONFIRMAR':'costos'};
   alertsBox.innerHTML = buildAlerts(model).map(a=>{
+    const financialChannel = a.tag==='DATOS SIN VERIFICAR' ? firstUnreadyChannel(model) : null;
     const anchor = a.tab==='resumen' ? RESUMEN_ALERT_ANCHORS[a.tag] : null;
-    const gotoValue = anchor ? `${a.tab}:${anchor}` : a.tab;
-    return `<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${gotoValue?` <button type="button" class="goto" data-goto="${gotoValue}">Ver en ${escapeHtml(tabLabel(a.tab))} →</button>`:''}</span></div>`;
+    const targetTab = financialChannel ? CH_TAB[financialChannel.id] : a.tab;
+    const gotoValue = anchor ? `${targetTab}:${anchor}` : targetTab;
+    return `<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${gotoValue?` <button type="button" class="goto" data-goto="${gotoValue}">Ver en ${escapeHtml(tabLabel(targetTab))} →</button>`:''}</span></div>`;
   }).join('');
 }
 /* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
@@ -837,6 +853,7 @@ function renderSim(model){
      bloqueado (LM sin verificar o precio LM fijo activo), no se simula nada
      con un numero inventado — se explica el motivo y se pide un precio manual. */
   const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
+  const chId=simChannel.value||'airbnb';
   /* Refactor de cierre: `model.baseReadinessBlocked` (evaluateGlobalRecommendationReadiness())
      YA es true si LM esta sin verificar, si hay un precio fijo activo, O si un
      canal tiene un dato de negocio pendiente — no hace falta volver a unir los
@@ -849,12 +866,13 @@ function renderSim(model){
       : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
       : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
       : 'un dato financiero del canal que fija Base sigue sin confirmar';
-    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero en <button type="button" class="goto" data-goto="resumen:verificacion">Resumen → "Verificación de datos financieros" →</button>.</div>`;
+    const channel = state.channels.find(c=>c.id===chId);
+    const goto = CH_TAB[chId] || 'ch-airbnb';
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero los datos de <button type="button" class="goto" data-goto="${goto}">${escapeHtml(channel?.name||'este canal')} →</button>.</div>`;
     simIgnored.innerHTML = '';
     return;
   }
   const price = (typedPrice!=null && Number.isFinite(typedPrice)) ? typedPrice : (model.effBase||0);
-  const chId=simChannel.value||'airbnb';
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
   const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
@@ -928,8 +946,8 @@ function goToTab(tabId){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.dataset.tab===tabId));
 }
 /* Bug de UX corregido (revision externa): los botones "Ir a Last-Minute de
-   PriceLabs →"/"Ir a Verificación de datos financieros →" (y el equivalente
-   del Simulador bloqueado) solo llamaban a goToTab('resumen') — si el
+   PriceLabs →" (y el equivalente del Simulador bloqueado) solo llamaban a
+   goToTab('resumen') — si el
    usuario YA estaba en Resumen, visualmente no pasaba nada y nunca llegaba
    a la seccion que necesitaba configurar (Resumen es una pestaña larga con
    varias secciones apiladas). goToSection(tabId, anchorKey) activa la
@@ -942,7 +960,6 @@ function goToTab(tabId){
    canales) cambia de comportamiento. */
 const SECTION_ANCHORS = {
   lm: {sectionId: 'lmSection', focusId: 'lmModeSelect'},
-  verificacion: {sectionId: 'verificationSection', focusId: 'verificationSectionHeading'},
   costos: {sectionId: 'costsSection', focusId: 'f-fixedCost'}
 };
 function goToSection(tabId, anchorKey){
@@ -975,7 +992,7 @@ function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance();
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
-  renderLmConfig(); renderVerification();
+  renderLmConfig();
   renderCurrencyReviewBanner(model);
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
@@ -1092,27 +1109,6 @@ function verifEntryRef(key, chId){
   }
   if(!state.verification[key]) state.verification[key]={status:'no_verificado', source:'', date:'', note:''};
   return state.verification[key];
-}
-function renderVerification(){
-  const box = document.getElementById('verificationList');
-  if(!box) return;
-  box.innerHTML = Object.entries(VERIFICATION_KEYS).map(([key,meta])=>{
-    if(meta.scope==='channel'){
-      const rows = state.channels.map(c=>{
-        const entry = (state.verification[key]||{})[c.id] || {status:'no_verificado', source:'', date:'', note:''};
-        return `<div style="margin:8px 0 8px 12px;"><strong>${escapeHtml(c.name)}</strong>${verifEntryHTML(key, c.id, entry)}</div>`;
-      }).join('');
-      return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
-        <span>${escapeHtml(meta.label)}</span>
-        ${rows}
-      </div>`;
-    }
-    const entry = state.verification[key] || {status:'no_verificado', source:'', date:'', note:''};
-    return `<div class="field" style="border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px;">
-      <span>${escapeHtml(meta.label)}</span>
-      ${verifEntryHTML(key, null, entry)}
-    </div>`;
-  }).join('');
 }
 /* ================== MONEDA — simplificación a USD único (revision externa) ================
    Esta version SOLO opera en USD. `state.currency` casi siempre es 'USD' — la unica
@@ -1427,7 +1423,7 @@ document.addEventListener('click',e=>{
         : model.lmBlocked ? 'Last-Minute sin verificar'
         : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
         : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
-        : 'un dato financiero del canal que fija Base sigue sin confirmar (ver Verificación de datos financieros)';
+        : 'un dato financiero sigue sin confirmar en la pestaña del canal correspondiente';
       showInputError('Base Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confírmalo primero.');
     } else {
       simPrice.value=Math.round(model.base||model.effBase||0);

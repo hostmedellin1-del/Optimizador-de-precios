@@ -16,7 +16,6 @@ function verifiedLmConfig(){
   return {mode:'flat', verified:true, flat:{pct:0, fromDay:0, toDay:0, on:false}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
 }
 function resolveAll(verification){
-  verification.hospyOffsetIsolated.status = 'no_aplica';
   verification.bookingGeniusMobileBoth.status = 'no_aplica';
   verification.expediaVipTierMix.status = 'no_aplica';
   verification.airbnbNonRefundable.status = 'no_aplica';

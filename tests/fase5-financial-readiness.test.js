@@ -1,6 +1,5 @@
 /* Fase 5 (revision externa — "datos financieros verificados"): el codigo YA
-   reconocia que ciertos datos (comision bancaria real, si Kunas aisla el
-   Offset por canal, mezcla VIP de Expedia, Genius+Mobile de Booking,
+   reconocia que ciertos datos (comision bancaria real, mezcla VIP de Expedia, Genius+Mobile de Booking,
    no-reembolsable de Airbnb) estaban "no verificados" (src/domain/
    verification.js), pero NINGUNA vista lo usaba para bloquear nada — era una
    etiqueta, no una regla financiera. Estos tests prueban el contrato nuevo:
@@ -34,24 +33,6 @@ function config(overrides={}){
   const verification = overrides.verification || defaultVerification();
   return {fixedCost:32, varCost:22, margin:45, marketBase:0, lmConfig: verifiedLmConfig(), ...overrides, channels, discounts, windows, ceilings, verification};
 }
-
-test('un Offset distinto de cero sin verificación de Kunas bloquea SOLO el canal con ese Offset', () => {
-  const channels = freshChannels().map(c => c.id==='booking' ? {...c, offsetPct:-15} : c);
-  const r = evaluateRecommendationReadiness({channels, discounts: freshDiscounts(), verification: defaultVerification()});
-  assert.equal(r.byChannel.booking.ready, false, 'Booking tiene Offset != 0 y el dato no esta verificado');
-  assert.ok(r.byChannel.booking.missing.some(m=>m.key==='hospyOffsetIsolated'));
-  assert.equal(r.byChannel.airbnb.ready, true, 'Airbnb no tiene Offset configurado — no debe bloquearse por este dato');
-  assert.equal(r.byChannel.expedia.ready, false, 'Expedia sigue bloqueado por su propio dato (VIP), no por Offset');
-  assert.ok(!r.byChannel.expedia.missing.some(m=>m.key==='hospyOffsetIsolated'));
-});
-
-test('marcar la verificación de Kunas como verificada desbloquea el canal con Offset (y solo ese motivo)', () => {
-  const channels = freshChannels().map(c => c.id==='booking' ? {...c, offsetPct:-15} : c);
-  const verification = defaultVerification();
-  verification.hospyOffsetIsolated = {status:'verificado', source:'soporte Kunas', date:'2026-07-20', note:'confirmado por chat'};
-  const r = evaluateRecommendationReadiness({channels, discounts: freshDiscounts(), verification});
-  assert.ok(!r.byChannel.booking.missing.some(m=>m.key==='hospyOffsetIsolated'), 'el motivo Offset debe desaparecer');
-});
 
 test('comision bancaria/pasarela no verificada bloquea SOLO los canales que realmente la cobran', () => {
   // Catalogo por defecto: booking y direct tienen bankFeePct=6; airbnb y expedia tienen 0.
@@ -162,7 +143,6 @@ test('verificar TODOS los datos pendientes da ready:true global', () => {
   const channels = freshChannels();
   const discounts = freshDiscounts();
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated.status = 'verificado';
   verification.bookingGeniusMobileBoth.status = 'verificado';
   verification.expediaVipTierMix.status = 'verificado';
   verification.airbnbNonRefundable.status = 'verificado';
@@ -192,7 +172,6 @@ test('compute(): sin config.verification (callers viejos/tests que no lo pasan),
 
 test('compute(): al verificar todos los datos pendientes, floorReadinessBlocked/baseReadinessBlocked se apagan', () => {
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated.status = 'verificado';
   verification.bookingGeniusMobileBoth.status = 'verificado';
   verification.expediaVipTierMix.status = 'verificado';
   verification.airbnbNonRefundable.status = 'verificado';
@@ -208,7 +187,6 @@ test('LOS DOS P1 DE LA RONDA 3 SIGUEN PROTEGIDOS: baseBlocked (precio LM fijo en
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const verification = defaultVerification();
   Object.keys(verification.bankFeePctByChannel).forEach(chId=>{ verification.bankFeePctByChannel[chId].status='no_aplica'; });
-  verification.hospyOffsetIsolated.status = 'no_aplica';
   verification.bookingGeniusMobileBoth.status = 'no_aplica';
   verification.expediaVipTierMix.status = 'no_aplica';
   verification.airbnbNonRefundable.status = 'no_aplica';
@@ -228,7 +206,6 @@ test('compute(): LM sin verificar bloquea Min Price Y Base Price GLOBALES, aunqu
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const verification = defaultVerification();
   Object.keys(verification.bankFeePctByChannel).forEach(chId=>{ verification.bankFeePctByChannel[chId].status='no_aplica'; });
-  verification.hospyOffsetIsolated.status = 'no_aplica';
   verification.bookingGeniusMobileBoth.status = 'no_aplica';
   verification.expediaVipTierMix.status = 'no_aplica';
   verification.airbnbNonRefundable.status = 'no_aplica';
@@ -248,7 +225,6 @@ test('compute(): con todos los canales resueltos, LM verificado y sin fixed_pric
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const verification = defaultVerification();
   Object.keys(verification.bankFeePctByChannel).forEach(chId=>{ verification.bankFeePctByChannel[chId].status='no_aplica'; });
-  verification.hospyOffsetIsolated.status = 'no_aplica';
   verification.bookingGeniusMobileBoth.status = 'no_aplica';
   verification.expediaVipTierMix.status = 'no_aplica';
   verification.airbnbNonRefundable.status = 'no_aplica';
@@ -289,23 +265,23 @@ test('engine.js consume evaluateGlobalRecommendationReadiness() como UNICA fuent
 /* Config generosa (sin nativos, comision baja) tomada del mismo patron que ya
    prueba fase-lm-blocking.test.js (linea 92) para "RENTABLE EN TODOS" con LM
    verificado — aqui se le agrega EXACTAMENTE un hecho de negocio pendiente
-   (un Offset != 0 en Airbnb) sin tocar nada mas del escenario financiero, para
-   que el UNICO motivo de diferencia entre los dos tests sea ese hecho. */
-function generousChannelsWithOneOffset(){
-  return freshChannels().map(c=>({...c, comm:5, bankFeePct:0, offsetPct: c.id==='airbnb' ? 1 : 0}));
+   (comisión bancaria de Airbnb) sin tocar nada mas del escenario financiero,
+   para que el UNICO motivo de diferencia entre los dos tests sea ese hecho. */
+function generousChannelsWithOnePendingBankFee(){
+  return freshChannels().map(c=>({...c, comm:5, bankFeePct: c.id==='airbnb' ? 1 : 0, offsetPct:0}));
 }
 
 test('Matriz: un veredicto que seria "RENTABLE EN TODOS" NO se muestra asi si CUALQUIER canal involucrado tiene un dato financiero sin verificar (aunque no sea el mas ajustado)', () => {
-  const channels = generousChannelsWithOneOffset();
+  const channels = generousChannelsWithOnePendingBankFee();
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const windows = freshWindows();
   const ceilings = defaultCeilings(windows);
-  const verification = defaultVerification(); // nada verificado — el Offset de Airbnb queda pendiente
+  const verification = defaultVerification(); // nada verificado — la comisión bancaria de Airbnb queda pendiente
   const lmConfig = {mode:'flat', verified:true, flat:{pct:20, fromDay:0, toDay:3, on:true}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
   const qConfig = {channels, discounts, windows, ceilings, fixedCost:20, varCost:0, lmConfig, verification};
   const model = compute({...qConfig, margin:10, marketBase:0});
   assert.equal(model.lmBlocked, false);
-  assert.equal(model.readiness.byChannel.airbnb.ready, false, 'precondicion del test: Airbnb debe tener exactamente un hecho pendiente (su Offset)');
+  assert.equal(model.readiness.byChannel.airbnb.ready, false, 'precondicion del test: Airbnb debe tener exactamente un hecho pendiente (su comisión bancaria)');
   const w5 = windows.find(w=>w.id==='w5');
   const ceil = ceilings[w5.id];
   const {worstTecho, worstPayoutRow, perChannel} = worstScenariosInWindow(qConfig, w5, model.effBase || 150);
@@ -313,16 +289,16 @@ test('Matriz: un veredicto que seria "RENTABLE EN TODOS" NO se muestra asi si CU
   assert.notEqual(vTag, 'RENTABLE EN TODOS');
   assert.equal(vLvl, 'warn');
   assert.match(vTag, /DATOS SIN VERIFICAR/);
-  assert.match(vMsg, /Verificación de datos financieros/);
+  assert.match(vMsg, /pestaña del canal/);
 });
 
 test('Matriz: con todos los datos financieros verificados y LM verificado, el mismo escenario generoso SI puede quedar "RENTABLE EN TODOS"', () => {
-  const channels = generousChannelsWithOneOffset();
+  const channels = generousChannelsWithOnePendingBankFee();
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const windows = freshWindows();
   const ceilings = defaultCeilings(windows);
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated.status = 'verificado'; // el unico hecho pendiente en este escenario
+  verification.bankFeePctByChannel.airbnb.status = 'verificado'; // el unico hecho pendiente en este escenario
   const lmConfig = {mode:'flat', verified:true, flat:{pct:20, fromDay:0, toDay:3, on:true}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
   const qConfig = {channels, discounts, windows, ceilings, fixedCost:20, varCost:0, lmConfig, verification};
   const model = compute({...qConfig, margin:10, marketBase:0});
@@ -370,7 +346,6 @@ function readyCatalogExcept(pendingKey){
   // que el unico motivo de bloqueo posible sea el que el test declara.
   const discounts = freshDiscounts().map(d=>['bk_gen','bk_mob','ex_mod'].includes(d.id) ? {...d, on:false} : d);
   const verification = defaultVerification();
-  verification.hospyOffsetIsolated.status = 'no_aplica';
   verification.bookingGeniusMobileBoth.status = 'no_aplica';
   verification.expediaVipTierMix.status = 'no_aplica';
   verification.airbnbNonRefundable.status = 'no_aplica';
@@ -472,7 +447,7 @@ test('evaluateGlobalRecommendationReadiness(): currencyBlocked bloquea Piso Y Ba
   const channels = freshChannels();
   const discounts = freshDiscounts();
   const verification = defaultVerification();
-  ['hospyOffsetIsolated','bookingGeniusMobileBoth','expediaVipTierMix','airbnbNonRefundable'].forEach(k=>{ verification[k].status='no_aplica'; });
+  ['bookingGeniusMobileBoth','expediaVipTierMix','airbnbNonRefundable'].forEach(k=>{ verification[k].status='no_aplica'; });
   Object.keys(verification.bankFeePctByChannel).forEach(id=>{ verification.bankFeePctByChannel[id].status='verificado'; });
   const readiness = evaluateRecommendationReadiness({channels, discounts, verification});
   assert.equal(readiness.ready, true, 'precondicion: todos los canales resueltos, para aislar el efecto de currencyBlocked');
@@ -505,7 +480,7 @@ test('compute(): sin currencyNeedsReview (callers de test que no lo pasan, o uni
 });
 
 test('P1: Matriz — "RENTABLE EN TODOS" sigue bloqueado si un canal AJENO a la ventana peor caso tiene un dato pendiente (regresion del refactor a unreadyChannels compartido)', () => {
-  const channels = generousChannelsWithOneOffset();
+  const channels = generousChannelsWithOnePendingBankFee();
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const windows = freshWindows();
   const ceilings = defaultCeilings(windows);
@@ -531,7 +506,6 @@ test('P1: las simulaciones/diagnósticos POR CANAL siguen disponibles pese al ga
 
 test('isVerified()/defaultVerification(): unidad nueva arranca 100% no_verificado, nunca verificado por defecto (ninguna clave, ni global ni por canal)', () => {
   const v = defaultVerification();
-  assert.equal(isVerified(v, 'hospyOffsetIsolated'), false);
   assert.equal(isVerified(v, 'bookingGeniusMobileBoth'), false);
   assert.equal(isVerified(v, 'expediaVipTierMix'), false);
   assert.equal(isVerified(v, 'airbnbNonRefundable'), false);

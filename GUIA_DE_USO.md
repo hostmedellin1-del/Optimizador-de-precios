@@ -55,11 +55,9 @@ realmente usa cada unidad.
    **Estadía promedio (noches)** y **Base que recomienda PriceLabs / mercado**.
 4. Configura **Last-Minute de PriceLabs** con el modo que realmente usa esa unidad y marca
    **Confirmé este modo directamente en PriceLabs**.
-5. Ve a **Verificación de datos financieros** y resuelve los datos aplicables con fuente
-   y fecha.
-6. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
-   las comisiones, comisión bancaria/pasarela, Offset y el catálogo de descuentos de cada
-   canal.
+5. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
+   las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones
+   aplicables con fuente y fecha para cada canal.
 7. Revisa **Techo total por ventana** en Resumen. Es el máximo descuento total que estás
    dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.
 8. Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación
@@ -116,17 +114,19 @@ día y las recomendaciones permanecen bloqueadas por diseño.
 
 ### C. DATO FINANCIERO SIN VERIFICAR
 
-En **Verificación de datos financieros**, cada fila tiene estado, fuente, fecha y nota.
+En la pestaña de cada canal, las verificaciones aplicables tienen estado, fuente, fecha y
+nota.
 
 - **No verificado**: falta comprobarlo; bloquea la recomendación afectada.
 - **Verificado**: lo confirmaste en extranet, factura, soporte u otra fuente real.
 - **No aplica**: confirmaste que ese dato no corresponde a esa unidad. No significa
   “no lo sé”.
 
-Los puntos que aparecen incluyen Offset por canal en Kunas, comisión bancaria/pasarela por
-canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, no reembolsable y Top Rated
-Guest de Airbnb, y la nota de confirmación del modo Last-Minute. Un único canal pendiente
-puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.
+Los puntos que aparecen incluyen comisión bancaria/pasarela por canal, Genius y Mobile
+Rate de Booking, mezcla VIP de Expedia, y no reembolsable y Top Rated Guest de Airbnb. El
+Offset se configura manualmente por canal: no hay distribución automática que verificar.
+Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales
+de PriceLabs.
 
 ### Caso excepcional: revisión de moneda
 
@@ -139,8 +139,8 @@ en USD →**. Hasta entonces, los números quedan bloqueados.
 
 ### Resumen
 
-Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute, techos y
-verificación. Modifica aquí **Techo total por ventana**; en Comparación solo se muestra.
+Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos.
+Modifica aquí **Techo total por ventana**; en Comparación solo se muestra.
 
 ### ¿Cómo se calcula?
 
@@ -156,6 +156,7 @@ Cada pestaña contiene la configuración de ese canal:
 
 - **Comisión [canal] %** y **Comisión bancaria/pasarela %**.
 - **Offset % sobre PriceLabs (tu markup real)**.
+- **Verificaciones financieras** aplicables a ese canal, con estado, fuente, fecha y nota.
 - En Airbnb, **Tarifa de aseo — reservas 1–2 noches** y **Tarifa de aseo — reservas 3+
   noches**.
 - **Descuentos activos hoy** y **Ver catálogo completo** para el resto.

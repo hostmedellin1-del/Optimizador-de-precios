@@ -39,13 +39,17 @@ async function resolveEverythingExceptCurrency(page){
   const pct = page.locator('[data-lmf="flat.pct"]');
   await pct.click(); await pct.fill('0'); await pct.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
-  await page.selectOption('select[data-verif-status="hospyOffsetIsolated"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-booking"]').click();
   await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-expedia"]').click();
   await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'no_aplica');
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="expedia"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-airbnb"]').click();
   await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
-  for(const chId of ['airbnb','booking','expedia','direct']){
-    await page.selectOption(`select[data-verif-status="bankFeePctByChannel"][data-verif-ch="${chId}"]`, 'no_aplica');
-  }
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]', 'no_aplica');
+  await page.locator('[data-tabbtn="ch-direct"]').click();
+  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'no_aplica');
 }
 
 test('BLOQUEANTE 3 (reproducción exacta, 1-9): importar COP fixedCost:40/varCost:25 → crear copia USD → LM/verificaciones resueltas → SIGUE bloqueado → confirmar revisión manual → SOLO ENTONCES se desbloquea → original COP intacta', async ({page}) => {

@@ -91,7 +91,6 @@ test('buildDuplicateUnit copia exactamente la configuración de 4 canales, 37 de
 
 test('todos los estados de verificación, incluso verificado y no_aplica, vuelven individualmente a no_verificado', () => {
   const origin = configuredSource();
-  origin.verification.hospyOffsetIsolated.status = 'verificado';
   origin.verification.bookingGeniusMobileBoth.status = 'no_aplica';
   origin.verification.bankFeePctByChannel.airbnb.status = 'verificado';
   origin.verification.bankFeePctByChannel.booking.status = 'no_aplica';

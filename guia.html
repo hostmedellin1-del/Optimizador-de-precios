@@ -112,8 +112,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones.</li>
       <li>Completa <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong>, <strong>Estadía promedio (noches)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
       <li>Configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
-      <li>Ve a <strong>Verificación de datos financieros</strong> y resuelve los datos aplicables con fuente y fecha.</li>
-      <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset y el catálogo de descuentos de cada canal.</li>
+      <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones aplicables con fuente y fecha para cada canal.</li>
       <li>Revisa <strong>Techo total por ventana</strong> en Resumen. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
       <li>Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
     </ol>
@@ -148,13 +147,13 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     </ul>
     <p>Después marca <strong>Confirmé este modo directamente en PriceLabs</strong>. Si usas el modo Automático, la app no puede verificar matemáticamente una curva que PriceLabs decide por día y las recomendaciones permanecen bloqueadas por diseño.</p>
     <h3>C. DATO FINANCIERO SIN VERIFICAR</h3>
-    <p>En <strong>Verificación de datos financieros</strong>, cada fila tiene estado, fuente, fecha y nota.</p>
+    <p>En la pestaña de cada canal, las verificaciones aplicables tienen estado, fuente, fecha y nota.</p>
     <ul>
       <li><strong>No verificado</strong>: falta comprobarlo; bloquea la recomendación afectada.</li>
       <li><strong>Verificado</strong>: lo confirmaste en extranet, factura, soporte u otra fuente real.</li>
       <li><strong>No aplica</strong>: confirmaste que ese dato no corresponde a esa unidad. No significa “no lo sé”.</li>
     </ul>
-    <p>Los puntos que aparecen incluyen Offset por canal en Kunas, comisión bancaria/pasarela por canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, no reembolsable y Top Rated Guest de Airbnb, y la nota de confirmación del modo Last-Minute. Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.</p>
+    <p>Los puntos que aparecen incluyen comisión bancaria/pasarela por canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, y no reembolsable y Top Rated Guest de Airbnb. El Offset se configura manualmente por canal: no hay distribución automática que verificar. Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.</p>
     <h3>Caso excepcional: revisión de moneda</h3>
     <p>Si cargas una unidad antigua con una moneda distinta de USD, verás <strong>REQUIERE REVISIÓN MANUAL</strong>. No hay conversión automática. Puedes corregir los datos manualmente o crear una copia en USD y revisar cada valor antes de pulsar <strong>Ya revisé manualmente todos los valores en USD →</strong>. Hasta entonces, los números quedan bloqueados.</p>
   </section>
@@ -162,7 +161,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   <section id="pestanas">
     <h2>5. Para qué sirve cada pestaña</h2>
     <h3>Resumen</h3>
-    <p>Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute, techos y verificación. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
+    <p>Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
     <h3>¿Cómo se calcula?</h3>
     <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio calculado por PriceLabs (antes de LM/offset)</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global está bloqueada, por lo que debes leer sus avisos de confiabilidad.</p>
     <h3>Airbnb, Booking.com, Expedia y Directo</h3>
@@ -170,6 +169,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <ul>
       <li><strong>Comisión [canal] %</strong> y <strong>Comisión bancaria/pasarela %</strong>.</li>
       <li><strong>Offset % sobre PriceLabs (tu markup real)</strong>.</li>
+      <li><strong>Verificaciones financieras</strong> aplicables a ese canal, con estado, fuente, fecha y nota.</li>
       <li>En Airbnb, <strong>Tarifa de aseo — reservas 1–2 noches</strong> y <strong>Tarifa de aseo — reservas 3+ noches</strong>.</li>
       <li><strong>Descuentos activos hoy</strong> y <strong>Ver catálogo completo</strong> para el resto.</li>
     </ul>

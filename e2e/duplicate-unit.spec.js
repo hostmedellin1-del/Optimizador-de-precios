@@ -17,12 +17,10 @@ async function importUnit(page, name, extra){
 function resolvedVerification(){
   const noAplica = {status:'no_aplica', source:'Extranet real', date:'2026-07-27', note:'Confirmado para esta unidad'};
   return {
-    hospyOffsetIsolated:{...noAplica},
     bookingGeniusMobileBoth:{...noAplica},
     expediaVipTierMix:{...noAplica},
     airbnbNonRefundable:{...noAplica},
     airbnbTopRatedGuest:{...noAplica},
-    priceLabsLmMode:{...noAplica},
     bankFeePctByChannel:{airbnb:{...noAplica}, booking:{...noAplica}, expedia:{...noAplica}, direct:{...noAplica}}
   };
 }
@@ -95,7 +93,7 @@ test('Duplicar crea una nueva unidad bloqueada: conserva configuración, reinici
   await expect(page.locator('[data-did="ab_new"][data-f="on"]')).toBeChecked();
   await expect(page.locator('[data-did="ab_nonref"][data-f="pct"]')).toHaveValue('7');
   await page.locator('[data-tabbtn="resumen"]').click();
-  await expect(page.locator('select[data-verif-status]')).toHaveCount(10);
+  await expect(page.locator('select[data-verif-status]')).toHaveCount(8);
   expect(await page.locator('select[data-verif-status]').evaluateAll(selects => selects.every(select => select.value === 'no_verificado'))).toBe(true);
   await expect(page.locator('#f-fixedCost')).toHaveValue('32');
   await expect(page.locator('#f-varCost')).toHaveValue('22');
