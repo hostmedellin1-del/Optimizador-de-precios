@@ -71,7 +71,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><a href="#primer-uso">Primer uso en el sitio publicado</a></li>
       <li><a href="#crear-propiedad">Crear una propiedad: dos caminos</a></li>
       <li><a href="#desbloquear">Cómo usar los resultados</a></li>
-      <li><a href="#pestanas">Para qué sirve cada pestaña</a></li>
+      <li><a href="#pestanas">Para qué sirve cada sección</a></li>
       <li><a href="#gestionar">Gestionar y respaldar propiedades</a></li>
       <li><a href="#github">El repositorio de GitHub y cómo se publican los cambios</a></li>
       <li><a href="#preguntas">Preguntas frecuentes</a></li>
@@ -107,14 +107,14 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <h3>Desde cero</h3>
     <p>Este es el orden recomendado. Aunque hay alrededor de 74 campos configurables entre costos, descuentos y canales, no hace falta llenar todo a la vez: completa primero lo que realmente usa cada unidad.</p>
     <ol>
-      <li>En <strong>Resumen → Costos por noche</strong>, ingresa <strong>Fijos</strong> y <strong>Variables</strong>, o abre <strong>Calcular a partir de costos detallados</strong>.</li>
+      <li>En <strong>Precio mínimo → Costos por noche</strong>, ingresa <strong>Fijos</strong> y <strong>Variables</strong>, o abre <strong>Calcular a partir de costos detallados</strong>.</li>
       <li>Si usas el desglose, llena los costos y activa <strong>Usar estos costos detallados para calcular</strong>. Esa opción reemplaza Fijos/Variables; no es una verificación ni bloquea nada.</li>
       <li>Completa <strong>Estadía promedio (noches)</strong>. Es lo único adicional del flujo diario que queda visible junto a los costos y Min Price.</li>
       <li>Si vas a definir estrategia de precios, abre <strong>Estrategia de PriceLabs</strong>. Allí están <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
       <li>En esa misma sección configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad. La herramienta aplica el modo y los valores que tú escribas.</li>
-      <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset y descuentos de cada canal.</li>
+      <li>Abre <strong>Configuración avanzada</strong> cuando necesites revisar <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> o <strong>Directo</strong>. Allí están las comisiones, comisión bancaria/pasarela, Offset y descuentos de cada canal.</li>
       <li>Revisa <strong>Techo total por ventana</strong> dentro de <strong>Estrategia de PriceLabs</strong>. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
-      <li>Revisa Min Price y, si usas estrategia, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
+      <li>Revisa Min Price y, si usas estrategia, Base Price, Offset y Diagnóstico completo antes de copiar una configuración a PriceLabs.</li>
     </ol>
     <h3>Duplicar una unidad parecida</h3>
     <ol>
@@ -135,12 +135,14 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   </section>
 
   <section id="pestanas">
-    <h2>5. Para qué sirve cada pestaña</h2>
-    <h3>Resumen</h3>
-    <p>Es la pantalla de decisión diaria: costos, estadía promedio, <strong>Costo por noche</strong> y <strong>Min Price → PriceLabs</strong> quedan visibles primero. <strong>Estrategia de PriceLabs</strong> está plegada para no distraer ese flujo; ábrela cuando necesites Base Price, Last-Minute, techos o el análisis por ventana. Modifica allí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
+    <h2>5. Para qué sirve cada sección</h2>
+    <h3>Precio mínimo</h3>
+    <p>Es la pantalla de decisión diaria. Primero verás <strong>Lo que debes configurar</strong>: el <strong>Costo por noche</strong> y el <strong>Min Price → PriceLabs</strong>. Copia ese Min Price en PriceLabs. Los avisos técnicos, el respaldo, los costos detallados y <strong>Promociones y Offsets por OTA</strong> quedan plegados para no distraerte; ábrelos solo cuando quieras revisar o cambiar algo.</p>
+    <h3>Configuración avanzada</h3>
+    <p>Agrupa las herramientas que no se usan todos los días: el ejemplo de reserva, la configuración de cada OTA y el diagnóstico completo. Al abrir una de esas secciones puedes revisar comisiones, descuentos, Offset, Last-Minute y techos sin llenar la pantalla diaria.</p>
     <h3>¿Cómo se calcula?</h3>
     <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio FINAL mostrado por PriceLabs</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso. El simulador no vuelve a aplicar factores internos de PriceLabs a un precio que ya es final.</p>
-    <h3>Airbnb, Booking.com, Expedia y Directo</h3>
+    <h3>Configurar Airbnb, Booking.com, Expedia y Directo</h3>
     <p>Cada pestaña contiene la configuración de ese canal:</p>
     <ul>
       <li><strong>Comisión [canal] %</strong> y <strong>Comisión bancaria/pasarela %</strong>.</li>
@@ -149,7 +151,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>Descuentos activos hoy</strong> y <strong>Ver catálogo completo</strong> para el resto.</li>
     </ul>
     <p>No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está activo para ese listing/canal y usa el porcentaje y la ventana reales.</p>
-    <h3>Comparación</h3>
+    <h3>Diagnóstico completo</h3>
     <p><strong>Panel de decisión por ventana de reserva</strong> resume cada ventana. Lee primero <strong>Veredicto</strong>. Si pide atención, abre <strong>Ver por canal</strong> para ver el detalle. Los veredictos pueden señalar techo excedido, neto bajo costo, neto bajo objetivo o una configuración rentable.</p>
   </section>
 

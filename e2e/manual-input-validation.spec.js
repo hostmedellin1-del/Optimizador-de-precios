@@ -13,8 +13,14 @@ async function openStrategy(page){
   if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
 }
 
+async function openAdvanced(page){
+  const advanced = page.locator('#advancedNav');
+  if(!(await advanced.getAttribute('open'))) await advanced.locator('summary').click();
+}
+
 test('descuento: % fuera de rango (150) se rechaza, conserva el valor anterior, muestra aviso', async ({page}) => {
   await page.goto('/index.html');
+  await openAdvanced(page);
   await page.locator('[data-tabbtn="ch-airbnb"]').click();
   const pctInput = page.locator('[data-did="ab_los4"][data-f="pct"]');
   const before = await pctInput.inputValue();
@@ -27,6 +33,7 @@ test('descuento: % fuera de rango (150) se rechaza, conserva el valor anterior, 
 
 test('descuento: rango de días invertido ("desde" > "hasta") se rechaza con motivo explícito', async ({page}) => {
   await page.goto('/index.html');
+  await openAdvanced(page);
   await page.locator('[data-tabbtn="ch-airbnb"]').click();
   // "Promoción personalizada" está apagada por defecto -> vive en el catálogo colapsado.
   await page.locator('.tab-panel[data-tab="ch-airbnb"] .discounts-more summary').click();
@@ -45,6 +52,7 @@ test('descuento: rango de días invertido ("desde" > "hasta") se rechaza con mot
 
 test('canal: offset negativo extremo (-500) se rechaza — el input nunca deja escribir un offset que rompería el precio', async ({page}) => {
   await page.goto('/index.html');
+  await openAdvanced(page);
   await page.locator('[data-tabbtn="ch-booking"]').click();
   const off = page.locator('[data-chid="booking"][data-chf="offsetPct"]');
   const before = await off.inputValue();
@@ -98,6 +106,7 @@ test('costo: texto no numérico en Costo fijo se rechaza, no se convierte en 0 s
 
 test('un valor VÁLIDO limpia el aviso anterior', async ({page}) => {
   await page.goto('/index.html');
+  await openAdvanced(page);
   await page.locator('[data-tabbtn="ch-booking"]').click();
   const comm = page.locator('[data-chid="booking"][data-chf="comm"]');
   await comm.fill('150');

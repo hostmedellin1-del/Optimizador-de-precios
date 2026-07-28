@@ -45,7 +45,7 @@ Este es el orden recomendado. Aunque hay alrededor de 74 campos configurables en
 costos, descuentos y canales, no hace falta llenar todo a la vez: completa primero lo que
 realmente usa cada unidad.
 
-1. En **Resumen → Costos por noche**, ingresa **Fijos** y **Variables**, o abre
+1. En **Precio mínimo → Costos por noche**, ingresa **Fijos** y **Variables**, o abre
    **Calcular a partir de costos detallados**.
 2. Si usas el desglose, llena los costos y activa **Usar estos costos detallados para
    calcular**. Esa opción reemplaza Fijos/Variables; no es una verificación ni bloquea nada.
@@ -56,12 +56,13 @@ realmente usa cada unidad.
    **Base que recomienda PriceLabs / mercado**.
 5. En esa misma sección configura **Last-Minute de PriceLabs** con el modo que realmente usa
    esa unidad. La herramienta aplica el modo y los valores que tú escribas.
-6. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
-   las comisiones, comisión bancaria/pasarela, Offset y descuentos de cada canal.
+6. Abre **Configuración avanzada** cuando necesites revisar **Airbnb**, **Booking.com**,
+   **Expedia** o **Directo**. Allí están las comisiones, comisión bancaria/pasarela,
+   Offset y descuentos de cada canal.
 7. Revisa **Techo total por ventana** dentro de **Estrategia de PriceLabs**. Es el máximo
    descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo
    Last-Minute automático.
-8. Revisa Min Price y, si usas estrategia, Base Price, Offset y Comparación antes de copiar
+8. Revisa Min Price y, si usas estrategia, Base Price, Offset y Diagnóstico completo antes de copiar
    una configuración a PriceLabs.
 
 ### Duplicar una unidad parecida
@@ -96,14 +97,20 @@ MANUAL**. No hay conversión automática. Puedes corregir los datos manualmente 
 copia en USD y revisar cada valor antes de pulsar **Ya revisé manualmente todos los valores
 en USD →**. Hasta entonces, los números quedan bloqueados.
 
-## 5. Para qué sirve cada pestaña
+## 5. Para qué sirve cada sección
 
-### Resumen
+### Precio mínimo
 
-Es la pantalla de decisión diaria: costos, estadía promedio, **Costo por noche** y
-**Min Price → PriceLabs** quedan visibles primero. **Estrategia de PriceLabs** está plegada
-para no distraer ese flujo; ábrela cuando necesites Base Price, Last-Minute, techos o el
-análisis por ventana. Modifica allí **Techo total por ventana**; en Comparación solo se muestra.
+Es la pantalla de decisión diaria. Primero verás **Lo que debes configurar**: el
+**Costo por noche** y el **Min Price → PriceLabs**. Copia ese Min Price en PriceLabs.
+Los avisos técnicos, el respaldo, los costos detallados y **Promociones y Offsets por OTA**
+quedan plegados para no distraerte; ábrelos solo cuando quieras revisar o cambiar algo.
+
+### Configuración avanzada
+
+Agrupa las herramientas que no se usan todos los días: el ejemplo de reserva, la
+configuración de cada OTA y el diagnóstico completo. Al abrir una de esas secciones puedes
+revisar comisiones, descuentos, Offset, Last-Minute y techos sin llenar la pantalla diaria.
 
 ### ¿Cómo se calcula?
 
@@ -113,7 +120,7 @@ paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para e
 probar un caso. El simulador no vuelve a aplicar factores internos de PriceLabs a un precio
 que ya es final.
 
-### Airbnb, Booking.com, Expedia y Directo
+### Configurar Airbnb, Booking.com, Expedia y Directo
 
 Cada pestaña contiene la configuración de ese canal:
 
@@ -126,7 +133,7 @@ Cada pestaña contiene la configuración de ese canal:
 No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está
 activo para ese listing/canal y usa el porcentaje y la ventana reales.
 
-### Comparación
+### Diagnóstico completo
 
 **Panel de decisión por ventana de reserva** resume cada ventana. Lee primero
 **Veredicto**. Si pide atención, abre **Ver por canal** para ver el detalle. Los veredictos

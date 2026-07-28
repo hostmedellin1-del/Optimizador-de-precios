@@ -1,11 +1,16 @@
 import {test, expect} from '@playwright/test';
 
+async function openPromotionLab(page){
+  await page.locator('#promotionLabSection > summary').click();
+}
+
 test('Probador de promociones: probar no modifica la unidad; Aplicar sí guarda la promo y el Offset elegido', async ({page}) => {
   await page.goto('/index.html');
+  await openPromotionLab(page);
 
   const offset = page.locator('input[data-chid="airbnb"][data-chf="offsetPct"]');
   await expect(offset).toHaveValue('0');
-  await expect(page.locator('#promotionLabSection')).toContainText('prueba una idea sin cambiar tu configuración guardada');
+  await expect(page.locator('#promotionLabSection')).toContainText('Prueba una idea sin cambiar tu unidad');
 
   /* Forzar un escenario donde el descuento sí exige compensación: no basta con
      pintar un resultado, comprobamos que el borrador no altere state todavía. */
@@ -28,19 +33,22 @@ test('Probador de promociones: probar no modifica la unidad; Aplicar sí guarda 
 
 test('Probador de promociones: la tabla muestra que una promoción puede aplicar distinto según las noches', async ({page}) => {
   await page.goto('/index.html');
+  await openPromotionLab(page);
   await page.locator('#promoLabDiscount').selectOption('ab_los1');
   await page.locator('#promoLabPct').fill('15');
   await page.locator('#promoLabPct').press('Tab');
   await page.locator('#promoLabMinN').fill('3');
   await page.locator('#promoLabMinN').press('Tab');
 
-  const rows = page.locator('#promotionLab tbody').first().locator('tr');
+  await page.locator('#promotionLab .promo-detail summary').click();
+  const rows = page.locator('#promotionLab .promo-detail tbody').locator('tr');
   await expect(rows.nth(0).locator('td').nth(1)).toHaveText('No');
   await expect(rows.nth(2).locator('td').nth(1)).toHaveText('Sí');
 });
 
 test('Probador de promociones: explica qué descuentos se suman y cuáles compiten', async ({page}) => {
   await page.goto('/index.html');
+  await openPromotionLab(page);
   await page.locator('#promoLabChannel').selectOption('booking');
   await page.locator('#promoLabDiscount').selectOption('bk_lmd');
   await page.locator('#promoLabPct').fill('15');
@@ -54,6 +62,7 @@ test('Probador de promociones: explica qué descuentos se suman y cuáles compit
 
 test('Probador de promociones: permite agregar una segunda promoción a la misma prueba', async ({page}) => {
   await page.goto('/index.html');
+  await openPromotionLab(page);
   await page.locator('#promoLabChannel').selectOption('booking');
   await page.locator('#promoLabDiscount').selectOption('bk_lmd');
   await page.locator('#promoLabPct').fill('15');
@@ -72,6 +81,7 @@ test('Probador de promociones: permite agregar una segunda promoción a la misma
 
 test('Probador de promociones: un mismo precio de PriceLabs entrega Offsets de Kunas separados por OTA', async ({page}) => {
   await page.goto('/index.html');
+  await openPromotionLab(page);
   await page.locator('#promoLabPct').fill('20');
   await page.locator('#promoLabPct').press('Tab');
   await page.locator('#promoAddBtn').click();
@@ -81,14 +91,15 @@ test('Probador de promociones: un mismo precio de PriceLabs entrega Offsets de K
   await page.locator('#promoLabPct-1').press('Tab');
 
   await expect(page.locator('#promotionLab')).toContainText('Offsets de Kunas sugeridos con este precio común de PriceLabs');
-  const tables=page.locator('#promotionLab .promo-table');
-  await expect(tables.nth(1)).toContainText('Airbnb');
-  await expect(tables.nth(1)).toContainText('Booking.com');
-  await expect(tables.nth(1)).toContainText('Offset no perder');
+  const table=page.locator('#promotionLab .promo-table').first();
+  await expect(table).toContainText('Airbnb');
+  await expect(table).toContainText('Booking.com');
+  await expect(table).toContainText('Offset no perder');
 });
 
 test('Probador de promociones: al aplicar, guarda cada promoción y cada Offset de Kunas en su OTA', async ({page}) => {
   await page.goto('/index.html');
+  await openPromotionLab(page);
   const airbnbOffset=page.locator('input[data-chid="airbnb"][data-chf="offsetPct"]');
   const bookingOffset=page.locator('input[data-chid="booking"][data-chf="offsetPct"]');
   await expect(airbnbOffset).toHaveValue('0');
