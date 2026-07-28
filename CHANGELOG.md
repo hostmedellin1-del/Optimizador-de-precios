@@ -5,6 +5,30 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.22.0] — Offset de compensación visible por OTA
+
+**Instrucción directa** — cada tarjeta del Simulador de descuento máximo muestra ahora el
+**Offset de compensación en Kunas**: el porcentaje absoluto que recupera el precio común de
+PriceLabs después del peor descuento compatible y las comisiones de esa OTA. También explica
+cuántos puntos subir o bajar frente al Offset ya configurado. No reemplaza el Min Price ni
+incluye costos, margen o aseo.
+
+**Airbnb confirmado** — se documenta y prueba el orden oficial de una sola promoción
+principal por noche: anuncio nuevo → personalizada → duración → anticipada → último minuto.
+
+## [0.21.0] — Simulador de descuento máximo por OTA
+
+**Más simple** — la pantalla de promociones ahora muestra primero, para Airbnb, Booking,
+Expedia y Directo, el mayor descuento efectivo que podría recibir un huésped y la
+combinación que lo produce. La edición detallada de promociones y Offsets queda disponible
+en una sección opcional.
+
+**Booking corregido** — Mobile y Country se tratan como grupos de huésped alternativos,
+no como descuentos acumulables. Genius puede acompañar el grupo elegible y un Portfolio
+deal; Campaign/Limited combina solo con Genius. El Piso usa el grupo que recibe el precio
+más bajo, igual que el simulador de Booking, y calcula los descuentos de forma compuesta
+(dos descuentos de 10% equivalen a 19%, no 20%).
+
 ## [0.20.0] — Flujo personal sin verificaciones manuales
 
 **Simplificado** — se retiraron los bloqueos y formularios de verificación de costos,

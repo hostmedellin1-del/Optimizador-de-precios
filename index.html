@@ -44,10 +44,14 @@ button:hover{background:rgba(214,65,44,.24);}
 .unit-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:12px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);}
 #unitName{flex:1;min-width:170px;}
 .unit-bar-sep{width:1px;align-self:stretch;background:var(--border);}
+.unit-extra{margin-left:auto;}
+.unit-extra summary{cursor:pointer;color:var(--dim);font-size:12px;font-weight:600;padding:7px 2px;}
+.unit-extra-body{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
 #saveStatus{font-size:12px;color:var(--safe);font-family:'JetBrains Mono',monospace;}
 .row{display:flex;flex-wrap:wrap;gap:14px;}
 .row>.card{flex:1;min-width:280px;margin-bottom:0;}
 .stack{display:flex;flex-direction:column;gap:14px;margin-bottom:14px;}
+.daily-result{order:-1;}
 .field{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;font-size:13px;color:var(--dim);}
 .field input{width:90px;}
 .kpis{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;}
@@ -68,6 +72,21 @@ button:hover{background:rgba(214,65,44,.24);}
 .strategy-panel[open]>summary{margin-bottom:14px;}
 .strategy-panel[open]>summary::after{content:'Ocultar';}
 .strategy-panel .strategy-content{display:flex;flex-direction:column;gap:0;}
+.tool-panel{margin-bottom:14px;}
+.tool-panel>summary,.alerts-panel>summary{list-style:none;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;font-size:13px;font-weight:600;color:var(--text);}
+.tool-panel>summary::-webkit-details-marker,.alerts-panel>summary::-webkit-details-marker{display:none;}
+.tool-panel>summary::after,.alerts-panel>summary::after{content:'Mostrar';float:right;font-size:11px;font-weight:400;color:var(--faint);}
+.tool-panel[open]>summary,.alerts-panel[open]>summary{margin-bottom:14px;}
+.tool-panel[open]>summary::after,.alerts-panel[open]>summary::after{content:'Ocultar';}
+.tool-panel-body,.alerts-panel-body{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;}
+.alerts-panel{margin-bottom:14px;}
+.alerts-panel>summary{color:var(--dim);}
+.advanced-nav{position:relative;}
+.advanced-nav>summary{list-style:none;cursor:pointer;border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--dim);}
+.advanced-nav>summary::-webkit-details-marker{display:none;}
+.advanced-nav[open]>summary{margin-bottom:8px;background:var(--surface-2);}
+.advanced-nav-body{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0;}
+.advanced-nav .tabbtn{font-size:12px;}
 /* alerts */
 .alerts{display:flex;flex-direction:column;gap:8px;}
 .alert{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;border:1px solid;}
@@ -153,6 +172,35 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .chpage-head .fld input{width:80px;}
 .offset-hint{font-size:11px;color:var(--dim);margin-top:2px;}
 .offset-hint b{color:var(--accent);font-family:'JetBrains Mono',monospace;}
+/* Probador de promociones: los controles son temporales. La configuración real
+   solo cambia cuando el usuario confirma uno de los botones Aplicar. */
+.promo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px 14px;align-items:end;margin:12px 0;}
+.promo-grid .fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);}
+.promo-grid .fld input,.promo-grid .fld select{width:100%;min-width:0;}
+.promo-result{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:12px;}
+.promo-result h3{font-size:12px;margin:0 0 8px;letter-spacing:.02em;}
+.promo-summary{font-size:13px;line-height:1.55;margin:0 0 10px;}
+.promo-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:10px 0;}
+.promo-metric{border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:8px 10px;}
+.promo-metric .l{display:block;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;}
+.promo-metric .v{display:block;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;margin-top:2px;}
+.promo-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.promo-subhead{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:16px 0 6px;}
+.promo-table{min-width:620px;}
+.promo-detail{margin-top:14px;}
+.promo-detail summary{cursor:pointer;color:var(--dim);font-size:12px;font-weight:600;}
+.max-discount-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px;margin:12px 0;}
+.max-discount-card{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;}
+.max-discount-card .ota{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;}
+.max-discount-card .pct{display:block;font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:24px;font-weight:700;margin:2px 0 4px;}
+.max-discount-card .combo{font-size:12.5px;line-height:1.45;color:var(--text);min-height:36px;}
+.max-discount-card .case{font-size:11px;color:var(--faint);margin:6px 0 8px;}
+.max-discount-card .offset{border-top:1px solid var(--border);margin-top:10px;padding-top:8px;font-size:11px;color:var(--dim);line-height:1.4;}
+.max-discount-card .offset strong{display:block;font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:17px;margin-top:1px;}
+.max-discount-card .offset span{display:block;color:var(--faint);margin-top:2px;}
+.promo-editor{margin-top:14px;border-top:1px solid var(--border);padding-top:10px;}
+.promo-editor>summary{cursor:pointer;color:var(--dim);font-size:12.5px;font-weight:600;}
+.promo-editor-body{padding-top:8px;}
 .chpage-discounts{display:flex;flex-direction:column;gap:0;}
 .chpage-discounts .d-item{padding:9px 0;font-size:13px;}
 .chpage-discounts .d-name{font-size:13px;}
@@ -177,8 +225,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 
 <header>
   <div class="eyebrow">HOST MEDELLÍN · REVENUE OPS · v2</div>
-  <h1>Precios y Descuentos por Canal</h1>
-  <p class="sub">Un catálogo de descuentos, un motor con las reglas reales de combinación de cada OTA, y la respuesta a: qué precio poner, qué activar, cuánto ve el huésped y cuánto te queda.</p>
+  <h1>Precio mínimo y promociones</h1>
+  <p class="sub">Una herramienta personal para saber qué Min Price poner en PriceLabs, qué Offset usar en Kunas y si una promoción todavía te deja ganancia.</p>
   <a class="ghost" href="guia.html" target="_blank" rel="noopener" style="display:inline-block;margin-top:12px;">Guía de uso →</a>
 </header>
 
@@ -188,24 +236,28 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button class="ghost" id="duplicateUnit" title="Crea una nueva unidad con la misma configuración; tendrás que confirmar sus propios datos y costos.">Duplicar</button>
   <select id="unitList"><option value="">Cargar unidad…</option></select>
   <button class="ghost" id="deleteUnit">Eliminar</button>
-  <span class="unit-bar-sep"></span>
-  <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
-  <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
+  <details class="unit-extra">
+    <summary>Respaldo y opciones</summary>
+    <div class="unit-extra-body">
+      <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
+      <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
+      <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores únicos (v3). No borra nada del formato antiguo.">Migrar unidades antiguas</button>
+    </div>
+  </details>
   <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
-  <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
   <span id="saveStatus"></span>
 </div>
 
-<section class="card" id="alertsCard">
-  <h2>Alertas <span class="hint">el motor revisa tu configuración completa en cada cambio</span></h2>
-  <div class="alerts" id="alertsBox"></div>
-</section>
+<details class="alerts-panel" id="alertsCard">
+  <summary>Revisar avisos técnicos <span class="hint">solo si quieres revisar algo en detalle</span></summary>
+  <div class="alerts-panel-body"><div class="alerts" id="alertsBox"></div></div>
+</details>
 
 <div class="row stack" id="tabbarMount"></div>
 
 <div class="tab-panel active" data-tab="resumen">
 <section class="card intro-card">
-  <p class="intro-text">PriceLabs pone un precio por noche. Cada plataforma (Airbnb, Booking, Expedia) le resta sus propios descuentos y su comisión — cada una con sus reglas. Tu banco cobra aparte. <strong>Lo que sobra después de todo eso es tu ganancia real</strong>, no el precio que pusiste. Esta herramienta calcula ese precio mínimo y ese precio base para que no vendas por debajo del costo sin darte cuenta.</p>
+  <p class="intro-text"><strong>Tu trabajo diario es simple:</strong> calcula el Min Price, ponlo en PriceLabs y aplica los Offsets que la herramienta te indique en Kunas. Las promociones y cada OTA se revisan solo cuando quieras cambiar una estrategia.</p>
 </section>
 <div id="currencyReviewBanner"></div>
 <div id="validationBanner"></div>
@@ -216,8 +268,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <div class="field"><span id="currencyLabel">Moneda de esta unidad</span><span id="currencyDisplay" role="status" aria-labelledby="currencyLabel" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
     <p class="hint" id="usdOnlyNotice">Todos los valores deben ingresarse en USD. Esta versión no convierte ni mezcla monedas — la multimoneda se implementará en una fase posterior.</p>
     <p class="hint" id="usdReviewTrail" style="display:none;"></p>
-    <div class="field"><label for="f-fixedCost">Fijos (arriendo, admin, servicios, seguros, tech)</label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
-    <div class="field"><label for="f-varCost">Variables (limpieza, lavandería, consumos, insumos)</label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
+    <div class="field"><label for="f-fixedCost">Costo fijo por noche <span class="hint">arriendo, administración, servicios y tech</span></label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
+    <div class="field"><label for="f-varCost">Costo variable por noche <span class="hint">limpieza, lavandería, consumos e insumos</span></label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
@@ -255,16 +307,23 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     </details>
     <div class="field"><label for="f-avgNights">Estadía promedio (noches) <span class="hint">para diluir la tarifa de aseo y evaluar descuentos por duración</span></label><input id="f-avgNights" type="number" data-k="avgNights" step="1" min="1"></div>
   </div>
-  <div class="card">
-    <h2>Resultado del modelo</h2>
+  <div class="card daily-result">
+    <h2>Lo que debes configurar</h2>
     <div class="kpis">
       <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
       <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que puedes aceptar. Ni un peso menos, en ningún canal, ni con el peor descuento activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
     </div>
-    <p class="hint" style="margin-top:10px;">Este es el número principal para no vender bajo costo. Configura primero costos, estadía promedio, canales y descuentos activos.</p>
-    <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver una reserva con este Min Price →</button>
+    <p class="hint" style="margin-top:10px;">Pon este Min Price en PriceLabs. Ya protege el peor caso de descuentos, comisiones y Offsets configurados.</p>
+    <button class="ghost" id="goSimBtn" style="margin-top:12px;">Entender una reserva →</button>
   </div>
 </div>
+<details class="tool-panel" id="promotionLabSection">
+  <summary>Simulador de descuento máximo <span class="hint">ve el peor descuento posible por OTA</span></summary>
+  <div class="tool-panel-body">
+    <p class="hint">La herramienta busca el grupo de huésped que recibe el mayor descuento real en cada OTA. Solo combina descuentos compatibles: no suma promociones imposibles.</p>
+    <div id="promotionLab"></div>
+  </div>
+</details>
 <details class="strategy-panel" id="strategySection">
   <summary>Estrategia de PriceLabs <span class="hint">Base Price, Last-Minute, techos y análisis por ventana</span></summary>
   <div class="strategy-content">
@@ -362,7 +421,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from './src/catalog/discounts.js';
 import {pct} from './src/domain/percent.js';
 import {f$ as f$base, fP} from './src/domain/format.js';
-import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
+import {compute as computeBase, suggestedOffset as suggestedOffsetBase, maximumDiscountScenario, compensationOffsetPct} from './src/domain/engine.js';
 import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
@@ -374,6 +433,7 @@ import {newUnitId, buildDuplicateUnit, buildV3Record, v3Key, validateImportFile,
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
+import {analyzePromotionProposal} from './src/domain/promotion-lab.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -421,6 +481,15 @@ let state = {
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
   usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
+};
+/* Borrador efímero: probar promociones nunca toca state, localStorage ni la
+   unidad guardada. Solamente Aplicar + confirmación lleva un cambio a state. */
+let promotionDraft = {
+  /* El precio final de PriceLabs es común. Cada línea escoge la OTA donde se
+     configura esa promoción; `detailChannelId` solo determina qué OTA se
+     muestra en detalle por duración. */
+  detailChannelId:'airbnb', promotions:[{chId:'airbnb', discountId:'ab_lm2', pct:15, from:0, to:3, minN:3}],
+  days:2, nights:2, finalPrice:null
 };
 
 /* ================== ENGINE ================== */
@@ -489,6 +558,16 @@ function quoteConfig(){
     fixedCost: state.fixedCost, varCost: state.varCost, manualReviewGates: false,
     costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
+  };
+}
+function promotionLabConfig(){
+  return {
+    ...quoteConfig(),
+    fixedCost:state.fixedCost, varCost:state.varCost, margin:state.margin,
+    marketBase:state.marketBase, avgNights:state.avgNights,
+    usingExampleCosts:costGateNow().usingExampleCosts,
+    currency:state.currency, usdManualReviewPending:state.usdManualReviewPending,
+    usdManualReviewLog:state.usdManualReviewLog, manualReviewGates:false
   };
 }
 /* ================== ALERTS ================== */
@@ -795,17 +874,21 @@ function renderSim(model){
   simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${escapeHtml(i.name)} — ${escapeHtml(i.reason)}`).join(' · ')):'';
 }
 const TABS = [
-  {id:'resumen', label:'Resumen'},
-  {id:'simulador', label:'¿Cómo se calcula?'},
-  {id:'ch-airbnb', label:'Airbnb'},
-  {id:'ch-booking', label:'Booking.com'},
-  {id:'ch-expedia', label:'Expedia'},
-  {id:'ch-direct', label:'Directo'},
-  {id:'comparacion', label:'Comparación'}
+  {id:'resumen', label:'Precio mínimo', daily:true},
+  {id:'simulador', label:'Ejemplo de reserva', advanced:true},
+  {id:'ch-airbnb', label:'Configurar Airbnb', advanced:true},
+  {id:'ch-booking', label:'Configurar Booking.com', advanced:true},
+  {id:'ch-expedia', label:'Configurar Expedia', advanced:true},
+  {id:'ch-direct', label:'Configurar Directo', advanced:true},
+  {id:'comparacion', label:'Diagnóstico completo', advanced:true}
 ];
 /* Único punto de cambio de pestaña — lo usan el tabbar, el botón "ver paso a paso"
    de Resumen y los links "Ver →" de las alertas, para no duplicar la lógica. */
 function goToTab(tabId){
+  if(TABS.find(tab=>tab.id===tabId)?.advanced){
+    const advancedNav=document.getElementById('advancedNav');
+    if(advancedNav) advancedNav.open=true;
+  }
   document.querySelectorAll('[data-tabbtn]').forEach(b=>b.classList.toggle('active', b.dataset.tabbtn===tabId));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.dataset.tab===tabId));
 }
@@ -850,15 +933,156 @@ function goToSection(tabId, anchorKey){
   });
 }
 function buildTabbar(){
-  tabbarMount.innerHTML = `<div class="tabbar">${TABS.map((t,i)=>`<button class="tabbtn ${i===0?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div>`;
+  const daily=TABS.filter(tab=>tab.daily);
+  const advanced=TABS.filter(tab=>tab.advanced);
+  tabbarMount.innerHTML = `<div class="tabbar">${daily.map((t,i)=>`<button class="tabbtn ${i===0?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}<details class="advanced-nav" id="advancedNav"><summary>Configuración avanzada</summary><div class="advanced-nav-body">${advanced.map(t=>`<button class="tabbtn" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div></details></div>`;
   document.querySelectorAll('[data-tabbtn]').forEach(btn=>{
     btn.addEventListener('click',()=>goToTab(btn.dataset.tabbtn));
   });
 }
+function formatOffset(value){
+  if(!Number.isFinite(value)) return '—';
+  return (value>=0?'+':'')+value.toFixed(1)+'%';
+}
+function newPromotionLine(discount){
+  return {
+    chId:discount?.ch||'', discountId:discount?.id||'', pct:discount?.pct||0,
+    from:discount?.from??0, to:discount?.to??3, minN:discount?.minN??1
+  };
+}
+function normalizePromotionDraft(model){
+  if(!state.channels.some(c=>c.id===promotionDraft.detailChannelId)) promotionDraft.detailChannelId=state.channels[0]?.id||'';
+  const firstDiscount=state.discounts[0];
+  /* Migra el borrador de la primera versión (una sola promo) sin tocar state. */
+  if(!Array.isArray(promotionDraft.promotions)){
+    promotionDraft.promotions=[newPromotionLine(state.discounts.find(d=>d.id===promotionDraft.discountId)||firstDiscount)];
+  }
+  promotionDraft.promotions=promotionDraft.promotions.map(line=>{
+    const lineChannel=state.channels.some(c=>c.id===line.chId) ? line.chId : promotionDraft.detailChannelId;
+    const available=state.discounts.filter(d=>d.ch===lineChannel);
+    const discount=available.find(d=>d.id===line.discountId)||available[0]||firstDiscount;
+    return {...newPromotionLine(discount), ...line, discountId:discount?.id||''};
+  });
+  if(!promotionDraft.promotions.length && firstDiscount) promotionDraft.promotions=[newPromotionLine(firstDiscount)];
+  if(promotionDraft.finalPrice===null || !Number.isFinite(Number(promotionDraft.finalPrice)) || Number(promotionDraft.finalPrice)<=0){
+    promotionDraft.finalPrice=Math.max(1, model.floor||0);
+  }
+  return state.discounts;
+}
+function renderPromotionLab(model){
+  const mount=document.getElementById('promotionLab');
+  if(!mount) return;
+  const editorWasOpen=mount.querySelector('.promo-editor')?.open;
+  const allDiscounts=normalizePromotionDraft(model);
+  if(!allDiscounts.length){ mount.innerHTML='<div class="alert bad"><span class="tag">SIN CATÁLOGO</span><span>No hay promociones disponibles para probar.</span></div>'; return; }
+  const maximumRows=state.channels.map(channelItem=>{
+    const maximum=maximumDiscountScenario(state.discounts,channelItem.id,WINDOWS);
+    const compensation=compensationOffsetPct(channelItem,maximum.factor);
+    const currentOffset=Number(channelItem.offsetPct)||0;
+    const change=compensation===null ? null : compensation-currentOffset;
+    const combination=maximum.applied.length
+      ? maximum.applied.map(item=>escapeHtml(item.name)).join(' + ')
+      : 'Sin descuentos activos';
+    const when=`Caso más fuerte: ${maximum.days===9999?'cualquier día lejano':'día '+maximum.days} · ${maximum.nights===400?'estadía larga':maximum.nights+' noche'+(maximum.nights===1?'':'s')}`;
+    const compensationText=compensation===null ? 'No se puede calcular' : formatOffset(compensation);
+    const changeText=change===null ? 'Revisa las comisiones de esta OTA.' : Math.abs(change)<0.05
+      ? 'Tu Offset actual ya compensa este caso.'
+      : change>0 ? `Sube ${change.toFixed(1)} puntos desde tu Offset actual (${formatOffset(currentOffset)}).`
+        : `Podrías bajar ${Math.abs(change).toFixed(1)} puntos desde tu Offset actual (${formatOffset(currentOffset)}).`;
+    return `<article class="max-discount-card"><span class="ota">${escapeHtml(channelItem.name)}</span><strong class="pct">${maximum.totalPct.toFixed(1)}%</strong><div class="combo">${combination}</div><div class="case">${when}</div><div class="offset">Offset de compensación en Kunas<strong>${compensationText}</strong><span>${changeText}</span></div><button type="button" class="ghost" data-promo-config="ch-${escapeHtml(channelItem.id)}">Configurar ${escapeHtml(channelItem.name)} →</button></article>`;
+  }).join('');
+  const maximumSummary=`<div class="promo-result"><h3>El peor descuento posible para cada OTA</h3><p class="promo-summary">Estos son los grupos de huéspedes que podrían recibir el precio más bajo. El <strong>Min Price</strong> se calcula usando estos casos junto con el Offset y las comisiones de cada OTA.</p><div class="max-discount-grid">${maximumRows}</div><p class="hint"><strong>Offset de compensación</strong> deja el mismo neto que el precio común de PriceLabs después del descuento y las comisiones; no incluye margen, costo ni aseo. Booking aplica descuentos compuestos: dos descuentos de 10% dejan 19%. Airbnb aplica una sola promoción principal por noche, en este orden: anuncio nuevo → personalizada → duración → anticipada → último minuto.</p></div>`;
+  const channel=state.channels.find(c=>c.id===promotionDraft.detailChannelId);
+  const proposal={
+    promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),
+    detailChannelId:promotionDraft.detailChannelId,
+    days:Number(promotionDraft.days), nights:Number(promotionDraft.nights), finalPrice:Number(promotionDraft.finalPrice)
+  };
+  const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
+  const channelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===promotionDraft.detailChannelId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+  const promotionLines=promotionDraft.promotions.map((line,index)=>{
+    const available=allDiscounts.filter(d=>d.ch===line.chId);
+    const discount=available.find(d=>d.id===line.discountId)||available[0];
+    const prefix=index===0?'':'-'+index;
+    const discountOptions=available.map(d=>`<option value="${escapeHtml(d.id)}" ${d.id===line.discountId?'selected':''}>${escapeHtml(d.name)}</option>`).join('');
+    const lineChannelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===line.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+    const conditionFields=discount.kind==='window'
+      ? `<div class="fld"><label for="promoLabFrom${prefix}">Desde (días)</label><input id="promoLabFrom${prefix}" type="number" min="0" data-promo-row="${index}" data-promo-field="from" value="${escapeHtml(line.from)}"></div>
+         <div class="fld"><label for="promoLabTo${prefix}">Hasta (días)</label><input id="promoLabTo${prefix}" type="number" min="0" data-promo-row="${index}" data-promo-field="to" value="${escapeHtml(line.to)}"></div>`
+      : discount.kind==='los'
+        ? `<div class="fld"><label for="promoLabMinN${prefix}">Mínimo de noches</label><input id="promoLabMinN${prefix}" type="number" min="1" data-promo-row="${index}" data-promo-field="minN" value="${escapeHtml(discount.lockN?discount.minN:line.minN)}" ${discount.lockN?'disabled':''}></div>`
+        : `<div class="fld"><label>Condición</label><span class="hint" style="padding:8px 0;">Siempre aplica</span></div>`;
+    return `<div class="cost-calc-group" style="margin:8px 0 0;"><div class="promo-grid" style="margin:0;">
+      <div class="fld"><label for="promoLabChannel${prefix}">Canal de esta promoción</label><select id="promoLabChannel${prefix}" data-promo-row="${index}" data-promo-field="chId">${lineChannelOptions}</select></div>
+      <div class="fld"><label for="promoLabDiscount${prefix}">Promoción ${index+1}</label><select id="promoLabDiscount${prefix}" data-promo-row="${index}" data-promo-field="discountId">${discountOptions}</select></div>
+      <div class="fld"><label for="promoLabPct${prefix}">Descuento %</label><input id="promoLabPct${prefix}" type="number" min="0" max="99.999" step="0.1" data-promo-row="${index}" data-promo-field="pct" value="${escapeHtml(line.pct)}"></div>
+      ${conditionFields}
+      ${promotionDraft.promotions.length>1?`<div class="fld"><label>&nbsp;</label><button type="button" class="ghost" data-promo-remove="${index}">Quitar</button></div>`:''}
+    </div></div>`;
+  }).join('');
+  let result='<div class="alert bad"><span class="tag">REVISAR</span><span>'+escapeHtml(analysis.reason||'No se pudo probar esta promoción.')+'</span></div>';
+  if(analysis.ok){
+    const minChanged=analysis.proposedModel.floor-analysis.baselineModel.floor;
+    const minText=minChanged>0.005
+      ? `Con esta promoción, el Min Price global debería subir de ${f$(analysis.baselineModel.floor)} a ${f$(analysis.proposedModel.floor)} para seguir protegido.`
+      : `El Min Price global queda en ${f$(analysis.proposedModel.floor)} con los Offsets actuales; la promoción no lo obliga a subir en el peor escenario del catálogo.`;
+    const currentStatus=analysis.reachesMargin ? 'todos los canales conservan el margen objetivo' : analysis.coversCost ? 'todos cubren costo, pero alguno no llega al margen objetivo' : 'al menos un canal queda bajo costo';
+    const costOffset=analysis.offsetForCost.ok ? formatOffset(analysis.offsetForCost.offsetPct) : 'no disponible';
+    const marginOffset=analysis.offsetForMargin.ok ? formatOffset(analysis.offsetForMargin.offsetPct) : 'no disponible';
+    /* Transparencia clave: el motor ya combinaba descuentos reales; el
+       probador ahora los nombra para que no parezca que una promo activa se
+       perdió. `applied` e `ignored` vienen de quoteScenario()/combineChannel,
+       nunca de una segunda interpretación de reglas en la interfaz. */
+    const appliedPromos=analysis.proposalStatuses.filter(item=>item.applies).length
+      ? analysis.proposalStatuses.filter(item=>item.applies).map(item=>escapeHtml(item.name)).join(' · ')
+      : 'Ninguna promoción OTA aplica a estos días/noches.';
+    const ignoredPromos=analysis.proposalStatuses.some(item=>item.ignored)
+      ? `<p class="hint"><strong>No se suman en esta reserva:</strong> ${analysis.proposalStatuses.filter(item=>item.ignored).map(item=>`${escapeHtml(item.name)} — ${escapeHtml(item.ignored)}`).join(' · ')}</p>`
+      : '';
+    const rows=analysis.durationRows.map(row=>`<tr><td>${row.nights}</td><td>${row.promoApplies?'Sí':'No'}</td><td class="out">${f$(row.payout)}</td><td class="out">${f$(row.cost)}</td><td class="out">${f$(row.margin)}</td><td class="out">${formatOffset(row.offsetForCost)}</td><td class="out">${formatOffset(row.offsetForMargin)}</td></tr>`).join('');
+    const compareRows=analysis.channelResults.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td class="out">${formatOffset(row.currentOffset)}</td><td class="out">${f$(row.proposed.guestWithFees)}</td><td class="out">${f$(row.proposed.payout)}</td><td class="out">${f$(row.proposed.cost)}</td><td class="out">${formatOffset(row.offsetForCost.ok?row.offsetForCost.offsetPct:null)}</td><td class="out">${formatOffset(row.offsetForMargin.ok?row.offsetForMargin.offsetPct:null)}</td></tr>`).join('');
+    result=`<div class="promo-result">
+      <h3>${escapeHtml(analysis.recommendation)}</h3>
+      ${!analysis.promoApplies?'<div class="alert warn"><span class="tag">NO APLICA AQUÍ</span><span>Ninguna de las promociones elegidas aplica en los '+analysis.scenario.days+' días / '+analysis.scenario.nights+' noches del ejemplo. La tabla muestra exactamente en qué duraciones alguna sí aplica.</span></div>':''}
+      <p class="promo-summary"><strong>Instrucción concreta:</strong> este es <strong>un solo precio final de PriceLabs</strong>, común a todas las OTAs. Configura cada promoción en la OTA elegida arriba y usa los <strong>Offsets de Kunas por OTA</strong> de la tabla. El motor solo suma promociones compatibles dentro de cada OTA; nunca inventa combinaciones.</p>
+      <div class="alert ok"><span class="tag">PROMOS APLICADAS</span><span>${appliedPromos}</span></div>
+      ${ignoredPromos}
+      <p class="hint">${minText} El precio probado es final de PriceLabs: nunca se descuenta Last-Minute una segunda vez.</p>
+      <div class="promo-actions">
+        <button type="button" data-promo-apply="cost" ${analysis.channelResults.some(row=>!row.offsetForCost.ok)?'disabled':''}>Aplicar promociones + Offsets por OTA para no perder</button>
+        <button type="button" data-promo-apply="margin" ${analysis.channelResults.some(row=>!row.offsetForMargin.ok)?'disabled':''}>Aplicar promociones + Offsets por OTA con margen</button>
+      </div>
+      <div class="promo-subhead">Offsets de Kunas sugeridos con este precio común de PriceLabs</div>
+      <div class="table-wrap"><table class="promo-table"><thead><tr><th>Canal</th><th>Offset actual</th><th>Precio huésped</th><th>Neto</th><th>Costo</th><th>Offset no perder</th><th>Offset margen</th></tr></thead><tbody>${compareRows}</tbody></table></div>
+      <details class="promo-detail"><summary>Ver cálculo detallado por duración y por OTA</summary>
+        <div class="promo-metrics">
+          <div class="promo-metric"><span class="l">Precio huésped propuesto</span><span class="v">${f$(analysis.proposed.guestWithFees)}</span></div>
+          <div class="promo-metric"><span class="l">Neto con Offset actual</span><span class="v">${f$(analysis.proposed.payout)}</span></div>
+          <div class="promo-metric"><span class="l">Costo real (${analysis.scenario.nights} n.)</span><span class="v">${f$(analysis.targetCost)}</span></div>
+          <div class="promo-metric"><span class="l">Resultado actual</span><span class="v">${currentStatus}</span></div>
+        </div>
+        <div class="promo-metrics">
+          <div class="promo-metric"><span class="l">Offset actual en Kunas</span><span class="v">${formatOffset(analysis.currentOffset)}</span></div>
+          <div class="promo-metric"><span class="l">Offset para no perder</span><span class="v">${costOffset}</span></div>
+          <div class="promo-metric"><span class="l">Offset para margen ${Number(state.margin).toFixed(0)}%</span><span class="v">${marginOffset}</span></div>
+          <div class="promo-metric"><span class="l">Min Price protegido</span><span class="v">${f$(analysis.proposedModel.floor)}</span></div>
+        </div>
+        <div class="promo-subhead">Detalle por duración — ${escapeHtml(channel?.name||'OTA elegida')}</div>
+        <div class="table-wrap"><table class="promo-table"><thead><tr><th>Noches</th><th>¿Promo aplica?</th><th>Neto</th><th>Costo</th><th>Margen</th><th>Offset no perder</th><th>Offset margen</th></tr></thead><tbody>${rows}</tbody></table></div>
+      </details>
+    </div>`;
+  }
+  mount.innerHTML=`${maximumSummary}<details class="promo-editor"${editorWasOpen?' open':''}><summary>Cambiar promociones u Offsets <span class="hint">opcional</span></summary><div class="promo-editor-body"><p class="hint">Prueba una idea antes de aplicarla. PriceLabs mantiene un precio final común y Kunas puede llevar un Offset distinto por OTA.</p><div class="promo-grid">
+    <div class="fld"><label for="promoLabDetailChannel">Canal para ver detalle por duración</label><select id="promoLabDetailChannel" data-promo-lab="detailChannelId">${channelOptions}</select></div>
+    <div class="fld"><label for="promoLabDays">Días antes del check-in</label><input id="promoLabDays" type="number" min="0" data-promo-lab="days" value="${escapeHtml(promotionDraft.days)}"></div>
+    <div class="fld"><label for="promoLabNights">Noches de reserva</label><input id="promoLabNights" type="number" min="1" data-promo-lab="nights" value="${escapeHtml(promotionDraft.nights)}"></div>
+    <div class="fld"><label for="promoLabPrice">Precio FINAL de PriceLabs</label><input id="promoLabPrice" type="number" min="0.01" step="1" data-promo-lab="finalPrice" value="${escapeHtml(promotionDraft.finalPrice)}"></div>
+  </div><div class="promo-subhead">Promociones que quieres probar juntas</div>${promotionLines}<div class="promo-actions"><button type="button" class="ghost" id="promoAddBtn">+ Agregar otra promoción</button></div>${result}</div></details>`;
+}
 function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance();
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderKpis(model); renderAlerts(model); renderPromotionLab(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig();
   renderCurrencyReviewBanner(model);
 }
@@ -1093,7 +1317,66 @@ function readNumField(t, current, opts={}){
 }
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset.floorContractConfirmed!==undefined){
+  if(t.dataset.promoRow!==undefined){
+    const index=Number(t.dataset.promoRow);
+    const field=t.dataset.promoField;
+    const line=promotionDraft.promotions[index];
+    if(!line) return;
+    if(field==='chId'){
+      const discount=state.discounts.find(d=>d.ch===t.value);
+      if(!discount) return;
+      promotionDraft.promotions[index]=newPromotionLine(discount);
+    }
+    else if(field==='discountId'){
+      if(promotionDraft.promotions.some((item,itemIndex)=>itemIndex!==index && item.discountId===t.value)){
+        t.value=line.discountId;
+        showInputError('Probador — esa promoción ya está agregada. Cambia su porcentaje en la fila existente, o elige otra.');
+        return;
+      }
+      const discount=state.discounts.find(d=>d.id===t.value && d.ch===line.chId);
+      if(!discount) return;
+      promotionDraft.promotions[index]=newPromotionLine(discount);
+    } else {
+      const opts={
+        pct:{min:0,max:99.999,label:'Probador — descuento'},
+        from:{min:0,max:9999,integer:true,label:'Probador — desde día'},
+        to:{min:0,max:9999,integer:true,label:'Probador — hasta día'},
+        minN:{min:1,max:9999,integer:true,label:'Probador — mínimo de noches'}
+      };
+      const read=readNumField(t,line[field],opts[field]);
+      if(!read.ok) return;
+      if(field==='from' && read.value>Number(line.to)){
+        t.value=line[field]; showInputError('Probador — el día inicial no puede ser mayor que el final.'); return;
+      }
+      if(field==='to' && read.value<Number(line.from)){
+        t.value=line[field]; showInputError('Probador — el día final no puede ser menor que el inicial.'); return;
+      }
+      line[field]=read.value;
+    }
+    renderPromotionLab(compute());
+  }
+  else if(t.dataset.promoLab!==undefined){
+    const field=t.dataset.promoLab;
+    if(field==='detailChannelId'){
+      promotionDraft.detailChannelId=t.value;
+    } else {
+      const current=promotionDraft[field];
+      const opts={
+        pct:{min:0,max:99.999,label:'Probador — descuento'},
+        from:{min:0,max:9999,integer:true,label:'Probador — desde día'},
+        to:{min:0,max:9999,integer:true,label:'Probador — hasta día'},
+        minN:{min:1,max:9999,integer:true,label:'Probador — mínimo de noches'},
+        days:{min:0,max:9999,integer:true,label:'Probador — días antes del check-in'},
+        nights:{min:1,max:9999,integer:true,label:'Probador — noches de reserva'},
+        finalPrice:{min:0.01,max:1e7,label:'Probador — precio final de PriceLabs'}
+      };
+      const read=readNumField(t,current,opts[field]);
+      if(!read.ok) return;
+      promotionDraft[field]=read.value;
+    }
+    renderPromotionLab(compute());
+  }
+  else if(t.dataset.floorContractConfirmed!==undefined){
     state.priceLabsMinPriceContractConfirmed = t.checked;
     renderAll();
   }
@@ -1260,6 +1543,62 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
+  const promoConfig=e.target.closest('[data-promo-config]');
+  if(promoConfig){
+    goToTab(promoConfig.dataset.promoConfig);
+    return;
+  }
+  if(e.target.id==='promoAddBtn'){
+    const existing=new Set(promotionDraft.promotions.map(line=>line.discountId));
+    const next=state.discounts.find(discount=>discount.ch===promotionDraft.detailChannelId && !existing.has(discount.id))
+      || state.discounts.find(discount=>!existing.has(discount.id));
+    if(!next){ showInputError('Ya agregaste todas las promociones disponibles.'); return; }
+    promotionDraft.promotions.push(newPromotionLine(next));
+    renderPromotionLab(compute());
+    return;
+  }
+  const promoRemove=e.target.closest('[data-promo-remove]');
+  if(promoRemove){
+    promotionDraft.promotions.splice(Number(promoRemove.dataset.promoRemove),1);
+    renderPromotionLab(compute());
+    return;
+  }
+  const promoApply=e.target.closest('[data-promo-apply]');
+  if(promoApply){
+    const proposal={
+      promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),
+      detailChannelId:promotionDraft.detailChannelId,
+      days:Number(promotionDraft.days), nights:Number(promotionDraft.nights), finalPrice:Number(promotionDraft.finalPrice)
+    };
+    const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
+    const mode=promoApply.dataset.promoApply;
+    const solvedKey=mode==='margin' ? 'offsetForMargin' : 'offsetForCost';
+    if(!analysis.ok || analysis.channelResults?.some(row=>!row[solvedKey]?.ok)){
+      showInputError(analysis.reason||'No se pudo resolver el Offset para esta promoción.');
+      return;
+    }
+    const label=mode==='margin' ? `margen objetivo (${Number(state.margin).toFixed(0)}%)` : 'no perder dinero';
+    const promotionSummary=analysis.discounts.map(discount=>`• ${discount.name}: ${Number(discount.pct).toFixed(1)}%`).join('\n');
+    const offsetSummary=analysis.channelResults.map(row=>`• ${row.name}: ${formatOffset(row[solvedKey].offsetPct)}`).join('\n');
+    const message=`Vas a aplicar estas promociones:\n\n${promotionSummary}\n\nOffsets de Kunas por OTA:\n${offsetSummary}\n\nObjetivo: ${label}\n\nLa prueba temporal dejará de ser solo una prueba y modificará esta unidad. ¿Aplicar?`;
+    if(!confirm(message)) return;
+    for(const discount of analysis.discounts){
+      const liveDiscount=state.discounts.find(item=>item.id===discount.id);
+      if(!liveDiscount){ showInputError('No se encontró una promoción para aplicar el cambio.'); return; }
+      liveDiscount.on=true;
+      liveDiscount.pct=discount.pct;
+      if(liveDiscount.kind==='window'){ liveDiscount.from=discount.from; liveDiscount.to=discount.to; }
+      if(liveDiscount.kind==='los' && !liveDiscount.lockN) liveDiscount.minN=discount.minN;
+    }
+    for(const row of analysis.channelResults){
+      const liveChannel=state.channels.find(c=>c.id===row.chId);
+      if(!liveChannel){ showInputError('No se encontró un canal para aplicar su Offset.'); return; }
+      liveChannel.offsetPct=row[solvedKey].offsetPct;
+    }
+    status(`Aplicadas ${analysis.discounts.length} promoción(es) + Offsets de Kunas por OTA para ${label}. Guarda la unidad para conservarlo.`);
+    renderAll();
+    return;
+  }
   const goto=e.target.closest('[data-goto]');
   if(goto){
     const [tabId, anchorKey] = goto.dataset.goto.split(':');
