@@ -12,7 +12,9 @@ test('Simulador de descuento máximo: muestra el peor grupo posible por OTA sin 
   await expect(page.locator('#promotionLab')).toContainText('El peor descuento posible para cada OTA');
   await expect(page.locator('#promotionLab')).toContainText('Booking.com');
   await expect(page.locator('#promotionLab')).toContainText('Genius (constante) + Mobile Rate');
-  await expect(page.locator('#promotionLab')).toContainText('Mobile y Country se evalúan como grupos alternativos');
+  await expect(page.locator('#promotionLab')).toContainText('Offset de compensación en Kunas');
+  await expect(page.locator('#promotionLab')).toContainText('+57.8%');
+  await expect(page.locator('#promotionLab')).toContainText('Airbnb aplica una sola promoción principal por noche');
   await expect(page.locator('#promotionLab .promo-editor')).not.toHaveAttribute('open', '');
 });
 

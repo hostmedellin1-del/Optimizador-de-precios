@@ -107,7 +107,9 @@ Los avisos técnicos, el respaldo, los costos detallados y el **Simulador de des
 máximo** quedan plegados para no distraerte. Este último muestra, por OTA, el grupo de
 huésped que podría recibir el mayor descuento real; combina solo promociones compatibles.
 Ábrelo cuando quieras revisar una estrategia y usa **Configurar [OTA]** para cambiar sus
-promociones o Offset.
+promociones o Offset. Cada tarjeta también muestra el **Offset de compensación en Kunas**:
+el valor que compensa el peor descuento y las comisiones de ese canal, sin sumar porcentajes
+de forma incorrecta. No incluye margen, costo ni aseo; el Min Price se encarga de protegerlos.
 
 ### Configuración avanzada
 

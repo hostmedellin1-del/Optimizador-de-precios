@@ -200,6 +200,17 @@ export function payoutFactor(c){
   return Math.max(0, 1 - pct(c.comm)/100 - pct(c.bankFeePct)/100);
 }
 
+/* Offset absoluto que se configura en Kunas para que, después del descuento
+   máximo de la OTA y de sus comisiones, quede el mismo valor del precio común
+   de PriceLabs. Es una compensación de canal: NO sustituye el Min Price ni
+   añade margen, costos o aseo. */
+export function compensationOffsetPct(channel, nativeFactor){
+  const discountFactor=Number(nativeFactor);
+  const feeFactor=payoutFactor(channel||{});
+  if(!Number.isFinite(discountFactor) || discountFactor<=0 || feeFactor<=0) return null;
+  return (1/(discountFactor*feeFactor)-1)*100;
+}
+
 /* Tarifa de aseo fija por reserva (solo Airbnb), diluida por noche según la estadía dada.
    Devuelve 0 para canales sin aseo. Reusa la regla 1-2 noches / 3+ del catálogo. */
 export function cleanFeePerNight(c, nights){

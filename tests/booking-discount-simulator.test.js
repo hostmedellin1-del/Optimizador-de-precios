@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {combineChannel, maximumDiscountScenario} from '../src/domain/engine.js';
-import {freshDiscounts, freshWindows, findDiscount} from './helpers/state-factory.js';
+import {combineChannel, maximumDiscountScenario, compensationOffsetPct} from '../src/domain/engine.js';
+import {freshChannels, freshDiscounts, freshWindows, findDiscount} from './helpers/state-factory.js';
 
 function bookingOnly(){
   const discounts=freshDiscounts();
@@ -58,4 +58,24 @@ test('maximumDiscountScenario encuentra el día y noches donde vive el descuento
   assert.equal(result.totalPct,41.5,'Mobile 10% × Early 35% = 41.5% efectivo');
   assert.ok(result.days>=30);
   assert.ok(result.applied.some(item=>item.name==='Early Booker Deal'));
+});
+
+test('Airbnb — respeta la prioridad oficial: una promo principal por noche (nuevo > personalizada > duración > anticipada > último minuto)',()=>{
+  const discounts=freshDiscounts();
+  discounts.filter(discount=>discount.ch==='airbnb').forEach(discount=>{discount.on=false;});
+  const newListing=findDiscount(discounts,'ab_new'); newListing.on=true; newListing.pct=20;
+  const custom=findDiscount(discounts,'ab_cus'); custom.on=true; custom.pct=40;
+  const longStay=findDiscount(discounts,'ab_los4'); longStay.on=true; longStay.pct=25;
+  const early=findDiscount(discounts,'ab_eb1'); early.on=true; early.pct=35;
+  const lastMinute=findDiscount(discounts,'ab_lm2'); lastMinute.on=true; lastMinute.pct=50;
+
+  const result=combineChannel(discounts,'airbnb',0,28);
+  assert.equal(result.totalPct,20,'la promo de anuncio nuevo gana aun si otra tendría un porcentaje mayor');
+  assert.deepEqual(result.applied.map(item=>item.name),['Promo anuncio nuevo (20%)']);
+});
+
+test('Offset de compensación: Airbnb 25% de descuento + 15.5% de comisión requiere +57.8% en Kunas, no sumar 40.5%',()=>{
+  const airbnb=freshChannels().find(channel=>channel.id==='airbnb');
+  const result=compensationOffsetPct(airbnb,0.75);
+  assert.ok(Math.abs(result-57.7909270217)<1e-9);
 });
