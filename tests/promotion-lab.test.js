@@ -101,6 +101,30 @@ test('el probador puede agregar dos promociones nuevas al mismo tiempo y multipl
   assert.ok(Math.abs(result.proposed.nativoFactor - (0.9 * 0.9 * 0.9 * 0.85)) < 1e-12);
 });
 
+test('un único precio final de PriceLabs se cotiza para todas las OTAs y resuelve Offsets de Kunas independientes', () => {
+  const original = config();
+  const result = analyzePromotionProposal(original, {
+    promotions:[
+      {discountId:'ab_lm2', pct:20, from:0, to:3},
+      {discountId:'bk_lmd', pct:15, from:0, to:3}
+    ],
+    detailChannelId:'airbnb', days:2, nights:2, finalPrice:100
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.channelResults.length, original.channels.length);
+  assert.deepEqual(result.channelResults.map(row=>row.chId), original.channels.map(channel=>channel.id));
+  const airbnb=result.channelResults.find(row=>row.chId==='airbnb');
+  const booking=result.channelResults.find(row=>row.chId==='booking');
+  assert.equal(airbnb.scenario.price, 100);
+  assert.equal(booking.scenario.price, 100);
+  assert.ok(airbnb.proposed.applied.some(item=>item.name==='Last-minute 2'));
+  assert.ok(booking.proposed.applied.some(item=>item.name==='Last-Minute Deal'));
+  assert.ok(airbnb.offsetForCost.ok);
+  assert.ok(booking.offsetForCost.ok);
+  assert.notEqual(airbnb.offsetForCost.offsetPct, booking.offsetForCost.offsetPct, 'cada OTA debe resolver su propio Offset');
+});
+
 test('Airbnb muestra la promoción que gana y explica la que no puede sumarse', () => {
   const original = config();
   const result = analyzePromotionProposal(original, {

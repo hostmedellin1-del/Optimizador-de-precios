@@ -446,7 +446,10 @@ let state = {
 /* Borrador efímero: probar promociones nunca toca state, localStorage ni la
    unidad guardada. Solamente Aplicar + confirmación lleva un cambio a state. */
 let promotionDraft = {
-  channelId:'airbnb', promotions:[{discountId:'ab_lm2', pct:15, from:0, to:3, minN:3}],
+  /* El precio final de PriceLabs es común. Cada línea escoge la OTA donde se
+     configura esa promoción; `detailChannelId` solo determina qué OTA se
+     muestra en detalle por duración. */
+  detailChannelId:'airbnb', promotions:[{chId:'airbnb', discountId:'ab_lm2', pct:15, from:0, to:3, minN:3}],
   days:2, nights:2, finalPrice:null
 };
 
@@ -898,43 +901,48 @@ function formatOffset(value){
 }
 function newPromotionLine(discount){
   return {
-    discountId:discount?.id||'', pct:discount?.pct||0,
+    chId:discount?.ch||'', discountId:discount?.id||'', pct:discount?.pct||0,
     from:discount?.from??0, to:discount?.to??3, minN:discount?.minN??1
   };
 }
 function normalizePromotionDraft(model){
-  if(!state.discounts.some(d=>d.ch===promotionDraft.channelId)) promotionDraft.channelId=state.channels[0]?.id||'';
-  const available = state.discounts.filter(d=>d.ch===promotionDraft.channelId);
+  if(!state.channels.some(c=>c.id===promotionDraft.detailChannelId)) promotionDraft.detailChannelId=state.channels[0]?.id||'';
+  const firstDiscount=state.discounts[0];
   /* Migra el borrador de la primera versión (una sola promo) sin tocar state. */
   if(!Array.isArray(promotionDraft.promotions)){
-    promotionDraft.promotions=[newPromotionLine(available.find(d=>d.id===promotionDraft.discountId)||available[0])];
+    promotionDraft.promotions=[newPromotionLine(state.discounts.find(d=>d.id===promotionDraft.discountId)||firstDiscount)];
   }
   promotionDraft.promotions=promotionDraft.promotions.map(line=>{
-    const discount=available.find(d=>d.id===line.discountId)||available[0];
+    const lineChannel=state.channels.some(c=>c.id===line.chId) ? line.chId : promotionDraft.detailChannelId;
+    const available=state.discounts.filter(d=>d.ch===lineChannel);
+    const discount=available.find(d=>d.id===line.discountId)||available[0]||firstDiscount;
     return {...newPromotionLine(discount), ...line, discountId:discount?.id||''};
   });
-  if(!promotionDraft.promotions.length && available[0]) promotionDraft.promotions=[newPromotionLine(available[0])];
+  if(!promotionDraft.promotions.length && firstDiscount) promotionDraft.promotions=[newPromotionLine(firstDiscount)];
   if(promotionDraft.finalPrice===null || !Number.isFinite(Number(promotionDraft.finalPrice)) || Number(promotionDraft.finalPrice)<=0){
     promotionDraft.finalPrice=Math.max(1, model.floor||0);
   }
-  return available;
+  return state.discounts;
 }
 function renderPromotionLab(model){
   const mount=document.getElementById('promotionLab');
   if(!mount) return;
-  const available=normalizePromotionDraft(model);
-  if(!available.length){ mount.innerHTML='<div class="alert bad"><span class="tag">SIN CATÁLOGO</span><span>No hay promociones disponibles para probar.</span></div>'; return; }
-  const channel=state.channels.find(c=>c.id===promotionDraft.channelId);
+  const allDiscounts=normalizePromotionDraft(model);
+  if(!allDiscounts.length){ mount.innerHTML='<div class="alert bad"><span class="tag">SIN CATÁLOGO</span><span>No hay promociones disponibles para probar.</span></div>'; return; }
+  const channel=state.channels.find(c=>c.id===promotionDraft.detailChannelId);
   const proposal={
     promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),
+    detailChannelId:promotionDraft.detailChannelId,
     days:Number(promotionDraft.days), nights:Number(promotionDraft.nights), finalPrice:Number(promotionDraft.finalPrice)
   };
   const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
-  const channelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===promotionDraft.channelId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+  const channelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===promotionDraft.detailChannelId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
   const promotionLines=promotionDraft.promotions.map((line,index)=>{
+    const available=allDiscounts.filter(d=>d.ch===line.chId);
     const discount=available.find(d=>d.id===line.discountId)||available[0];
     const prefix=index===0?'':'-'+index;
     const discountOptions=available.map(d=>`<option value="${escapeHtml(d.id)}" ${d.id===line.discountId?'selected':''}>${escapeHtml(d.name)}</option>`).join('');
+    const lineChannelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===line.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
     const conditionFields=discount.kind==='window'
       ? `<div class="fld"><label for="promoLabFrom${prefix}">Desde (días)</label><input id="promoLabFrom${prefix}" type="number" min="0" data-promo-row="${index}" data-promo-field="from" value="${escapeHtml(line.from)}"></div>
          <div class="fld"><label for="promoLabTo${prefix}">Hasta (días)</label><input id="promoLabTo${prefix}" type="number" min="0" data-promo-row="${index}" data-promo-field="to" value="${escapeHtml(line.to)}"></div>`
@@ -942,6 +950,7 @@ function renderPromotionLab(model){
         ? `<div class="fld"><label for="promoLabMinN${prefix}">Mínimo de noches</label><input id="promoLabMinN${prefix}" type="number" min="1" data-promo-row="${index}" data-promo-field="minN" value="${escapeHtml(discount.lockN?discount.minN:line.minN)}" ${discount.lockN?'disabled':''}></div>`
         : `<div class="fld"><label>Condición</label><span class="hint" style="padding:8px 0;">Siempre aplica</span></div>`;
     return `<div class="cost-calc-group" style="margin:8px 0 0;"><div class="promo-grid" style="margin:0;">
+      <div class="fld"><label for="promoLabChannel${prefix}">Canal de esta promoción</label><select id="promoLabChannel${prefix}" data-promo-row="${index}" data-promo-field="chId">${lineChannelOptions}</select></div>
       <div class="fld"><label for="promoLabDiscount${prefix}">Promoción ${index+1}</label><select id="promoLabDiscount${prefix}" data-promo-row="${index}" data-promo-field="discountId">${discountOptions}</select></div>
       <div class="fld"><label for="promoLabPct${prefix}">Descuento %</label><input id="promoLabPct${prefix}" type="number" min="0" max="99.999" step="0.1" data-promo-row="${index}" data-promo-field="pct" value="${escapeHtml(line.pct)}"></div>
       ${conditionFields}
@@ -954,26 +963,26 @@ function renderPromotionLab(model){
     const minText=minChanged>0.005
       ? `Con esta promoción, el Min Price global debería subir de ${f$(analysis.baselineModel.floor)} a ${f$(analysis.proposedModel.floor)} para seguir protegido.`
       : `El Min Price global queda en ${f$(analysis.proposedModel.floor)} con los Offsets actuales; la promoción no lo obliga a subir en el peor escenario del catálogo.`;
-    const currentStatus=analysis.reachesMargin ? 'sí conserva el margen objetivo' : analysis.coversCost ? 'cubre costo, pero no el margen objetivo' : 'queda bajo costo';
+    const currentStatus=analysis.reachesMargin ? 'todos los canales conservan el margen objetivo' : analysis.coversCost ? 'todos cubren costo, pero alguno no llega al margen objetivo' : 'al menos un canal queda bajo costo';
     const costOffset=analysis.offsetForCost.ok ? formatOffset(analysis.offsetForCost.offsetPct) : 'no disponible';
     const marginOffset=analysis.offsetForMargin.ok ? formatOffset(analysis.offsetForMargin.offsetPct) : 'no disponible';
     /* Transparencia clave: el motor ya combinaba descuentos reales; el
        probador ahora los nombra para que no parezca que una promo activa se
        perdió. `applied` e `ignored` vienen de quoteScenario()/combineChannel,
        nunca de una segunda interpretación de reglas en la interfaz. */
-    const appliedPromos=analysis.proposed.applied.length
-      ? analysis.proposed.applied.map(item=>`${escapeHtml(item.name)} (${Number(item.pct).toFixed(1)}%)`).join(' · ')
+    const appliedPromos=analysis.proposalStatuses.filter(item=>item.applies).length
+      ? analysis.proposalStatuses.filter(item=>item.applies).map(item=>escapeHtml(item.name)).join(' · ')
       : 'Ninguna promoción OTA aplica a estos días/noches.';
-    const ignoredPromos=analysis.proposed.ignored.length
-      ? `<p class="hint"><strong>No se suman en esta reserva:</strong> ${analysis.proposed.ignored.map(item=>`${escapeHtml(item.name)} — ${escapeHtml(item.reason)}`).join(' · ')}</p>`
+    const ignoredPromos=analysis.proposalStatuses.some(item=>item.ignored)
+      ? `<p class="hint"><strong>No se suman en esta reserva:</strong> ${analysis.proposalStatuses.filter(item=>item.ignored).map(item=>`${escapeHtml(item.name)} — ${escapeHtml(item.ignored)}`).join(' · ')}</p>`
       : '';
     const rows=analysis.durationRows.map(row=>`<tr><td>${row.nights}</td><td>${row.promoApplies?'Sí':'No'}</td><td class="out">${f$(row.payout)}</td><td class="out">${f$(row.cost)}</td><td class="out">${f$(row.margin)}</td><td class="out">${formatOffset(row.offsetForCost)}</td><td class="out">${formatOffset(row.offsetForMargin)}</td></tr>`).join('');
-    const compareRows=analysis.channelComparison.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td class="out">${f$(row.before.guestWithFees)}</td><td class="out">${f$(row.after.guestWithFees)}</td><td class="out">${f$(row.after.guestWithFees-row.before.guestWithFees)}</td></tr>`).join('');
+    const compareRows=analysis.channelResults.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td class="out">${formatOffset(row.currentOffset)}</td><td class="out">${f$(row.proposed.guestWithFees)}</td><td class="out">${f$(row.proposed.payout)}</td><td class="out">${f$(row.proposed.cost)}</td><td class="out">${formatOffset(row.offsetForCost.ok?row.offsetForCost.offsetPct:null)}</td><td class="out">${formatOffset(row.offsetForMargin.ok?row.offsetForMargin.offsetPct:null)}</td></tr>`).join('');
     result=`<div class="promo-result">
       <h3>${escapeHtml(analysis.recommendation)}</h3>
       ${!analysis.promoApplies?'<div class="alert warn"><span class="tag">NO APLICA AQUÍ</span><span>Ninguna de las promociones elegidas aplica en los '+analysis.scenario.days+' días / '+analysis.scenario.nights+' noches del ejemplo. La tabla muestra exactamente en qué duraciones alguna sí aplica.</span></div>':''}
-      <p class="promo-summary"><strong>Instrucción concreta:</strong> en ${escapeHtml(channel?.name||'este canal')}, configura juntas las promociones elegidas arriba. Después revisa el Offset de Kunas indicado abajo. El motor suma las compatibles y nunca inventa una suma entre promociones que la OTA no permite combinar.</p>
-      <div class="alert ok"><span class="tag">PROMOS APLICADAS</span><span><strong>Descuento total compuesto: ${Number(analysis.proposed.nativoPct).toFixed(1)}%</strong>. ${appliedPromos}</span></div>
+      <p class="promo-summary"><strong>Instrucción concreta:</strong> este es <strong>un solo precio final de PriceLabs</strong>, común a todas las OTAs. Configura cada promoción en la OTA elegida arriba y usa los <strong>Offsets de Kunas por OTA</strong> de la tabla. El motor solo suma promociones compatibles dentro de cada OTA; nunca inventa combinaciones.</p>
+      <div class="alert ok"><span class="tag">PROMOS APLICADAS</span><span>${appliedPromos}</span></div>
       ${ignoredPromos}
       <div class="promo-metrics">
         <div class="promo-metric"><span class="l">Precio huésped propuesto</span><span class="v">${f$(analysis.proposed.guestWithFees)}</span></div>
@@ -989,17 +998,17 @@ function renderPromotionLab(model){
       </div>
       <p class="hint">${minText} El precio probado es final de PriceLabs: nunca se descuenta Last-Minute una segunda vez.</p>
       <div class="promo-actions">
-        <button type="button" data-promo-apply="cost" ${!analysis.offsetForCost.ok?'disabled':''}>Aplicar promoción + Offset para no perder</button>
-        <button type="button" data-promo-apply="margin" ${!analysis.offsetForMargin.ok?'disabled':''}>Aplicar promoción + Offset con margen</button>
+        <button type="button" data-promo-apply="cost" ${analysis.channelResults.some(row=>!row.offsetForCost.ok)?'disabled':''}>Aplicar promociones + Offsets por OTA para no perder</button>
+        <button type="button" data-promo-apply="margin" ${analysis.channelResults.some(row=>!row.offsetForMargin.ok)?'disabled':''}>Aplicar promociones + Offsets por OTA con margen</button>
       </div>
-      <div class="promo-subhead">Por duración real de la reserva</div>
+      <div class="promo-subhead">Detalle por duración — ${escapeHtml(channel?.name||'OTA elegida')}</div>
       <div class="table-wrap"><table class="promo-table"><thead><tr><th>Noches</th><th>¿Promo aplica?</th><th>Neto</th><th>Costo</th><th>Margen</th><th>Offset no perder</th><th>Offset margen</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="promo-subhead">Comparación de precio que ve el huésped por OTA</div>
-      <div class="table-wrap"><table class="promo-table"><thead><tr><th>Canal</th><th>Antes</th><th>Con propuesta</th><th>Cambio</th></tr></thead><tbody>${compareRows}</tbody></table></div>
+      <div class="promo-subhead">Offsets de Kunas sugeridos con este precio común de PriceLabs</div>
+      <div class="table-wrap"><table class="promo-table"><thead><tr><th>Canal</th><th>Offset actual</th><th>Precio huésped</th><th>Neto</th><th>Costo</th><th>Offset no perder</th><th>Offset margen</th></tr></thead><tbody>${compareRows}</tbody></table></div>
     </div>`;
   }
   mount.innerHTML=`<div class="promo-grid">
-    <div class="fld"><label for="promoLabChannel">Canal</label><select id="promoLabChannel" data-promo-lab="channelId">${channelOptions}</select></div>
+    <div class="fld"><label for="promoLabDetailChannel">Canal para ver detalle por duración</label><select id="promoLabDetailChannel" data-promo-lab="detailChannelId">${channelOptions}</select></div>
     <div class="fld"><label for="promoLabDays">Días antes del check-in</label><input id="promoLabDays" type="number" min="0" data-promo-lab="days" value="${escapeHtml(promotionDraft.days)}"></div>
     <div class="fld"><label for="promoLabNights">Noches de reserva</label><input id="promoLabNights" type="number" min="1" data-promo-lab="nights" value="${escapeHtml(promotionDraft.nights)}"></div>
     <div class="fld"><label for="promoLabPrice">Precio FINAL de PriceLabs</label><input id="promoLabPrice" type="number" min="0.01" step="1" data-promo-lab="finalPrice" value="${escapeHtml(promotionDraft.finalPrice)}"></div>
@@ -1248,13 +1257,18 @@ document.addEventListener('change',e=>{
     const field=t.dataset.promoField;
     const line=promotionDraft.promotions[index];
     if(!line) return;
-    if(field==='discountId'){
+    if(field==='chId'){
+      const discount=state.discounts.find(d=>d.ch===t.value);
+      if(!discount) return;
+      promotionDraft.promotions[index]=newPromotionLine(discount);
+    }
+    else if(field==='discountId'){
       if(promotionDraft.promotions.some((item,itemIndex)=>itemIndex!==index && item.discountId===t.value)){
         t.value=line.discountId;
         showInputError('Probador — esa promoción ya está agregada. Cambia su porcentaje en la fila existente, o elige otra.');
         return;
       }
-      const discount=state.discounts.find(d=>d.id===t.value && d.ch===promotionDraft.channelId);
+      const discount=state.discounts.find(d=>d.id===t.value && d.ch===line.chId);
       if(!discount) return;
       promotionDraft.promotions[index]=newPromotionLine(discount);
     } else {
@@ -1278,10 +1292,8 @@ document.addEventListener('change',e=>{
   }
   else if(t.dataset.promoLab!==undefined){
     const field=t.dataset.promoLab;
-    if(field==='channelId'){
-      promotionDraft.channelId=t.value;
-      const discount=state.discounts.find(d=>d.ch===t.value);
-      promotionDraft.promotions=[newPromotionLine(discount)];
+    if(field==='detailChannelId'){
+      promotionDraft.detailChannelId=t.value;
     } else {
       const current=promotionDraft[field];
       const opts={
@@ -1468,8 +1480,9 @@ document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
   if(e.target.id==='promoAddBtn'){
     const existing=new Set(promotionDraft.promotions.map(line=>line.discountId));
-    const next=state.discounts.find(discount=>discount.ch===promotionDraft.channelId && !existing.has(discount.id));
-    if(!next){ showInputError('Ya agregaste todas las promociones disponibles de este canal.'); return; }
+    const next=state.discounts.find(discount=>discount.ch===promotionDraft.detailChannelId && !existing.has(discount.id))
+      || state.discounts.find(discount=>!existing.has(discount.id));
+    if(!next){ showInputError('Ya agregaste todas las promociones disponibles.'); return; }
     promotionDraft.promotions.push(newPromotionLine(next));
     renderPromotionLab(compute());
     return;
@@ -1484,21 +1497,21 @@ document.addEventListener('click',e=>{
   if(promoApply){
     const proposal={
       promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),
+      detailChannelId:promotionDraft.detailChannelId,
       days:Number(promotionDraft.days), nights:Number(promotionDraft.nights), finalPrice:Number(promotionDraft.finalPrice)
     };
     const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
     const mode=promoApply.dataset.promoApply;
-    const solved=mode==='margin' ? analysis.offsetForMargin : analysis.offsetForCost;
-    if(!analysis.ok || !solved?.ok){
+    const solvedKey=mode==='margin' ? 'offsetForMargin' : 'offsetForCost';
+    if(!analysis.ok || analysis.channelResults?.some(row=>!row[solvedKey]?.ok)){
       showInputError(analysis.reason||'No se pudo resolver el Offset para esta promoción.');
       return;
     }
     const label=mode==='margin' ? `margen objetivo (${Number(state.margin).toFixed(0)}%)` : 'no perder dinero';
     const promotionSummary=analysis.discounts.map(discount=>`• ${discount.name}: ${Number(discount.pct).toFixed(1)}%`).join('\n');
-    const message=`Vas a aplicar en ${analysis.channel.name}:\n\n${promotionSummary}\n• Offset de Kunas: ${formatOffset(solved.offsetPct)}\n• Objetivo: ${label}\n\nLa prueba temporal dejará de ser solo una prueba y modificará esta unidad. ¿Aplicar?`;
+    const offsetSummary=analysis.channelResults.map(row=>`• ${row.name}: ${formatOffset(row[solvedKey].offsetPct)}`).join('\n');
+    const message=`Vas a aplicar estas promociones:\n\n${promotionSummary}\n\nOffsets de Kunas por OTA:\n${offsetSummary}\n\nObjetivo: ${label}\n\nLa prueba temporal dejará de ser solo una prueba y modificará esta unidad. ¿Aplicar?`;
     if(!confirm(message)) return;
-    const liveChannel=state.channels.find(c=>c.id===analysis.channel.id);
-    if(!liveChannel){ showInputError('No se encontró el canal para aplicar el cambio.'); return; }
     for(const discount of analysis.discounts){
       const liveDiscount=state.discounts.find(item=>item.id===discount.id);
       if(!liveDiscount){ showInputError('No se encontró una promoción para aplicar el cambio.'); return; }
@@ -1507,8 +1520,12 @@ document.addEventListener('click',e=>{
       if(liveDiscount.kind==='window'){ liveDiscount.from=discount.from; liveDiscount.to=discount.to; }
       if(liveDiscount.kind==='los' && !liveDiscount.lockN) liveDiscount.minN=discount.minN;
     }
-    liveChannel.offsetPct=solved.offsetPct;
-    status(`Aplicadas ${analysis.discounts.length} promoción(es) + Offset ${formatOffset(solved.offsetPct)} para ${label}. Guarda la unidad para conservarlo.`);
+    for(const row of analysis.channelResults){
+      const liveChannel=state.channels.find(c=>c.id===row.chId);
+      if(!liveChannel){ showInputError('No se encontró un canal para aplicar su Offset.'); return; }
+      liveChannel.offsetPct=row[solvedKey].offsetPct;
+    }
+    status(`Aplicadas ${analysis.discounts.length} promoción(es) + Offsets de Kunas por OTA para ${label}. Guarda la unidad para conservarlo.`);
     renderAll();
     return;
   }

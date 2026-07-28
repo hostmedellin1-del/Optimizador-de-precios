@@ -23,7 +23,7 @@ test('Probador de promociones: probar no modifica la unidad; Aplicar sí guarda 
 
   await expect(page.locator('input[data-did="ab_lm2"][data-f="on"]')).toBeChecked();
   await expect(offset).not.toHaveValue('0');
-  await expect(page.locator('#promotionLab')).toContainText('30.0%');
+  await expect(page.locator('#promotionLab')).toContainText('Last-minute 2');
 });
 
 test('Probador de promociones: la tabla muestra que una promoción puede aplicar distinto según las noches', async ({page}) => {
@@ -68,4 +68,45 @@ test('Probador de promociones: permite agregar una segunda promoción a la misma
 
   await expect(page.locator('#promotionLab')).toContainText('Duración de estadía A (≥7 noches)');
   await expect(page.locator('#promotionLab')).toContainText('Last-Minute Deal');
+});
+
+test('Probador de promociones: un mismo precio de PriceLabs entrega Offsets de Kunas separados por OTA', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#promoLabPct').fill('20');
+  await page.locator('#promoLabPct').press('Tab');
+  await page.locator('#promoAddBtn').click();
+  await page.locator('#promoLabChannel-1').selectOption('booking');
+  await page.locator('#promoLabDiscount-1').selectOption('bk_lmd');
+  await page.locator('#promoLabPct-1').fill('15');
+  await page.locator('#promoLabPct-1').press('Tab');
+
+  await expect(page.locator('#promotionLab')).toContainText('Offsets de Kunas sugeridos con este precio común de PriceLabs');
+  const tables=page.locator('#promotionLab .promo-table');
+  await expect(tables.nth(1)).toContainText('Airbnb');
+  await expect(tables.nth(1)).toContainText('Booking.com');
+  await expect(tables.nth(1)).toContainText('Offset no perder');
+});
+
+test('Probador de promociones: al aplicar, guarda cada promoción y cada Offset de Kunas en su OTA', async ({page}) => {
+  await page.goto('/index.html');
+  const airbnbOffset=page.locator('input[data-chid="airbnb"][data-chf="offsetPct"]');
+  const bookingOffset=page.locator('input[data-chid="booking"][data-chf="offsetPct"]');
+  await expect(airbnbOffset).toHaveValue('0');
+  await expect(bookingOffset).toHaveValue('0');
+
+  await page.locator('#promoLabPct').fill('20');
+  await page.locator('#promoLabPct').press('Tab');
+  await page.locator('#promoAddBtn').click();
+  await page.locator('#promoLabChannel-1').selectOption('booking');
+  await page.locator('#promoLabDiscount-1').selectOption('bk_lmd');
+  await page.locator('#promoLabPct-1').fill('15');
+  await page.locator('#promoLabPct-1').press('Tab');
+
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('[data-promo-apply="cost"]').click();
+
+  await expect(page.locator('input[data-did="ab_lm2"][data-f="on"]')).toBeChecked();
+  await expect(page.locator('input[data-did="bk_lmd"][data-f="on"]')).toBeChecked();
+  await expect(airbnbOffset).not.toHaveValue('0');
+  await expect(bookingOffset).not.toHaveValue('0');
 });

@@ -67,10 +67,9 @@ function applyPromotionProposal(next, proposal){
 }
 
 /**
- * Enciende o modifica VARIAS promociones en una copia temporal. Todas deben
- * pertenecer al mismo canal porque el resultado propone un único Offset de
- * Kunas para ese canal. Después, combineChannel() decide cuáles se apilan de
- * verdad y cuáles compiten según las reglas reales de esa OTA.
+ * Enciende o modifica VARIAS promociones en una copia temporal, incluso de
+ * distintas OTAs. PriceLabs sigue aportando UN precio final común; el análisis
+ * resuelve después un Offset de Kunas independiente para cada OTA.
  */
 export function configWithPromotionProposals(config, proposals){
   const next = clonePricingConfig(config);
@@ -86,8 +85,7 @@ export function configWithPromotionProposals(config, proposals){
     discounts.push(result.discount);
   }
   const channelIds=[...new Set(discounts.map(discount=>discount.ch))];
-  if(channelIds.length!==1) return {ok:false, reason:'Para una prueba, todas las promociones deben ser del mismo canal.', config:next};
-  return {ok:true, config:next, discounts, channelId:channelIds[0]};
+  return {ok:true, config:next, discounts, channelIds};
 }
 
 /** Compatibilidad para pruebas/consumidores que envían una sola promoción. */
@@ -166,7 +164,9 @@ export function analyzePromotionProposal(config, proposal){
   const proposedConfig = proposalResult.config;
   const discounts = proposalResult.discounts;
   const discount = discounts[0]; /* compatibilidad: primer elemento para consumidores previos */
-  const channel = proposedConfig.channels.find(item => item.id === proposalResult.channelId);
+  const detailChId = proposal.detailChannelId || discount.ch;
+  const channel = proposedConfig.channels.find(item => item.id === detailChId);
+  if(!channel) return {ok:false, reason:'Selecciona un canal válido para el detalle.'};
   const days = Math.max(0, finiteNumber(proposal.days, 0));
   const nights = Math.max(1, finiteNumber(proposal.nights, 1));
   const baselineModel = compute(config);
@@ -176,62 +176,62 @@ export function analyzePromotionProposal(config, proposal){
     return {ok:false, reason:'Ingresa un precio final de PriceLabs mayor que cero.', config:proposedConfig};
   }
 
-  const scenario = {chId:proposalResult.channelId, days, nights, price:finalPrice, priceStage:'price_labs_final'};
-  const baseline = quoteScenario(scenario, config);
-  const proposed = quoteScenario(scenario, proposedConfig);
-  const targetCost = proposed.cost;
-  const targetMargin = marginTarget(targetCost, proposedConfig.margin);
-  const offsetForCost = offsetForTargetPayout(proposedConfig, scenario, targetCost);
-  const offsetForMargin = offsetForTargetPayout(proposedConfig, scenario, targetMargin);
-  const currentOffset = finiteNumber(channel?.offsetPct, 0);
   const sampleNights = [...new Set((proposal.nightSamples || DEFAULT_NIGHT_SAMPLES)
     .map(value => Math.max(1, finiteNumber(value, 1))))].sort((a,b) => a-b);
-  const durationRows = sampleNights.map(sample => {
-    const sampleScenario = {...scenario, nights:sample};
-    const quote = quoteScenario(sampleScenario, proposedConfig);
-    const costOffset = offsetForTargetPayout(proposedConfig, sampleScenario, quote.cost);
-    const requiredMargin = marginTarget(quote.cost, proposedConfig.margin);
-    const marginOffset = offsetForTargetPayout(proposedConfig, sampleScenario, requiredMargin);
+  const sharedScenario={days,nights,price:finalPrice,priceStage:'price_labs_final'};
+  const channelResults=proposedConfig.channels.map(channelItem=>{
+    const scenario={...sharedScenario,chId:channelItem.id};
+    const baseline=quoteScenario(scenario,config);
+    const proposed=quoteScenario(scenario,proposedConfig);
+    const targetCost=proposed.cost;
+    const targetMargin=marginTarget(targetCost,proposedConfig.margin);
+    const offsetForCost=offsetForTargetPayout(proposedConfig,scenario,targetCost);
+    const offsetForMargin=offsetForTargetPayout(proposedConfig,scenario,targetMargin);
+    const durationRows=sampleNights.map(sample=>{
+      const sampleScenario={...scenario,nights:sample};
+      const quote=quoteScenario(sampleScenario,proposedConfig);
+      const costOffset=offsetForTargetPayout(proposedConfig,sampleScenario,quote.cost);
+      const requiredMargin=marginTarget(quote.cost,proposedConfig.margin);
+      const marginOffset=offsetForTargetPayout(proposedConfig,sampleScenario,requiredMargin);
+      const proposedForChannel=discounts.filter(item=>item.ch===channelItem.id);
+      return {
+        nights:sample,
+        promoApplies:proposedForChannel.some(item=>appliedProposal(quote,item)),
+        proposalStatuses:proposedForChannel.map(item=>({
+          discountId:item.id,name:item.name,applies:appliedProposal(quote,item),
+          ignored:quote.ignored.find(ignored=>ignored.name===item.name)?.reason||null
+        })),
+        guest:quote.guestWithFees,payout:quote.payout,cost:quote.cost,margin:quote.margin,
+        offsetForCost:costOffset.ok ? costOffset.offsetPct : null,
+        offsetForMargin:marginOffset.ok ? marginOffset.offsetPct : null
+      };
+    });
     return {
-      nights:sample,
-      promoApplies:discounts.some(item=>appliedProposal(quote,item)),
-      proposalStatuses:discounts.map(item=>({
-        discountId:item.id,
-        name:item.name,
-        applies:appliedProposal(quote,item),
-        ignored:quote.ignored.find(ignored=>ignored.name===item.name)?.reason||null
-      })),
-      guest:quote.guestWithFees,
-      payout:quote.payout,
-      cost:quote.cost,
-      margin:quote.margin,
-      offsetForCost:costOffset.ok ? costOffset.offsetPct : null,
-      offsetForMargin:marginOffset.ok ? marginOffset.offsetPct : null
+      chId:channelItem.id,name:channelItem.name,channel:channelItem,scenario,
+      baseline,proposed,targetCost,targetMargin,currentOffset:finiteNumber(channelItem.offsetPct,0),
+      offsetForCost,offsetForMargin,durationRows
     };
   });
-  const channelComparison = proposedConfig.channels.map(compareChannel => {
-    const compareScenario = {...scenario, chId:compareChannel.id};
-    const before = quoteScenario(compareScenario, config);
-    const after = quoteScenario(compareScenario, proposedConfig);
-    return {chId:compareChannel.id, name:compareChannel.name, before, after};
+  const detail=channelResults.find(result=>result.chId===detailChId);
+  const {scenario,baseline,proposed,targetCost,targetMargin,currentOffset,offsetForCost,offsetForMargin,durationRows}=detail;
+  const channelComparison=channelResults.map(result=>({chId:result.chId,name:result.name,before:result.baseline,after:result.proposed,...result}));
+  const proposalStatuses=discounts.map(item=>{
+    const result=channelResults.find(candidate=>candidate.chId===item.ch);
+    return {
+      discountId:item.id,name:item.name,applies:appliedProposal(result.proposed,item),
+      ignored:result.proposed.ignored.find(ignored=>ignored.name===item.name)?.reason||null
+    };
   });
-
-  const coversCost = proposed.payout >= targetCost - 1e-9;
-  const reachesMargin = proposed.payout >= targetMargin - 1e-9;
-  const proposalStatuses=discounts.map(item=>({
-    discountId:item.id,
-    name:item.name,
-    applies:appliedProposal(proposed,item),
-    ignored:proposed.ignored.find(ignored=>ignored.name===item.name)?.reason||null
-  }));
   const appliedCount=proposalStatuses.filter(status=>status.applies).length;
+  const coversCost=channelResults.every(result=>result.proposed.payout>=result.targetCost-1e-9);
+  const reachesMargin=channelResults.every(result=>result.proposed.payout>=result.targetMargin-1e-9);
   const recommendation = !appliedCount
     ? 'Ninguna de las promociones propuestas aplica en este escenario. Ajusta días o noches antes de decidir.'
     : reachesMargin
-      ? 'Puedes activar la promoción con el Offset actual: este escenario conserva tu margen objetivo.'
+      ? 'Puedes activar las promociones: con los Offsets actuales todos los canales conservan el margen objetivo.'
       : coversCost
-        ? 'La promoción cubre costo, pero no llega al margen objetivo. Usa el Offset sugerido de margen si quieres mantenerlo.'
-        : 'No la actives con el Offset actual: baja de costo. Sube el Offset o el Min Price de PriceLabs antes de activarla.';
+        ? 'Todos los canales cubren costo, pero alguno no llega al margen objetivo. Usa los Offsets sugeridos de margen si quieres mantenerlo.'
+        : 'No las actives con los Offsets actuales: al menos un canal baja de costo. Sube su Offset de Kunas o el Min Price de PriceLabs antes de activarlas.';
 
   return {
     ok:true,
@@ -256,6 +256,7 @@ export function analyzePromotionProposal(config, proposal){
     reachesMargin,
     recommendation,
     durationRows,
-    channelComparison
+    channelComparison,
+    channelResults
   };
 }
