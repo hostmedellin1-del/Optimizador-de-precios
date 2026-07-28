@@ -40,18 +40,13 @@ export function clonePricingConfig(config){
   };
 }
 
-/**
- * Enciende o modifica UNA promoción en una copia temporal. Los límites solo
- * cambian si la promoción los usa: ventana de días o mínimo de noches.
- */
-export function configWithPromotionProposal(config, proposal){
-  const next = clonePricingConfig(config);
+function applyPromotionProposal(next, proposal){
   const discount = next.discounts.find(item => item.id === proposal?.discountId);
-  if(!discount) return {ok:false, reason:'Selecciona una promoción válida del canal.', config:next};
+  if(!discount) return {ok:false, reason:'Selecciona una promoción válida del canal.'};
 
   const pct = finiteNumber(proposal.pct);
   if(pct === null || pct < 0 || pct >= 100){
-    return {ok:false, reason:'El descuento debe ser un porcentaje entre 0% y menos de 100%.', config:next};
+    return {ok:false, reason:'El descuento debe ser un porcentaje entre 0% y menos de 100%.'};
   }
 
   discount.on = true;
@@ -59,16 +54,46 @@ export function configWithPromotionProposal(config, proposal){
   if(discount.kind === 'window'){
     const from = finiteNumber(proposal.from, discount.from ?? 0);
     const to = finiteNumber(proposal.to, discount.to ?? 9999);
-    if(from < 0 || to < from) return {ok:false, reason:'El rango de días de la promoción no es válido.', config:next};
+    if(from < 0 || to < from) return {ok:false, reason:'El rango de días de la promoción no es válido.'};
     discount.from = from;
     discount.to = to;
   }
   if(discount.kind === 'los'){
     const minN = finiteNumber(proposal.minN, discount.minN ?? 1);
-    if(minN < 1) return {ok:false, reason:'La duración mínima debe ser al menos una noche.', config:next};
+    if(minN < 1) return {ok:false, reason:'La duración mínima debe ser al menos una noche.'};
     discount.minN = minN;
   }
-  return {ok:true, config:next, discount};
+  return {ok:true, discount};
+}
+
+/**
+ * Enciende o modifica VARIAS promociones en una copia temporal. Todas deben
+ * pertenecer al mismo canal porque el resultado propone un único Offset de
+ * Kunas para ese canal. Después, combineChannel() decide cuáles se apilan de
+ * verdad y cuáles compiten según las reglas reales de esa OTA.
+ */
+export function configWithPromotionProposals(config, proposals){
+  const next = clonePricingConfig(config);
+  const list = Array.isArray(proposals) ? proposals : [];
+  if(!list.length) return {ok:false, reason:'Agrega al menos una promoción para probar.', config:next};
+  const ids = new Set();
+  const discounts=[];
+  for(const proposal of list){
+    if(ids.has(proposal?.discountId)) return {ok:false, reason:'No agregues la misma promoción dos veces.', config:next};
+    ids.add(proposal?.discountId);
+    const result = applyPromotionProposal(next, proposal);
+    if(!result.ok) return {...result, config:next};
+    discounts.push(result.discount);
+  }
+  const channelIds=[...new Set(discounts.map(discount=>discount.ch))];
+  if(channelIds.length!==1) return {ok:false, reason:'Para una prueba, todas las promociones deben ser del mismo canal.', config:next};
+  return {ok:true, config:next, discounts, channelId:channelIds[0]};
+}
+
+/** Compatibilidad para pruebas/consumidores que envían una sola promoción. */
+export function configWithPromotionProposal(config, proposal){
+  const result=configWithPromotionProposals(config,[proposal]);
+  return result.ok ? {...result, discount:result.discounts[0]} : result;
 }
 
 function quoteWithOffset(config, scenario, offsetPct){
@@ -133,11 +158,15 @@ function marginTarget(cost, marginPct){
  * FINAL que PriceLabs publica: no se vuelve a aplicar Last-Minute.
  */
 export function analyzePromotionProposal(config, proposal){
-  const proposalResult = configWithPromotionProposal(config, proposal);
+  const proposals = Array.isArray(proposal?.promotions) && proposal.promotions.length
+    ? proposal.promotions
+    : [proposal];
+  const proposalResult = configWithPromotionProposals(config, proposals);
   if(!proposalResult.ok) return proposalResult;
   const proposedConfig = proposalResult.config;
-  const discount = proposalResult.discount;
-  const channel = proposedConfig.channels.find(item => item.id === discount.ch);
+  const discounts = proposalResult.discounts;
+  const discount = discounts[0]; /* compatibilidad: primer elemento para consumidores previos */
+  const channel = proposedConfig.channels.find(item => item.id === proposalResult.channelId);
   const days = Math.max(0, finiteNumber(proposal.days, 0));
   const nights = Math.max(1, finiteNumber(proposal.nights, 1));
   const baselineModel = compute(config);
@@ -147,7 +176,7 @@ export function analyzePromotionProposal(config, proposal){
     return {ok:false, reason:'Ingresa un precio final de PriceLabs mayor que cero.', config:proposedConfig};
   }
 
-  const scenario = {chId:discount.ch, days, nights, price:finalPrice, priceStage:'price_labs_final'};
+  const scenario = {chId:proposalResult.channelId, days, nights, price:finalPrice, priceStage:'price_labs_final'};
   const baseline = quoteScenario(scenario, config);
   const proposed = quoteScenario(scenario, proposedConfig);
   const targetCost = proposed.cost;
@@ -165,7 +194,13 @@ export function analyzePromotionProposal(config, proposal){
     const marginOffset = offsetForTargetPayout(proposedConfig, sampleScenario, requiredMargin);
     return {
       nights:sample,
-      promoApplies:appliedProposal(quote, discount),
+      promoApplies:discounts.some(item=>appliedProposal(quote,item)),
+      proposalStatuses:discounts.map(item=>({
+        discountId:item.id,
+        name:item.name,
+        applies:appliedProposal(quote,item),
+        ignored:quote.ignored.find(ignored=>ignored.name===item.name)?.reason||null
+      })),
       guest:quote.guestWithFees,
       payout:quote.payout,
       cost:quote.cost,
@@ -183,8 +218,15 @@ export function analyzePromotionProposal(config, proposal){
 
   const coversCost = proposed.payout >= targetCost - 1e-9;
   const reachesMargin = proposed.payout >= targetMargin - 1e-9;
-  const recommendation = !appliedProposal(proposed, discount)
-    ? 'La promoción no aplica en este escenario (por sus días o noches). Ajusta el escenario para verla en acción antes de decidir.'
+  const proposalStatuses=discounts.map(item=>({
+    discountId:item.id,
+    name:item.name,
+    applies:appliedProposal(proposed,item),
+    ignored:proposed.ignored.find(ignored=>ignored.name===item.name)?.reason||null
+  }));
+  const appliedCount=proposalStatuses.filter(status=>status.applies).length;
+  const recommendation = !appliedCount
+    ? 'Ninguna de las promociones propuestas aplica en este escenario. Ajusta días o noches antes de decidir.'
     : reachesMargin
       ? 'Puedes activar la promoción con el Offset actual: este escenario conserva tu margen objetivo.'
       : coversCost
@@ -195,6 +237,7 @@ export function analyzePromotionProposal(config, proposal){
     ok:true,
     config:proposedConfig,
     discount,
+    discounts,
     channel,
     scenario,
     finalPrice,
@@ -202,7 +245,8 @@ export function analyzePromotionProposal(config, proposal){
     proposedModel,
     baseline,
     proposed,
-    promoApplies:appliedProposal(proposed, discount),
+    promoApplies:appliedCount>0,
+    proposalStatuses,
     targetCost,
     targetMargin,
     currentOffset,

@@ -72,6 +72,46 @@ test('un escenario no aplicable se informa y no se disfraza como descuento activ
   assert.equal(result.proposed.payout, result.baseline.payout);
 });
 
+test('Booking suma Genius, Mobile y el deal propuesto cuando sus categorías son compatibles', () => {
+  const original = config();
+  const result = analyzePromotionProposal(original, {
+    discountId:'bk_lmd', pct:15, from:0, to:3, days:2, nights:2, finalPrice:100
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.proposed.applied.map(item=>item.name), [
+    'Genius (constante)', 'Mobile Rate', 'Last-Minute Deal'
+  ]);
+  assert.ok(Math.abs(result.proposed.nativoFactor - (0.9 * 0.9 * 0.85)) < 1e-12);
+});
+
+test('el probador puede agregar dos promociones nuevas al mismo tiempo y multiplica ambas si Booking las permite', () => {
+  const original = config();
+  const result = analyzePromotionProposal(original, {
+    promotions:[
+      {discountId:'bk_lmd', pct:15, from:0, to:3},
+      {discountId:'bk_los1', pct:10, minN:3}
+    ],
+    days:2, nights:3, finalPrice:100
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.discounts.length, 2);
+  assert.deepEqual(result.proposed.applied.map(item=>item.name), [
+    'Genius (constante)', 'Mobile Rate', 'Duración de estadía A (≥7 noches)', 'Last-Minute Deal'
+  ]);
+  assert.ok(Math.abs(result.proposed.nativoFactor - (0.9 * 0.9 * 0.9 * 0.85)) < 1e-12);
+});
+
+test('Airbnb muestra la promoción que gana y explica la que no puede sumarse', () => {
+  const original = config();
+  const result = analyzePromotionProposal(original, {
+    discountId:'ab_lm2', pct:20, from:0, to:3, days:2, nights:28, finalPrice:100
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.promoApplies, false);
+  assert.ok(result.proposed.applied.some(item=>item.name==='Larga estadía (≥28 noches)'));
+  assert.ok(result.proposed.ignored.some(item=>item.name==='Last-minute 2'));
+});
+
 test('el solver rechaza precio final inválido sin inventar un Offset', () => {
   const result = offsetForTargetPayout(config(), {chId:'airbnb',days:1,nights:1,price:0,priceStage:'price_labs_final'}, 50);
   assert.equal(result.ok, false);

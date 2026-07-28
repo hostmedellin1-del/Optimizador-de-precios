@@ -38,3 +38,34 @@ test('Probador de promociones: la tabla muestra que una promoción puede aplicar
   await expect(rows.nth(0).locator('td').nth(1)).toHaveText('No');
   await expect(rows.nth(2).locator('td').nth(1)).toHaveText('Sí');
 });
+
+test('Probador de promociones: explica qué descuentos se suman y cuáles compiten', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#promoLabChannel').selectOption('booking');
+  await page.locator('#promoLabDiscount').selectOption('bk_lmd');
+  await page.locator('#promoLabPct').fill('15');
+  await page.locator('#promoLabPct').press('Tab');
+
+  await expect(page.locator('#promotionLab')).toContainText('PROMOS APLICADAS');
+  await expect(page.locator('#promotionLab')).toContainText('Genius (constante)');
+  await expect(page.locator('#promotionLab')).toContainText('Mobile Rate');
+  await expect(page.locator('#promotionLab')).toContainText('Last-Minute Deal');
+});
+
+test('Probador de promociones: permite agregar una segunda promoción a la misma prueba', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#promoLabChannel').selectOption('booking');
+  await page.locator('#promoLabDiscount').selectOption('bk_lmd');
+  await page.locator('#promoLabPct').fill('15');
+  await page.locator('#promoLabPct').press('Tab');
+  await page.locator('#promoAddBtn').click();
+  await expect(page.locator('#promoLabDiscount-1')).toBeVisible();
+  await page.locator('#promoLabDiscount-1').selectOption('bk_los1');
+  await page.locator('#promoLabPct-1').fill('10');
+  await page.locator('#promoLabPct-1').press('Tab');
+  await page.locator('#promoLabMinN-1').fill('3');
+  await page.locator('#promoLabMinN-1').press('Tab');
+
+  await expect(page.locator('#promotionLab')).toContainText('Duración de estadía A (≥7 noches)');
+  await expect(page.locator('#promotionLab')).toContainText('Last-Minute Deal');
+});
