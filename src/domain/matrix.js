@@ -73,7 +73,7 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
      lmBlocked (bloqueante CRITICO ronda 2, ver comentario mas abajo), "RENTABLE
      EN TODOS" es una afirmacion sobre LOS 4 CANALES — si CUALQUIERA de ellos
      depende de un dato de negocio sin confirmar (comision bancaria real,
-     aislamiento del Offset en Hospy, mezcla VIP de Expedia, Genius+Mobile real
+     aislamiento del Offset en Kunas, mezcla VIP de Expedia, Genius+Mobile real
      de Booking, no-reembolsable de Airbnb), esa afirmacion conjunta no se
      puede sostener, aunque el canal problematico no sea el "peor" de la
      ventana. model.readiness (src/domain/readiness.js) es la UNICA fuente que

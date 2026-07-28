@@ -1,5 +1,5 @@
 /* Fase 4 — registro de verificacion por unidad. Ninguno de estos hechos se puede
-   confirmar sin que Dani revise la cuenta real (extranet Booking, Hospy, facturas
+   confirmar sin que Dani revise la cuenta real (extranet Booking, Kunas, facturas
    bancarias, PriceLabs) — esta app NUNCA debe inventar el valor ni asumir que ya
    esta confirmado. Cada clave por defecto queda en 'no_verificado'; solo pasa a
    'verificado' (o 'no_aplica', si Dani confirma que ese dato no aplica a esta
@@ -23,7 +23,7 @@ export const CHANNEL_IDS = CHANNELS.map(c=>c.id);
 export const VERIFICATION_KEYS = {
   hospyOffsetIsolated: {
     scope: 'global',
-    label: 'Hospy: ¿el Offset por canal de PriceLabs se aísla de verdad por canal, o se distribuye a todos los conectados?'
+    label: 'Kunas: ¿el Offset por canal de PriceLabs se aísla de verdad por canal, o se distribuye a todos los conectados?'
   },
   bankFeePctByChannel: {
     scope: 'channel',
