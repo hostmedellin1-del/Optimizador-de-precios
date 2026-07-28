@@ -5,6 +5,25 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.18.0] — Min Price como precio final de PriceLabs
+
+**Corregido** — el motor dejaba que el contrato de Min Price y el del simulador trataran
+un precio ya final de PriceLabs como si aún faltara descontarle Last-Minute. Ahora
+`quoteScenario()` distingue explícitamente `price_labs_final`: no vuelve a aplicar
+temporada, demanda, ocupación ni LM; sí aplica Offset, descuentos OTA, aseo y comisiones.
+El simulador usa siempre este contrato y el botón de atajo carga el Min Price, nunca Base.
+
+**Piso** — `compute().floor` calcula el mínimo final global contra los 4 canales y sus
+escenarios OTA/duración. La curva LM no infla ese número, porque ocurre dentro de
+PriceLabs antes del precio final; un `fixed_price` capaz de saltarse el Piso sigue siendo
+un bypass bloqueante. Base Price conserva su análisis de LM para su función distinta.
+
+**Seguridad de uso** — las unidades existentes empiezan con la confirmación del contrato
+del Piso en falso: hay que confirmar manualmente que PriceLabs respeta ese campo como
+precio final mínimo. Costos, moneda y hechos financieros siguen bloqueando ambos números;
+LM solo bloquea Base. Se añadieron pruebas de no doble descuento, propiedad exhaustiva de
+cobertura por OTA/día/noche y persistencia segura del nuevo campo.
+
 ## [0.17.0] — Guía de uso HTML accesible desde la aplicación
 
 **Agregado** — `guia.html` presenta el mismo contenido de `GUIA_DE_USO.md` en una página

@@ -274,6 +274,11 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
   <div id="lmModeFields"></div>
 </section>
+<section class="card" id="priceLabsMinPriceSection">
+  <h2 id="priceLabsMinPriceHeading" tabindex="-1">Contrato del Min Price de PriceLabs <span class="hint">la protección contra vender bajo costo</span></h2>
+  <p class="hint">El Min Price que calcula esta app es el <strong>precio final mínimo que PriceLabs puede publicar</strong>. No vuelve a restar temporada, demanda, ocupación ni Last-Minute; sí protege contra Offset de Kunas, descuentos OTA, comisiones y costos. Marca esto solo después de comprobar en PriceLabs que su campo “Precio mínimo” no se cruza después de sus ajustes internos. Las OTA aún pueden publicar por debajo por sus propios descuentos: eso ya está incluido en el cálculo.</p>
+  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-floor-contract-confirmed><span>Confirmé en PriceLabs que el “Precio mínimo” es un piso FINAL para esta unidad.</span></label></div>
+</section>
 <section class="card" id="ceilingsSection">
   <h2>Techo total por ventana <span class="hint">el % máximo de descuento total que aceptas ver en el precio del huésped, sumando nativos + LM</span></h2>
   <div class="table-wrap">
@@ -310,7 +315,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <section class="card">
   <h2>Simulador de reserva <span class="hint">una reserva concreta, paso a paso, con el porqué de cada línea</span></h2>
   <div class="sim-inputs">
-    <div class="fld"><label for="simPrice">Precio calculado por PriceLabs (antes de LM/offset)</label><input type="number" id="simPrice" step="1"></div>
+    <div class="fld"><label for="simPrice">Precio FINAL mostrado por PriceLabs</label><input type="number" id="simPrice" step="1"></div>
     <div class="fld"><label for="simChannel">Canal</label><select id="simChannel"></select></div>
     <div class="fld"><label for="simDays">Días antes del check-in</label><input type="number" id="simDays" step="1" value="2"></div>
     <div class="fld"><label for="simNights">Noches de estadía</label><input type="number" id="simNights" step="1" value="2"></div>
@@ -396,6 +401,7 @@ let state = {
   discounts: defaultDiscounts(),
   ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
   lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
+  priceLabsMinPriceContractConfirmed:false, // el Piso solo aplica si PriceLabs respeta este mínimo como precio FINAL
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
   usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
@@ -436,6 +442,7 @@ function compute(){
     fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
     lmConfig: state.lmConfig, verification: state.verification,
+    priceLabsMinPriceContractConfirmed: state.priceLabsMinPriceContractConfirmed,
     /* Se pasa el desglose SIEMPRE (aunque este vacio o sin confirmar) —
        engine.js decide internamente si es usable (`costBreakdownConfirmed`),
        nunca index.html: fuente unica de verdad, ver cost-mode.js. */
@@ -516,7 +523,8 @@ function renderKpis(model){
      mas especifico primero), el aviso completo vive en #validationBanner. */
   if(model.floorReadinessBlocked){
     kFloor.textContent='—';
-    kFloorWhy.textContent = model.lmBlocked ? 'LM sin verificar — ver aviso arriba' : 'dato financiero sin verificar — ver aviso arriba';
+    kFloorWhy.textContent = model.floorContractBlocked ? 'confirma el piso final de PriceLabs — ver aviso arriba'
+      : 'dato financiero sin verificar — ver aviso arriba';
   } else {
     kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
   }
@@ -535,6 +543,7 @@ function renderValidation(model){
   const errs = (model.errors||[]).filter(e=>e.level==='error');
   const warns = (model.errors||[]).filter(e=>e.level==='warning');
   const lmBlock = model.lmBlocked ? [model.lmBlockedReason] : [];
+  const floorContractBlock = model.floorContractBlocked ? [model.floorContractBlockedReason] : [];
   /* Bloqueante P1 (revision externa, ronda 3): aviso separado de lmBlock —
      este puede estar activo AUNQUE el LM este verificado (el problema no es
      "no confirmaste el modo", es "el modo fijo hace que Base no controle
@@ -558,10 +567,11 @@ function renderValidation(model){
   const hasPendingBusinessData = !!(model.readiness && !model.readiness.ready);
   const floorReadinessBlock = (model.floorReadinessBlocked && hasPendingBusinessData) ? [model.floorReadinessBlockedReason] : [];
   const baseReadinessBlock = (model.baseReadinessBlocked && hasPendingBusinessData) ? [model.baseReadinessBlockedReason] : [];
-  if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
+  if(!errs.length && !warns.length && !lmBlock.length && !floorContractBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
     ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${floorContractBlock.length ? `<div class="alert bad"><span class="tag">MIN PRICE SIN CONFIRMAR</span><span>${escapeHtml(floorContractBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:minprice">Confirmar contrato del Min Price →</button></div>` : ''}
     ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
     ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> ${financialGateButton(model)}</div>` : ''}
     ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> ${financialGateButton(model)}</div>` : ''}
@@ -749,7 +759,7 @@ function renderMatrix(model){
      `model.baseBlocked` solo se leen para elegir el texto mas especifico,
      nunca para decidir si se bloquea (mismo patron que renderKpis()). */
   matrixIntro.innerHTML = `
-    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">nunca vendas más barato que esto</span></span><span class="mi-val">${model.floorReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':'— (dato financiero sin verificar)'):f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">piso final que protege el peor canal y promo OTA</span></span><span class="mi-val">${model.floorReadinessBlocked?(model.floorContractBlocked?'— (piso final sin confirmar)':'— (dato financiero sin verificar)'):f$(model.floor)}</span></div>
     <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.baseReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':'— (dato financiero sin verificar)'):f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
@@ -854,25 +864,21 @@ function renderSim(model){
      con un numero inventado — se explica el motivo y se pide un precio manual. */
   const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
   const chId=simChannel.value||'airbnb';
-  /* Refactor de cierre: `model.baseReadinessBlocked` (evaluateGlobalRecommendationReadiness())
-     YA es true si LM esta sin verificar, si hay un precio fijo activo, O si un
-     canal tiene un dato de negocio pendiente — no hace falta volver a unir los
-     tres con `||`, eso seria la misma logica duplicada que este refactor
-     elimina. Solo se lee `model.lmBlocked`/`model.baseBlocked` para elegir el
-     texto mas especifico del motivo. */
-  if((typedPrice==null || !Number.isFinite(typedPrice)) && model.baseReadinessBlocked){
+  /* El simulador recibe un precio FINAL de PriceLabs. Por eso ya no puede
+     precargar Base Price (que es una referencia previa a la curva táctica):
+     si se usa un valor automático, debe ser el Min Price final protegido. */
+  if((typedPrice==null || !Number.isFinite(typedPrice)) && model.floorReadinessBlocked){
     const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
-      : model.lmBlocked ? 'Last-Minute sin verificar'
-      : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+      : model.floorContractBlocked ? 'aún no confirmaste que PriceLabs respeta su Precio mínimo como piso final'
       : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
       : 'un dato financiero del canal que fija Base sigue sin confirmar';
     const channel = state.channels.find(c=>c.id===chId);
     const goto = CH_TAB[chId] || 'ch-airbnb';
-    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Base Price está bloqueado (${why}). Escribe un precio a mano arriba para explorar un escenario igual, o confirma primero los datos de <button type="button" class="goto" data-goto="${goto}">${escapeHtml(channel?.name||'este canal')} →</button>.</div>`;
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Min Price está bloqueado (${why}). Escribe un precio FINAL de PriceLabs a mano arriba, o confirma primero los datos de <button type="button" class="goto" data-goto="${goto}">${escapeHtml(channel?.name||'este canal')} →</button>.</div>`;
     simIgnored.innerHTML = '';
     return;
   }
-  const price = (typedPrice!=null && Number.isFinite(typedPrice)) ? typedPrice : (model.effBase||0);
+  const price = (typedPrice!=null && Number.isFinite(typedPrice)) ? typedPrice : (model.floor||0);
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
   const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
@@ -891,17 +897,14 @@ function renderSim(model){
      revision manual" por moneda, el resultado tampoco es una recomendacion
      — se etiqueta igual que los demas supuestos sin confirmar. */
   if(model.currencyBlocked) simUnverified.push('la unidad requiere revisión manual por moneda (ver aviso en Resumen)');
-  if(model.lmBlocked) simUnverified.push('Last-Minute sin verificar');
-  if(model.baseBlocked) simUnverified.push('precio LM fijo activo en el día de referencia');
   if(!chReadyForSim) model.readiness.byChannel[chId].missing.forEach(m=>simUnverified.push(m.label));
   const simCaveat = simUnverified.length
     ? `<div class="alert warn" style="margin-bottom:10px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Simulación con supuestos no verificados; no uses este resultado como recomendación automática — depende de: ${escapeHtml(simUnverified.join('; '))}.</span></div>`
     : '';
-  let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
-  html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
-  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
+  let html=`<div class="sim-group">1 · Precio final de PriceLabs</div>`;
+  html+=`<div class="wf-line"><span>Precio FINAL mostrado por PriceLabs</span><span class="why">ya incluye los factores internos que PriceLabs haya aplicado (temporada, demanda, ocupación y/o Last-Minute); no se descuentan por segunda vez</span><span class="amt">${f$(price)}</span></div>`;
   if(off!==0){
-    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${escapeHtml(ch.name)} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Kunas que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
+    html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${escapeHtml(ch.name)} ${fP(Math.abs(off))}</span><span class="why">ajuste posterior al precio final de PriceLabs para este canal — verifica en Kunas que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
   }
   html+=`<div class="sim-group">2 · Lo que descuenta ${escapeHtml(ch.name)}</div>`;
   s.appliedSteps.forEach(a=>{
@@ -923,10 +926,10 @@ function renderSim(model){
   }
   html+=`<div class="wf-line ${afterBank>=cost?'net':'netbad'}"><span>Neto para ti (vs costo ${f$(cost)})</span><span class="amt">${f$(afterBank)} · margen ${f$(margin)}</span></div>`;
   html+=`<div class="wf-line"><span class="hint"><span class="term" title="Margen: que fraccion de lo que COBRAS (el neto) es ganancia. Formula: margen/neto.">Margen sobre venta</span>: ${fP(marginPct)} · <span class="term" title="Markup: cuanto subes el precio POR ENCIMA de tu costo. Formula: margen/costo. No es lo mismo que el margen — un markup de 100% es solo 50% de margen.">Markup sobre costo</span>: ${fP(markupPct)}</span></div>`;
-  html+=`<div class="wf-line"><span class="hint">Descuento total visto por el huésped: ${fP(totalDisc)} · techo de la ventana: ${fP(ceil)} ${totalDisc>ceil+0.5?'⚠ EXCEDIDO':''}</span></div>`;
+  html+=`<div class="wf-line"><span class="hint">Ajuste total posterior a PriceLabs visto por el huésped: ${fP(totalDisc)}. El techo interno de PriceLabs no se usa aquí porque el precio ingresado ya es final.</span></div>`;
   const summary = afterBank>=cost
-    ? `De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
-    : `⚠ De <strong>${f$(price)}</strong> que puso PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
+    ? `De los <strong>${f$(price)}</strong> finales que muestra PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — cubre tu costo de ${f$(cost)} con un margen de ${f$(margin)}.`
+    : `⚠ De los <strong>${f$(price)}</strong> finales que muestra PriceLabs, terminas quedándote con <strong>${f$(afterBank)}</strong> — eso es MENOS que tu costo de ${f$(cost)} (te faltan ${f$(cost-afterBank)}).`;
   simResult.innerHTML=`${simCaveat}<div class="sim-summary">${summary}</div>${html}`;
   simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${escapeHtml(i.name)} — ${escapeHtml(i.reason)}`).join(' · ')):'';
 }
@@ -960,6 +963,7 @@ function goToTab(tabId){
    canales) cambia de comportamiento. */
 const SECTION_ANCHORS = {
   lm: {sectionId: 'lmSection', focusId: 'lmModeSelect'},
+  minprice: {sectionId: 'priceLabsMinPriceSection', focusId: 'priceLabsMinPriceHeading'},
   costos: {sectionId: 'costsSection', focusId: 'f-fixedCost'}
 };
 function goToSection(tabId, anchorKey){
@@ -1192,6 +1196,8 @@ function hydrate(){
   document.querySelectorAll('[data-cb]').forEach(el=>el.value=state.costBreakdown[el.dataset.cb]);
   const cbConfirmChk = document.getElementById('costBreakdownConfirmedChk');
   if(cbConfirmChk) cbConfirmChk.checked = !!state.costBreakdownConfirmed;
+  const floorContractChk = document.querySelector('[data-floor-contract-confirmed]');
+  if(floorContractChk) floorContractChk.checked = !!state.priceLabsMinPriceContractConfirmed;
   simChannel.innerHTML=state.channels.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 }
 buildTabbar();
@@ -1224,7 +1230,11 @@ function readNumField(t, current, opts={}){
 }
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset.k!==undefined){
+  if(t.dataset.floorContractConfirmed!==undefined){
+    state.priceLabsMinPriceContractConfirmed = t.checked;
+    renderAll();
+  }
+  else if(t.dataset.k!==undefined){
     const key=t.dataset.k;
     const KEY_OPTS = {
       fixedCost:{min:0,max:1e7,label:'Costo fijo por noche'},
@@ -1406,27 +1416,18 @@ document.addEventListener('click',e=>{
   }
   if(e.target.id==='goSimBtn'){
     const model=compute();
-    /* Bloqueante P2 (revision externa, ronda 3): este boton precargaba
-       Math.round(model.base||model.effBase||0) sin condicion — si Base
-       estaba bloqueado (LM sin verificar, o precio LM fijo activo en el dia
-       de referencia), igual escribia ese numero bloqueado en el Simulador,
-       revelandolo como si fuera una recomendacion valida. Ahora, si esta
-       bloqueado, NO se precarga nada (el campo queda vacio — renderSim()
-       explica el motivo en vez de simular con un numero inventado) y se
-       muestra el mismo aviso en el toast global. */
-    /* Refactor de cierre: `model.baseReadinessBlocked` ya es la union de los
-       tres motivos (LM/precio fijo/datos de negocio) — no se vuelve a armar
-       ese `||` aqui. */
-    if(model.baseReadinessBlocked){
+    /* El simulador cotiza el precio FINAL de PriceLabs. Su única precarga
+       válida es el Min Price final (nunca Base, que es una referencia previa
+       a la curva interna). */
+    if(model.floorReadinessBlocked){
       simPrice.value='';
       const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
-        : model.lmBlocked ? 'Last-Minute sin verificar'
-        : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
+        : model.floorContractBlocked ? 'falta confirmar que PriceLabs respeta el Precio mínimo como piso final'
         : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
         : 'un dato financiero sigue sin confirmar en la pestaña del canal correspondiente';
-      showInputError('Base Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confírmalo primero.');
+      showInputError('Min Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe un precio FINAL de PriceLabs a mano, o confírmalo primero.');
     } else {
-      simPrice.value=Math.round(model.base||model.effBase||0);
+      simPrice.value=Math.round(model.floor||0);
     }
     goToTab('simulador');
     renderSim(model);

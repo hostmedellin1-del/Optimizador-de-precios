@@ -70,6 +70,7 @@ async function setupFixedPriceScenario(page){
   await fillField(page, '[data-lmf="fixedPrice.fromDay"]', '40');
   await page.locator('[data-lmf="fixedPrice.on"]').check();
   await page.locator('[data-lm="verified"]').check();
+  await page.locator('[data-floor-contract-confirmed]').check();
 }
 
 test('caso obligatorio: LM fixed_price en 40-50 (cubre día 45) bloquea Base Price con explicación clara, aunque el LM esté VERIFICADO', async ({page}) => {
@@ -85,7 +86,8 @@ test('caso obligatorio: LM fixed_price en 40-50 (cubre día 45) bloquea Base Pri
 
 /* Refactor de cierre (revision externa): baseBlocked (precio LM fijo activo en
    el día 45) NUNCA debe bloquear Min Price — el Piso sigue protegiendo
-   evaluando el peor escenario real (LM incluido, ver worstScenarioFactor()).
+   partiendo del precio final de PriceLabs. Un precio fijo no bloquea el
+   cálculo del Piso, aunque sí impide que Base Price represente el día 45.
    Solo Base Price, que evalúa un único día de referencia (45), queda
    bloqueado. Contrato exacto de evaluateGlobalRecommendationReadiness()
    (src/domain/readiness.js): baseReady exige floorReady Y !baseBlocked —

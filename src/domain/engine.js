@@ -39,8 +39,7 @@ import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
 import {reservationCostBreakdown} from './costs.js';
 import {validateCostInputs, validateChannelInputs, validateResultFinite, validateLmTiersOverlap} from './validate.js';
-import {worstScenarioFactor} from './worstcase.js';
-import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
+import {priceLabsLm, isLmBlocked, lmCriticalDays} from './pricelabs-lm.js';
 import {evaluateRecommendationReadiness, evaluateGlobalRecommendationReadiness} from './readiness.js';
 import {evaluateUsdOnlyReadiness} from './usd-only.js';
 import {evaluateCostReadiness} from './cost-mode.js';
@@ -262,36 +261,58 @@ export function compute(config){
     : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
   const m = Math.min(parseFloat(config.margin)||0,90);
   const net = cost/(1-m/100);
-  /* floor: pushed price such that worst channel still nets >= cost.
-     Incluye el offset del canal: en producción PriceLabs publica precio×(1+offset), así que
-     el piso DEBE reflejarlo — si no, un offset negativo (bajar precio para competir) rompe
-     la garantía de no vender bajo costo. Con offset positivo el piso baja para ese canal
-     (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
-     baja de verdad si TODOS tienen offset positivo. */
+  /* PISO — el número que se carga en "Precio mínimo" de PriceLabs.
+
+     Contrato corregido: este es un PRECIO FINAL de PriceLabs, no una base
+     previa a temporada, demanda, ocupación o Last-Minute. Por eso el motor no
+     vuelve a restar esos factores aquí. Lo que sí puede reducir el neto DESPUÉS
+     de PriceLabs es el Offset por canal, los descuentos OTA y las comisiones.
+
+     Se resuelve cada escenario real (canal × día crítico × noches críticas)
+     en sentido inverso y se toma el máximo. También se considera el aseo y el
+     costo real por duración: una estadía de una noche no debe tener el mismo
+     costo por noche que una de treinta.
+
+     Un LM de precio fijo es una excepción: puede reemplazar el mínimo. Se
+     evalúa aparte y, si genera pérdida, se marca error porque subir el Piso no
+     puede arreglar un precio fijo inferior. */
   let floor=0, floorCh='', floorChId=null;
   const lmInfeasible = [];
+  const floorDays = [...new Set([...criticalDays(discounts, windows), ...lmCriticalDays(config.lmConfig)])].sort((a,b)=>a-b);
+  const floorNights = criticalNights(discounts);
   channels.forEach(c=>{
     const pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
-    if(config.lmConfig){
-      /* CRITICO corregido (ver worstcase.js): el peor caso ahora incluye LM,
-         no solo el descuento nativo OTA — un LM verificado que el Piso
-         ignoraba podia netear por debajo del costo real aunque el modelo
-         dijera valid:true. */
-      const {worstFactor, worstDay, worstNight, infeasible} = worstScenarioFactor({
-        chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost
+    floorDays.forEach(day=>{
+      const w = windows.find(win=>day>=win.lo && day<=win.hi) || windows[windows.length-1];
+      const ceil = pct((config.ceilings||{})[w.id]);
+      floorNights.forEach(nights=>{
+        const nativeFactor = combineChannel(discounts, c.id, day, nights).factor;
+        const feePerNight = cleanFeePerNight(c, nights);
+        const scenarioCost = costGate.useDetailed
+          ? reservationCostBreakdown(config.costBreakdown, nights).perNight
+          : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
+        /* priceLabsLm() sigue siendo la única fuente que conoce el rango de
+           un precio fijo. Los modos porcentuales no aparecen aquí: el mínimo
+           final confirmado los absorbe por contrato. */
+        const lmAtDay = priceLabsLm(config.lmConfig, {day, ceilingPct:ceil, nativePct:0, floor});
+        if(lmAtDay.priceOverride!=null){
+          const payoutAtOverride = (lmAtDay.priceOverride*(1+off)*nativeFactor + feePerNight)*pf;
+          if(payoutAtOverride < scenarioCost - 1e-9){
+            lmInfeasible.push({chId:c.id, day, night:nights, overridePrice:lmAtDay.priceOverride, payoutAtOverride, cost:scenarioCost});
+          }
+          return;
+        }
+        const priceFactor = (1+off)*nativeFactor;
+        const p = priceFactor>0 && pf>0
+          ? Math.max(0, (scenarioCost/pf-feePerNight)/priceFactor)
+          : Infinity;
+        if(p>floor){
+          floor=p; floorChId=c.id;
+          floorCh=c.name+' (peor escenario final: día '+day+', '+nights+' noche'+(nights===1?'':'s')
+            +(off!==0?' + offset '+fP(off*100):'')+')';
+        }
       });
-      lmInfeasible.push(...infeasible);
-      const denom = worstFactor*pf;
-      const p = denom>0 ? cost/denom : Infinity;
-      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(off!==0?' + offset '+fP(off*100):'')+')';}
-    } else {
-      /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
-         de siempre, solo nativo OTA — no incluye LM. */
-      const wn = worstNative(discounts, c.id, windows)/100;
-      const denom = (1+off)*(1-wn)*pf;
-      const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
-      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
-    }
+    });
   });
   /* base: pushed price that nets target on every channel using its CONSTANT natives
      (window natives are tactical), CON el offset y el LM que ese canal tenga
@@ -352,7 +373,7 @@ export function compute(config){
     ...validateCostInputs({fixedCost: config.fixedCost, varCost: config.varCost, margin: config.margin}),
     ...validateChannelInputs(channels),
     ...validateResultFinite({floor, base, net, cost}, ['floor','base','net','cost']),
-    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${cost}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`})),
+    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${x.cost.toFixed(2)}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`})),
     ...(config.lmConfig && config.lmConfig.mode==='tiers' ? validateLmTiersOverlap(config.lmConfig.tiers) : [])
   ];
   const valid = !errors.some(e=>e.level==='error');
@@ -444,8 +465,15 @@ export function compute(config){
      currencyBlocked — bloquea Piso Y Base, nunca solo uno. */
   const costBlocked = costGate.blocked;
   const costBlockedReason = costGate.reason;
+  /* El contrato de Piso final se activa solo si el caller lo declara. Así los
+     callers históricos de dominio siguen siendo compatibles; la UI real lo
+     pasa siempre (false hasta la confirmación explícita). */
+  const floorContractBlocked = config.priceLabsMinPriceContractConfirmed===false;
+  const floorContractBlockedReason = floorContractBlocked
+    ? 'Falta confirmar que el "Precio mínimo" de PriceLabs es el precio FINAL que no cruza después de temporada, demanda, ocupación y Last-Minute. El Min Price queda bloqueado hasta confirmarlo en Resumen.'
+    : null;
   const {floorReady, baseReady, floorReason, baseReason} = evaluateGlobalRecommendationReadiness({
-    readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked
+    readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked, floorContractBlocked
   });
   const floorReadinessBlocked = !floorReady;
   const floorReadinessBlockedReason = floorReason;
@@ -456,7 +484,8 @@ export function compute(config){
     lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason,
     currencyBlocked, currencyBlockedReason,
     costBlocked, costBlockedReason, costMode: costGate.mode,
-    readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason
+    readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason,
+    floorContractBlocked, floorContractBlockedReason
   };
 }
 

@@ -81,9 +81,9 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
 
   <section id="que-es">
     <h2>1. Qué es y qué no es</h2>
-    <p>La herramienta toma el precio por noche que pondrías en PriceLabs y estima cuánto queda después de descuentos nativos, comisión OTA, comisión bancaria/pasarela, Last-Minute y Offset por canal. Con esa configuración calcula:</p>
+    <p>La herramienta toma el precio <strong>final</strong> que PriceLabs muestra para una noche y estima cuánto queda después de Offset, descuentos nativos, comisión OTA y comisión bancaria/pasarela por canal. No vuelve a descontar temporada, demanda, ocupación ni Last-Minute que PriceLabs ya haya aplicado dentro de ese precio. Con esa configuración calcula:</p>
     <ul>
-      <li><strong>Min Price → PriceLabs</strong>: el mínimo que debería cubrir el costo incluso en el escenario más exigente que encuentre entre los canales.</li>
+      <li><strong>Min Price → PriceLabs</strong>: el precio mínimo final que debes configurar en PriceLabs para que, incluso después de las reducciones que aún aplican por canal, cubra el costo en el escenario más exigente.</li>
       <li><strong>Base Price → PriceLabs</strong>: una referencia para que el precio base alcance el neto objetivo con la configuración real cargada.</li>
       <li><strong>Offset</strong>: ajuste específico por canal que se aplica después del precio de PriceLabs.</li>
     </ul>
@@ -96,7 +96,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>Abre la URL publicada.</li>
       <li>En la barra superior escribe el nombre en <strong>Unidad (ej. Alcázar 902)</strong>.</li>
       <li>Pulsa <strong>Guardar</strong> para crear la unidad en este navegador.</li>
-      <li>Al principio verás <code>—</code> en <strong>Min Price → PriceLabs</strong> y <strong>Base Price → PriceLabs</strong>. Es normal y seguro: una unidad nueva trae costos de ejemplo, Last-Minute sin confirmar y datos financieros sin verificar.</li>
+      <li>Al principio verás <code>—</code> en <strong>Min Price → PriceLabs</strong> y <strong>Base Price → PriceLabs</strong>. Es normal y seguro: una unidad nueva trae costos de ejemplo, el contrato del Min Price final sin confirmar, Last-Minute sin confirmar y datos financieros sin verificar.</li>
       <li>No copies esos valores como recomendaciones hasta completar los tres bloqueos de la sección 4.</li>
     </ol>
     <div class="alert warn"><span class="tag">USD</span><span>Todos los valores se ingresan en <strong>USD</strong>. La aplicación no convierte COP, no consulta PriceLabs ni las OTAs y no inventa ningún dato pendiente.</span></div>
@@ -112,6 +112,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones.</li>
       <li>Completa <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong>, <strong>Estadía promedio (noches)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
       <li>Configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
+      <li>Confirma que <strong>Min Price es el precio final que PriceLabs muestra y respeta como piso</strong>. Esto solo confirma el significado del número: la app seguirá protegiéndote frente a Offset, promociones y comisiones de cada canal.</li>
       <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones aplicables con fuente y fecha para cada canal.</li>
       <li>Revisa <strong>Techo total por ventana</strong> en Resumen. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
       <li>Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
@@ -154,6 +155,9 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>No aplica</strong>: confirmaste que ese dato no corresponde a esa unidad. No significa “no lo sé”.</li>
     </ul>
     <p>Los puntos que aparecen incluyen comisión bancaria/pasarela por canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, y no reembolsable y Top Rated Guest de Airbnb. El Offset se configura manualmente por canal: no hay distribución automática que verificar. Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.</p>
+
+    <h3>D. MIN PRICE SIN CONFIRMAR</h3>
+    <p>Marca esta confirmación solo después de comprobar en PriceLabs que el valor que llamarás <strong>Min Price</strong> será el precio final que PriceLabs publica como piso. PriceLabs puede aplicar temporada, demanda, ocupación o Last-Minute antes de mostrar el precio final, pero no debe bajar de ese piso final. La app no aplica esos factores una segunda vez; sí conserva las reducciones posteriores de Kunas/Offset, las OTAs y las comisiones. Si usas un precio fijo Last-Minute, comprueba también que ese precio no pueda saltarse el Min Price.</p>
     <h3>Caso excepcional: revisión de moneda</h3>
     <p>Si cargas una unidad antigua con una moneda distinta de USD, verás <strong>REQUIERE REVISIÓN MANUAL</strong>. No hay conversión automática. Puedes corregir los datos manualmente o crear una copia en USD y revisar cada valor antes de pulsar <strong>Ya revisé manualmente todos los valores en USD →</strong>. Hasta entonces, los números quedan bloqueados.</p>
   </section>
@@ -163,7 +167,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <h3>Resumen</h3>
     <p>Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
     <h3>¿Cómo se calcula?</h3>
-    <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio calculado por PriceLabs (antes de LM/offset)</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global está bloqueada, por lo que debes leer sus avisos de confiabilidad.</p>
+    <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio FINAL mostrado por PriceLabs</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global está bloqueada, por lo que debes leer sus avisos de confiabilidad. El simulador no vuelve a aplicar factores internos de PriceLabs a un precio que ya es final.</p>
     <h3>Airbnb, Booking.com, Expedia y Directo</h3>
     <p>Cada pestaña contiene la configuración de ese canal:</p>
     <ul>
@@ -202,7 +206,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   <section id="preguntas">
     <h2>8. Preguntas frecuentes</h2>
     <h3>¿Por qué Min Price o Base Price muestran <code>—</code>?</h3>
-    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, dato financiero sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la sección exacta que debes revisar.</p>
+    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, el contrato de Min Price final sin confirmar, LM sin verificar, dato financiero sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la sección exacta que debes revisar.</p>
     <h3>¿Por qué una unidad duplicada puede tener otro precio?</h3>
     <p>Porque la copia no hereda hechos confirmados ni costos reales. Aunque conserve descuentos, canales, techos y parámetros LM, debes validar que esos parámetros y los costos sí aplican a la nueva unidad. Hasta hacerlo, la app bloquea Min Price y Base Price.</p>
     <h3>¿Puedo ingresar COP?</h3>
@@ -220,7 +224,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>No calcula impuestos, contabilidad, flujo de caja mensual, reparto de utilidad ni conciliación automática de reservas: esas funciones no forman parte de esta versión.</li>
       <li>El resultado es una herramienta de decisión de precios, no una garantía de demanda, ocupación o liquidación final.</li>
     </ul>
-    <div class="alert ok"><span class="tag">ANTES</span><span>Antes de aplicar una recomendación en PriceLabs: revisa que la unidad tenga costos reales confirmados, modo LM confirmado y todos los datos financieros aplicables resueltos. Solo entonces trata Min Price, Base Price y Offset como recomendaciones operativas.</span></div>
+    <div class="alert ok"><span class="tag">ANTES</span><span>Antes de aplicar una recomendación en PriceLabs: revisa que la unidad tenga costos reales confirmados, el contrato de Min Price final confirmado, modo LM confirmado y todos los datos financieros aplicables resueltos. Solo entonces trata Min Price, Base Price y Offset como recomendaciones operativas.</span></div>
   </section>
 
   <a class="back-link" href="https://hostmedellin1-del.github.io/Optimizador-de-precios/">Volver al sitio principal</a>

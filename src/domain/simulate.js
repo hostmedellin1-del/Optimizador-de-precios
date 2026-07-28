@@ -17,11 +17,11 @@ import {quoteScenario} from './quote.js';
    scenario = {price, chId, days, nights} */
 export function simulateReservation(config, scenario){
   const q = quoteScenario(
-    {chId: scenario.chId || 'airbnb', days: scenario.days, nights: scenario.nights, price: scenario.price||0},
+    {chId: scenario.chId || 'airbnb', days: scenario.days, nights: scenario.nights, price: scenario.price||0, priceStage:'price_labs_final'},
     config
   );
   return {
-    price: q.price, chId: q.chId, ch: q.ch, days: q.days, nights: q.nights, w: q.w, ceil: q.ceil,
+    price: q.price, priceStage:q.priceStage, chId: q.chId, ch: q.ch, days: q.days, nights: q.nights, w: q.w, ceil: q.ceil,
     maxN: q.maxNAtScenario, lm: q.lm,
     afterLm: q.priceAfterLm, off: q.off, afterOff: q.priceAfterOffset,
     applied: q.applied, ignored: q.ignored, appliedSteps: q.appliedSteps,

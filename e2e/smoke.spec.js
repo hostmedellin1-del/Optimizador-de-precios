@@ -12,7 +12,7 @@ test.beforeEach(async ({page}) => {
   page.__errors = errors;
 });
 
-test('carga limpia: cero errores de consola, alertas render — Min Price/Base Price arrancan bloqueados por LM sin verificar (bloqueante CRITICO ronda 2, ver e2e/lm-blocking.spec.js)', async ({page}) => {
+test('carga limpia: cero errores de consola; Min Price requiere confirmar el piso final y Base sigue bloqueado por LM', async ({page}) => {
   await page.goto('/index.html');
   // Bloqueante CRITICO (revision externa, ronda 2): la config por defecto usa
   // LM modo automatico SIN verificar — Min Price/Base Price ya NO se muestran
@@ -20,7 +20,9 @@ test('carga limpia: cero errores de consola, alertas render — Min Price/Base P
   // numero real en carga limpia); ese era exactamente el bug reportado.
   await expect(page.locator('#kFloor')).toHaveText('—');
   await expect(page.locator('#kBase')).toHaveText('—');
+  await expect(page.locator('#kFloorWhy')).toContainText('piso final');
   await expect(page.locator('#validationBanner')).toContainText('LM SIN VERIFICAR');
+  await expect(page.locator('#validationBanner')).toContainText('MIN PRICE SIN CONFIRMAR');
   await expect(page.locator('#alertsBox .alert').first()).toBeVisible();
   expect(page.__errors, 'no debe haber errores de consola en carga limpia').toEqual([]);
 });
@@ -48,6 +50,9 @@ test('Simulador: cambiar canal/días/noches recalcula y muestra Margen y Markup 
   await page.locator('#simDays').fill('10');
   await page.locator('#simDays').dispatchEvent('change');
   const text = await page.locator('#simResult').innerText();
+  expect(text).toContain('Precio FINAL mostrado por PriceLabs');
+  expect(text).not.toContain('LM PriceLabs');
+  expect(text).toContain('no se descuentan por segunda vez');
   expect(text).toContain('Margen sobre venta');
   expect(text).toContain('Markup sobre costo');
   expect(page.__errors).toEqual([]);

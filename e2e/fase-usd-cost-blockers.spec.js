@@ -160,6 +160,7 @@ test('BLOQUEANTE 2: agregar SOLO "Consumos: 5" en la calculadora detallada NO ba
   const pct = page.locator('[data-lmf="flat.pct"]');
   await pct.click(); await pct.fill('0'); await pct.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
+  await page.locator('[data-floor-contract-confirmed]').check();
   await page.locator('[data-tabbtn="ch-booking"]').click();
   await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'no_aplica');
   await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'no_aplica');

@@ -72,7 +72,7 @@ test('Base SI cambia con lmConfig activo a día 45 (antes lo excluía por comple
 
   assert.notEqual(sinLm.base, conLm.base, 'Base debe reaccionar al LM real configurado a día 45 (antes lo ignoraba por completo, sin importar el modo)');
   assert.ok(conLm.base > sinLm.base, 'un LM que resta 50% en día 45 obliga a un Base más alto para seguir neteando el mismo objetivo');
-  assert.notEqual(sinLm.floor, conLm.floor, 'el Piso también sigue cambiando con lmConfig (búsqueda exhaustiva, sin cambios en este bloqueante)');
+  assert.equal(sinLm.floor, conLm.floor, 'el Piso es un precio FINAL de PriceLabs: un LM interno no se descuenta por segunda vez');
 
   // Y ese Base más alto SI netea el objetivo cotizado con el LM real activo a día 45:
   const q = quoteScenario({chId:'direct', days:45, nights:1, price:conLm.base}, {channels, discounts, windows, ceilings, fixedCost:100, varCost:0, lmConfig});

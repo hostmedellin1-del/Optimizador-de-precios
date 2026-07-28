@@ -30,7 +30,7 @@
    - Reglas de negocio OTA base (combineChannel: prioridades Airbnb, stacking
      Booking, grupos Expedia) — sin cambios.
 
-   scenario = {chId, days, nights, price}
+   scenario = {chId, days, nights, price, priceStage?}
    config   = {channels, discounts, windows, ceilings, fixedCost, varCost,
                costBreakdown?, lmConfig?} */
 import {pct, pct2} from './percent.js';
@@ -45,6 +45,21 @@ export function quoteScenario(scenario, config){
   const days = Math.max(0, scenario.days||0);
   const nights = Math.max(1, scenario.nights||1);
   const price = scenario.price||0;
+  /* Hay dos contratos deliberadamente distintos para el precio de entrada:
+     - before_price_labs_lm (legado/estrategia): precio de referencia ANTES de
+       la curva interna de PriceLabs. Mantiene el comportamiento necesario para
+       Base Price, matriz y análisis táctico.
+     - price_labs_final (reserva real): precio FINAL que PriceLabs ya muestra
+       para la fecha. Puede incluir temporada, demanda, ocupación y
+       Last-Minute; por eso NUNCA se le aplica LM una segunda vez.
+
+     No inferir el contrato a partir de los días ni del modo LM: el mismo USD
+     94 puede ser un precio final real o una hipótesis previa a PriceLabs. El
+     caller debe elegirlo explícitamente. La omisión conserva el contrato
+     legado para no reinterpretar llamadas de estrategia existentes. */
+  const priceStage = scenario.priceStage==='price_labs_final'
+    ? 'price_labs_final'
+    : 'before_price_labs_lm';
   const assumptions = [];
 
   /* 1. Techo/LM — usa SIEMPRE los dias/noches REALES de este escenario (fix P4:
@@ -68,11 +83,17 @@ export function quoteScenario(scenario, config){
   /* Fase 4: modo de LM despachado por pricelabs-lm.js. Sin config.lmConfig, usa
      'ceiling_auto' (el comportamiento de siempre) — cero cambio de resultado
      para quien no configuro nada nuevo. */
-  const lmResult = priceLabsLm(config.lmConfig, {day: days, ceilingPct: ceil, nativePct: maxNAtScenario, floor: config.floor});
+  const lmResult = priceStage==='price_labs_final'
+    ? {lmPct:0, priceOverride:null, mode:'already_applied', verified:true, blocked:false, note:null}
+    : priceLabsLm(config.lmConfig, {day: days, ceilingPct: ceil, nativePct: maxNAtScenario, floor: config.floor});
   const lm = lmResult.lmPct;
-  if(lmResult.note) assumptions.push(lmResult.note);
-  if(lmResult.mode!=='ceiling_auto' && !lmResult.verified)
-    assumptions.push(`LM en modo "${lmResult.mode}" configurado pero NO VERIFICADO — Dani debe confirmar que este es el modo real que usa PriceLabs para esta unidad antes de confiar en este numero para una recomendacion categorica.`);
+  if(priceStage==='price_labs_final'){
+    assumptions.push('Precio ingresado como FINAL de PriceLabs: no se vuelven a aplicar temporada, demanda, ocupación ni Last-Minute. Solo se cotizan Offset, descuentos OTA, aseo y comisiones posteriores.');
+  } else {
+    if(lmResult.note) assumptions.push(lmResult.note);
+    if(lmResult.mode!=='ceiling_auto' && !lmResult.verified)
+      assumptions.push(`LM en modo "${lmResult.mode}" configurado pero NO VERIFICADO — Dani debe confirmar que este es el modo real que usa PriceLabs para esta unidad antes de confiar en este numero para una recomendacion categorica.`);
+  }
   const priceAfterLm = lmResult.priceOverride!=null ? lmResult.priceOverride : price*(1-lm/100);
   /* Bloqueante 3 (revision externa): antes `blocked`/`verified`/`mode` se calculaban
      dentro de priceLabsLm() pero NUNCA salian de quoteScenario() — ninguna vista
@@ -86,7 +107,7 @@ export function quoteScenario(scenario, config){
      exactamente equivalente a `!!lmResult.blocked || !lmVerifiedFlag` (ceilingAuto()
      siempre bloquea, las demas nunca por si solas), pero calcularlo una sola vez
      evita que las vistas se desalineen si la regla cambia. */
-  const lmBlocked = isLmBlocked(config.lmConfig);
+  const lmBlocked = priceStage==='price_labs_final' ? false : isLmBlocked(config.lmConfig);
 
   /* 2. Offset del canal (PriceLabs Pricing Offset), sobre el precio ya con LM. */
   const off = pct2(ch.offsetPct);
@@ -143,7 +164,7 @@ export function quoteScenario(scenario, config){
   const markupPct = cost>0 ? (margin/cost)*100 : 0;      // markup: cuanto se sube SOBRE EL COSTO — no confundir con margen
 
   return {
-    chId, ch, days, nights, w, ceil, maxNAtScenario, worstChannelAtScenario, breach, lm,
+    chId, ch, days, nights, w, ceil, maxNAtScenario, worstChannelAtScenario, breach, lm, priceStage,
     lmMode, lmVerified: lmVerifiedFlag, lmBlocked, lmPriceOverrideActive: lmResult.priceOverride!=null,
     nativoPct: r.totalPct, // SOLO presentacion (redondeado) — para matematica financiera usar nativoFactor
     nativoFactor: r.factor, // exacto — 1-nativoFactor es la fraccion real que aplica el canal
