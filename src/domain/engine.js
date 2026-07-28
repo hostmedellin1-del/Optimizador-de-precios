@@ -90,32 +90,49 @@ export function combineChannel(discounts, chId, daysOut, nights){
     ds.filter(d=>d.group==='stackable-post').forEach(d=>add(d,'descuento no reembolsable del listing: se aplica DESPUÉS de la promo ganadora, no compite con ella'));
   }
   else if(chId==='booking'){
-    const limited = ds.find(d=>d.group==='reactive-limited');
-    const country = ds.find(d=>d.group==='proactive-country');
-    const mobile = ds.find(d=>d.group==='proactive-mobile');
+    /* Booking no aplica un "montón" de descuentos a la misma reserva. Su simulador
+       oficial separa grupos de huésped: Mobile y Country son alternativas de targeting;
+       cada grupo puede combinar con UN Portfolio deal (Basic/LM/Early) y Genius.
+       Campaign/Limited combina únicamente con Genius. Para proteger el Piso hay que
+       cotizar todos esos grupos posibles y quedarnos con el que deja el precio menor. */
     const genius = ds.find(d=>d.group==='proactive');
-    if(genius) add(genius,'Genius combina con todo (categoría propia)');
-    if(country) add(country,'Country Rate activa');
-    if(mobile){
-      if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
-      else add(mobile,'apila sobre Genius (categorías distintas)');
-    }
-    /* Descuento por duración de estadía: es tu tarifa (Rates & Availability → Discounts),
-       no un "deal" que compite por categoría — se apila con Genius/Mobile/reactivos.
-       Si varios umbrales califican a la vez, gana el más profundo (igual que Airbnb LOS). */
-    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights));
-    if(losCands.length){
-      losCands.sort((a,b)=>(b.minN||0)-(a.minN||0));
-      const winLos=losCands[0];
-      add(winLos,'tarifa por duración de estadía que configuraste — se apila con Genius/Mobile/deals');
-      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:'ya aplica un umbral de duración más profundo ('+winLos.name+')'}));
-    }
-    const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
+    const targets = ds.filter(d=>d.group==='proactive-mobile'||d.group==='proactive-country');
+    const portfolios = ds.filter(d=>d.group==='reactive' && windowApplies(d,daysOut))
       .sort((a,b)=>pct(b.pct)-pct(a.pct));
-    if(reactives.length){
-      add(reactives[0],'único deal reactivo aplicado (misma categoría no combina)');
-      reactives.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo un deal reactivo aplica; ganó '+reactives[0].name}));
+    const campaigns = ds.filter(d=>d.group==='reactive-limited' && windowApplies(d,daysOut))
+      .sort((a,b)=>pct(b.pct)-pct(a.pct));
+    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights))
+      .sort((a,b)=>(b.minN||0)-(a.minN||0));
+    const winLos=losCands[0] || null;
+    const portfolio=portfolios[0] || null;
+    const campaign=campaigns[0] || null;
+    const options=[];
+    const makeOption=(items, why)=>{
+      const active=items.filter(Boolean);
+      const optionFactor=active.reduce((value,item)=>value*(1-pct(item.pct)/100),1);
+      options.push({items:active, factor:optionFactor, why});
+    };
+    const base=[genius,winLos];
+    makeOption(base,'grupo general de Booking');
+    if(portfolio){
+      makeOption([...base,portfolio],'Portfolio deal con Genius/tarifa por duración');
+      targets.forEach(target=>makeOption([genius,target,winLos,portfolio], `${target.name} + ${portfolio.name}: grupo de huésped elegible`));
+    } else {
+      targets.forEach(target=>makeOption([genius,target,winLos], `${target.name}: grupo de huésped elegible`));
     }
+    if(campaign) makeOption([...base,campaign], `${campaign.name}: Campaign deal, solo combina con Genius`);
+    options.sort((a,b)=>a.factor-b.factor);
+    const winner=options[0];
+    winner.items.forEach(item=>add(item,winner.why));
+    const won=new Set(winner.items);
+    ds.filter(item=>!won.has(item)).forEach(item=>{
+      let reason='no corresponde al grupo de huésped con el descuento máximo';
+      if(item.group==='proactive-mobile'||item.group==='proactive-country') reason='Mobile y Country son grupos alternativos; se cotiza el más desfavorable, no ambos';
+      if(item.group==='reactive') reason='solo un Portfolio deal puede aplicar a este grupo/reserva';
+      if(item.group==='reactive-limited') reason='Campaign/Limited solo combina con Genius, no con targeting ni Portfolio deals';
+      if(item.group==='los' && winLos) reason='ya aplica un umbral de duración más profundo ('+winLos.name+')';
+      ignored.push({name:item.name,reason});
+    });
   }
   else if(chId==='expedia'){
     const bases = ds.filter(d=>d.group==='base' && (windowApplies(d,daysOut)||losApplies(d,nights))).sort((a,b)=>pct(b.pct)-pct(a.pct));
@@ -160,6 +177,20 @@ export function worstNative(discounts, chId, windows){
     });
   });
   return (1-worstFactor)*100;
+}
+
+/* El mismo criterio que usa el Piso, expuesto para la interfaz simple: cuál es
+   el mayor descuento efectivo que PODRÍA recibir un huésped en una OTA, con
+   días/noches y reglas de compatibilidad reales. No suma promociones imposibles. */
+export function maximumDiscountScenario(discounts, chId, windows){
+  let worst={factor:1,totalPct:0,applied:[],ignored:[],days:0,nights:1};
+  criticalDays(discounts, windows).forEach(days=>{
+    criticalNights(discounts).forEach(nights=>{
+      const result=combineChannel(discounts,chId,days,nights);
+      if(result.factor<worst.factor-1e-12){ worst={...result,days,nights}; }
+    });
+  });
+  return worst;
 }
 
 /* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas

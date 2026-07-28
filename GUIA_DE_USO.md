@@ -103,8 +103,11 @@ en USD →**. Hasta entonces, los números quedan bloqueados.
 
 Es la pantalla de decisión diaria. Primero verás **Lo que debes configurar**: el
 **Costo por noche** y el **Min Price → PriceLabs**. Copia ese Min Price en PriceLabs.
-Los avisos técnicos, el respaldo, los costos detallados y **Promociones y Offsets por OTA**
-quedan plegados para no distraerte; ábrelos solo cuando quieras revisar o cambiar algo.
+Los avisos técnicos, el respaldo, los costos detallados y el **Simulador de descuento
+máximo** quedan plegados para no distraerte. Este último muestra, por OTA, el grupo de
+huésped que podría recibir el mayor descuento real; combina solo promociones compatibles.
+Ábrelo cuando quieras revisar una estrategia y usa **Configurar [OTA]** para cambiar sus
+promociones o Offset.
 
 ### Configuración avanzada
 

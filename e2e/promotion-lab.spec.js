@@ -2,7 +2,19 @@ import {test, expect} from '@playwright/test';
 
 async function openPromotionLab(page){
   await page.locator('#promotionLabSection > summary').click();
+  await page.locator('#promotionLab .promo-editor > summary').click();
 }
+
+test('Simulador de descuento máximo: muestra el peor grupo posible por OTA sin sumar promociones imposibles', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#promotionLabSection > summary').click();
+
+  await expect(page.locator('#promotionLab')).toContainText('El peor descuento posible para cada OTA');
+  await expect(page.locator('#promotionLab')).toContainText('Booking.com');
+  await expect(page.locator('#promotionLab')).toContainText('Genius (constante) + Mobile Rate');
+  await expect(page.locator('#promotionLab')).toContainText('Mobile y Country se evalúan como grupos alternativos');
+  await expect(page.locator('#promotionLab .promo-editor')).not.toHaveAttribute('open', '');
+});
 
 test('Probador de promociones: probar no modifica la unidad; Aplicar sí guarda la promo y el Offset elegido', async ({page}) => {
   await page.goto('/index.html');
@@ -10,7 +22,7 @@ test('Probador de promociones: probar no modifica la unidad; Aplicar sí guarda 
 
   const offset = page.locator('input[data-chid="airbnb"][data-chf="offsetPct"]');
   await expect(offset).toHaveValue('0');
-  await expect(page.locator('#promotionLabSection')).toContainText('Prueba una idea sin cambiar tu unidad');
+  await expect(page.locator('#promotionLabSection')).toContainText('Prueba una idea antes de aplicarla');
 
   /* Forzar un escenario donde el descuento sí exige compensación: no basta con
      pintar un resultado, comprobamos que el borrador no altere state todavía. */
