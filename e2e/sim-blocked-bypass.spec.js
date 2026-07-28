@@ -1,9 +1,9 @@
-/* Bloqueante P2 (revision externa, ronda 3) — bypass al bloqueo de LM desde
-   el botón "Ver el paso a paso de una reserva" (goSimBtn). Aunque
-   `model.lmBlocked`/`model.baseBlocked` ocultan Base Price en Resumen/Matriz,
-   el handler de este botón hacía
-   `simPrice.value = Math.round(model.base || model.effBase || 0)` sin
-   condición — precargaba y usaba el número BLOQUEADO como si fuera una
+/* Bloqueante — bypass al bloqueo de recomendaciones desde el botón
+   "Ver el paso a paso de una reserva" (goSimBtn). Antes el handler usaba
+   `model.base || model.effBase` sin condición y podía revelar un número
+   bloqueado como si fuera una recomendación válida. Ahora el único valor
+   automático permitido es el Min Price final ya listo para usarse; si no lo
+   está, no se precarga nada.
    recomendación válida, revelándolo por la puerta de atrás. Corregido: con
    el modelo bloqueado, el botón NO precarga ningún precio, muestra una
    explicación (toast + mensaje en el propio Simulador) y deja la simulación
@@ -30,21 +30,21 @@ async function resolveAllFinancialFacts(page){
   await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'no_aplica');
 }
 
-test('config por defecto (LM sin verificar): el botón del Simulador NO precarga Base Price bloqueado', async ({page}) => {
+test('config por defecto: el botón del Simulador NO precarga un Min Price bloqueado', async ({page}) => {
   await page.goto('/index.html');
   await expect(page.locator('#kBase')).toHaveText('—'); // confirma que arranca bloqueado
 
   await page.locator('#goSimBtn').click();
   await expect(page.locator('#simPrice')).toHaveValue('');
   await expect(page.locator('#inputErrorToast')).toBeVisible();
-  await expect(page.locator('#inputErrorToast')).toContainText('Base Price está bloqueado');
+  await expect(page.locator('#inputErrorToast')).toContainText('Min Price está bloqueado');
 
   const simText = await page.locator('#simResult').innerText();
   expect(simText).toContain('No hay un precio para simular todavía');
-  expect(simText).not.toMatch(/De USD [\d.,]+ que puso PriceLabs/, 'no debe renderizar un waterfall con un precio inventado');
+  expect(simText).not.toMatch(/De los USD [\d.,]+ finales que muestra PriceLabs/, 'no debe renderizar un waterfall con un precio inventado');
 });
 
-test('con LM fixed_price activo en el día de referencia (baseBlocked), el botón tampoco precarga nada', async ({page}) => {
+test('con un precio fijo LM, el botón tampoco precarga nada mientras falte confirmar el Min Price final', async ({page}) => {
   await page.goto('/index.html');
   const fc = page.locator('[data-k="fixedCost"]');
   await fc.click(); await fc.fill('100'); await fc.dispatchEvent('change');
@@ -61,12 +61,12 @@ test('con LM fixed_price activo en el día de referencia (baseBlocked), el botó
 
   await page.locator('#goSimBtn').click();
   await expect(page.locator('#simPrice')).toHaveValue('');
-  await expect(page.locator('#inputErrorToast')).toContainText('precio LM fijo de PriceLabs activo');
+  await expect(page.locator('#inputErrorToast')).toContainText('Min Price está bloqueado');
   const simText = await page.locator('#simResult').innerText();
   expect(simText).toContain('No hay un precio para simular todavía');
 });
 
-test('una vez el LM está verificado (no bloqueado), el botón SÍ precarga Base Price normalmente', async ({page}) => {
+test('cuando el Min Price final está listo, el botón SÍ lo precarga normalmente', async ({page}) => {
   await page.goto('/index.html');
   /* BLOQUEANTE 2 (auditoria externa, ronda 4): costos reales (no el ejemplo
      de fábrica 32/22) — este test aísla el mecanismo de LM, no el de costos. */
@@ -79,15 +79,16 @@ test('una vez el LM está verificado (no bloqueado), el botón SÍ precarga Base
   const pct = page.locator('[data-lmf="flat.pct"]');
   await pct.click(); await pct.fill('20'); await pct.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
+  await page.locator('[data-floor-contract-confirmed]').check();
   await resolveAllFinancialFacts(page);
-  await expect(page.locator('#kBase')).not.toHaveText('—');
+  await expect(page.locator('#kFloor')).not.toHaveText('—');
 
   await page.locator('#goSimBtn').click();
   const simPriceValue = await page.locator('#simPrice').inputValue();
   expect(simPriceValue).not.toBe('');
   expect(Number(simPriceValue)).toBeGreaterThan(0);
   const simText = await page.locator('#simResult').innerText();
-  expect(simText).toMatch(/De USD [\d.,]+ que puso PriceLabs/);
+  expect(simText).toMatch(/De los USD [\d.,]+ finales que muestra PriceLabs/);
 });
 
 test('simulación manual sigue disponible incluso bloqueado: escribir un precio a mano SÍ calcula el waterfall', async ({page}) => {
@@ -101,6 +102,6 @@ test('simulación manual sigue disponible incluso bloqueado: escribir un precio 
   await simPrice.dispatchEvent('change');
 
   const simText = await page.locator('#simResult').innerText();
-  expect(simText).toMatch(/De USD 250 que puso PriceLabs/);
+  expect(simText).toMatch(/De los USD 250 finales que muestra PriceLabs/);
   expect(simText).not.toContain('No hay un precio para simular todavía');
 });

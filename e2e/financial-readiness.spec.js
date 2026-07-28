@@ -23,6 +23,10 @@ async function verifyLm(page){
   const pct = page.locator('[data-lmf="flat.pct"]');
   await pct.click(); await pct.fill('20'); await pct.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
+  // Estos casos prueban hechos financieros, no el contrato separado de Min
+  // Price final. Confirmarlo aquí evita que ese gate deliberado opaque el
+  // dato financiero específico que cada prueba quiere aislar.
+  await page.locator('[data-floor-contract-confirmed]').check();
 }
 
 /* BLOQUEANTE 2 (auditoria externa, ronda 4): los costos de fábrica (32/22,
@@ -120,7 +124,7 @@ test('Simulador: la simulación manual NUNCA se bloquea, pero se etiqueta "SIMUL
   expect(text).toContain('SIMULACIÓN NO CONFIABLE');
   expect(text).toContain('no uses este resultado como recomendación automática');
   // La simulacion SI corre (no se bloquea) — el waterfall completo se muestra igual.
-  expect(text).toMatch(/De USD 200 que puso PriceLabs/);
+  expect(text).toMatch(/De los USD 200 finales que muestra PriceLabs/);
 });
 
 test('Simulador: Airbnb (sin datos pendientes en el catálogo de fábrica) NO muestra la etiqueta de no confiable una vez el LM está verificado', async ({page}) => {
@@ -136,7 +140,7 @@ test('Simulador: Airbnb (sin datos pendientes en el catálogo de fábrica) NO mu
   expect(text).not.toContain('SIMULACIÓN NO CONFIABLE');
 });
 
-test('bypass del botón "Ver el paso a paso": con LM verificado pero datos financieros pendientes, tampoco precarga Base Price', async ({page}) => {
+test('bypass del botón "Ver el paso a paso": con LM verificado pero datos financieros pendientes, tampoco precarga Min Price', async ({page}) => {
   await page.goto('/index.html');
   await setRealCosts(page);
   await verifyLm(page);
@@ -144,7 +148,7 @@ test('bypass del botón "Ver el paso a paso": con LM verificado pero datos finan
 
   await page.locator('#goSimBtn').click();
   await expect(page.locator('#simPrice')).toHaveValue('');
-  await expect(page.locator('#inputErrorToast')).toContainText('Base Price está bloqueado');
+  await expect(page.locator('#inputErrorToast')).toContainText('Min Price está bloqueado');
   await expect(page.locator('#inputErrorToast')).toContainText('dato financiero');
 });
 
@@ -188,7 +192,7 @@ test('P1: "Ir al simulador" no precarga Base Price mientras un canal que NO fija
 
   await page.locator('#goSimBtn').click();
   await expect(page.locator('#simPrice')).toHaveValue('');
-  await expect(page.locator('#inputErrorToast')).toContainText('Base Price está bloqueado');
+  await expect(page.locator('#inputErrorToast')).toContainText('Min Price está bloqueado');
 });
 
 test('P1: las simulaciones/diagnósticos individuales de Airbnb (canal ya confirmado) siguen disponibles pese al bloqueo global causado por Directo', async ({page}) => {
@@ -209,7 +213,7 @@ test('P1: las simulaciones/diagnósticos individuales de Airbnb (canal ya confir
   await simPrice.dispatchEvent('change');
   const text = await page.locator('#simResult').innerText();
   expect(text).not.toContain('SIMULACIÓN NO CONFIABLE');
-  expect(text).toMatch(/De USD 200 que puso PriceLabs/);
+  expect(text).toMatch(/De los USD 200 finales que muestra PriceLabs/);
 });
 
 test('exportar/importar conserva status, fuente, fecha y nota de la comisión bancaria de Booking exactamente', async ({page}) => {

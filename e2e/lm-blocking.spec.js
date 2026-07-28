@@ -34,17 +34,18 @@ async function resolveAllFinancialFacts(page){
   await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'no_aplica');
 }
 
-test('config por defecto: Min Price, Base Price y el Offset sugerido arrancan bloqueados por LM sin verificar', async ({page}) => {
+test('config por defecto: Min Price exige confirmar el piso final y Base/Offset siguen bloqueados por LM', async ({page}) => {
   await page.goto('/index.html');
   await expect(page.locator('#kFloor')).toHaveText('—');
   await expect(page.locator('#kBase')).toHaveText('—');
-  await expect(page.locator('#kFloorWhy')).toContainText('LM sin verificar');
+  await expect(page.locator('#kFloorWhy')).toContainText('piso final');
   await expect(page.locator('#kBaseWhy')).toContainText('LM sin verificar');
 
   // #validationBanner vive en la pestaña Resumen (activa por defecto) — el
   // aviso explica EXACTAMENTE que falta y en que pantalla arreglarlo.
   const banner = page.locator('#validationBanner');
   await expect(banner).toContainText('LM SIN VERIFICAR');
+  await expect(banner).toContainText('MIN PRICE SIN CONFIRMAR');
   await expect(banner).toContainText('Last-Minute de PriceLabs');
   await expect(banner.locator('button', {hasText: 'Ir a Last-Minute de PriceLabs'})).toBeVisible();
 
@@ -55,14 +56,15 @@ test('config por defecto: Min Price, Base Price y el Offset sugerido arrancan bl
   await expect(page.locator('.offset-hint').first()).toContainText('Last-Minute de PriceLabs');
 });
 
-test('marcar el LM automático como "verificado" NO desbloquea — sigue siendo una proyección, nunca un hecho confirmable', async ({page}) => {
+test('marcar el LM automático como "verificado" NO desbloquea Base, y Min Price sigue exigiendo confirmar el piso final', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-lm="verified"]').check();
   await expect(page.locator('#kFloor')).toHaveText('—', {timeout: 3000});
   await expect(page.locator('#validationBanner')).toContainText('LM SIN VERIFICAR');
+  await expect(page.locator('#validationBanner')).toContainText('MIN PRICE SIN CONFIRMAR');
 });
 
-test('cambiar a un modo configurable (plano) y marcarlo verificado SÍ desbloquea Min Price/Base Price', async ({page}) => {
+test('el Piso final se desbloquea solo tras confirmar su contrato; Base además requiere LM verificado', async ({page}) => {
   await page.goto('/index.html');
   /* BLOQUEANTE 2 (auditoria externa, ronda 4): con los costos de fábrica
      (32/22, nunca tocados) el gate de costos por sí solo mantendría Min
@@ -81,6 +83,9 @@ test('cambiar a un modo configurable (plano) y marcarlo verificado SÍ desbloque
   await resolveAllFinancialFacts(page); // aisla el comportamiento de LM bajo prueba (Fase 5)
 
   await expect(page.locator('#validationBanner')).not.toContainText('LM SIN VERIFICAR');
+  await expect(page.locator('#kFloor')).toHaveText('—', {timeout: 3000});
+  await expect(page.locator('#validationBanner')).toContainText('MIN PRICE SIN CONFIRMAR');
+  await page.locator('[data-floor-contract-confirmed]').check();
   await expect(page.locator('#kFloor')).not.toHaveText('—', {timeout: 3000});
   await expect(page.locator('#kBase')).not.toHaveText('—');
 });

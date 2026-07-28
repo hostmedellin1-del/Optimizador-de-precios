@@ -28,6 +28,7 @@ function resolvedVerification(){
 function sourceConfig(){
   return {
     currency:'USD', fixedCost:46, varCost:23, margin:40, marketWindow:11, marketBase:160, avgNights:4,
+    priceLabsMinPriceContractConfirmed:true,
     channels:[
       {id:'airbnb', comm:16.4, bankFeePct:1.2, offsetPct:3, cleanFeeShort:28, cleanFeeLong:42, settlementCurrency:null},
       {id:'booking', comm:19, bankFeePct:5, offsetPct:-2, settlementCurrency:null},
