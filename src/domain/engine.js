@@ -243,6 +243,11 @@ export function lmPctAtDay45(lmConfig, {discounts, channels, windows, ceilings, 
    Sin costBreakdown, cae al modelo simple de siempre (compatibilidad). */
 export function compute(config){
   const {channels, discounts, windows} = config;
+  /* La aplicación personal puede trabajar con los valores cargados sin
+     exigir casillas de revisión. Este flag elimina SOLO esos bloqueos; las
+     validaciones matemáticas y la protección USD siguen activas. El default
+     estricto se conserva para consumidores del motor que no lo declaren. */
+  const manualReviewGates = config.manualReviewGates !== false;
   /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): un `costBreakdown`
      presente pero explicitamente NO confirmado (`config.costBreakdownConfirmed
      ===false`, lo que manda index.html en cuanto el usuario edita cualquier
@@ -392,7 +397,7 @@ export function compute(config){
      que si Dani hubiera dejado el modo automatico puesto a proposito. Solo el
      floor tiene una rama legacy que de verdad ignora LM (arriba, "compatibilidad
      con callers que aun no lo pasan") — eso no cambia aqui. */
-  const lmBlocked = isLmBlocked(config.lmConfig);
+  const lmBlocked = manualReviewGates && isLmBlocked(config.lmConfig);
   const lmMode = (config.lmConfig && config.lmConfig.mode) || 'ceiling_auto';
   const lmBlockedReason = lmBlocked
     ? `Last-Minute está en modo "${lmMode==='ceiling_auto'?'Automático':lmMode}"${lmMode==='ceiling_auto'
@@ -412,7 +417,7 @@ export function compute(config){
      bloqueo nuevo que no pidieron. En produccion state.verification SIEMPRE
      esta presente (defaultVerification()), asi que este gate esta activo en
      la app real desde el primer render. */
-  const readiness = config.verification
+  const readiness = manualReviewGates && config.verification
     ? evaluateRecommendationReadiness({channels, discounts, verification: config.verification})
     : null;
   /* Refactor de cierre (revision externa): `evaluateGlobalRecommendationReadiness()`
@@ -463,12 +468,12 @@ export function compute(config){
     : null;
   /* BLOQUEANTE 2 (ver arriba, `costGate`): mismo nivel que lmBlocked/
      currencyBlocked — bloquea Piso Y Base, nunca solo uno. */
-  const costBlocked = costGate.blocked;
-  const costBlockedReason = costGate.reason;
+  const costBlocked = manualReviewGates && costGate.blocked;
+  const costBlockedReason = costBlocked ? costGate.reason : null;
   /* El contrato de Piso final se activa solo si el caller lo declara. Así los
      callers históricos de dominio siguen siendo compatibles; la UI real lo
      pasa siempre (false hasta la confirmación explícita). */
-  const floorContractBlocked = config.priceLabsMinPriceContractConfirmed===false;
+  const floorContractBlocked = manualReviewGates && config.priceLabsMinPriceContractConfirmed===false;
   const floorContractBlockedReason = floorContractBlocked
     ? 'Falta confirmar que el "Precio mínimo" de PriceLabs es el precio FINAL que no cruza después de temporada, demanda, ocupación y Last-Minute. El Min Price queda bloqueado hasta confirmarlo en Resumen.'
     : null;
@@ -485,7 +490,7 @@ export function compute(config){
     currencyBlocked, currencyBlockedReason,
     costBlocked, costBlockedReason, costMode: costGate.mode,
     readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason,
-    floorContractBlocked, floorContractBlockedReason
+    floorContractBlocked, floorContractBlockedReason, manualReviewGates
   };
 }
 

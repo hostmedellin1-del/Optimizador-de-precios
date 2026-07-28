@@ -221,7 +221,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
-        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Este desglose NO alimenta ninguna recomendación (Piso/Base/Offset/Matriz/Alertas) hasta que lo confirmes explícitamente abajo — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba).</p>
+        <p class="hint">Fijos: se suman los mensuales y se dividen entre las noches que ocupas al mes. Variables por turno: cuestan casi lo mismo sea la estadía de 1 noche o de 30 (limpiar, cambiar sábanas) — se dividen entre tu Estadía promedio. Consumos SÍ escala con las noches (un huésped de 30 noches gasta ~30x el agua/luz de uno de 1), así que va aparte, ya en $/noche directo — no se divide. Activa este desglose solo si quieres que reemplace el modelo simple de Fijos/Variables de arriba.</p>
         <div class="cost-calc-group">
           <span class="cost-calc-label">Fijos mensuales</span>
           <div class="field"><label for="f-cb-rent">Arriendo/cuota</label><input id="f-cb-rent" type="number" data-cb="rent" step="1"></div>
@@ -247,7 +247,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
         <div class="field" style="align-items:flex-start;gap:8px;">
           <label for="costBreakdownConfirmedChk" style="flex:1;cursor:pointer;">
             <input type="checkbox" id="costBreakdownConfirmedChk" data-cb-confirm style="width:auto;">
-            Revisé estos costos reales en USD, incluidos los valores en cero.
+            Usar estos costos detallados para calcular.
           </label>
         </div>
         <p class="hint" id="costBreakdownStatusHint"></p>
@@ -265,11 +265,6 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver una reserva con este Min Price →</button>
   </div>
 </div>
-<section class="card" id="priceLabsMinPriceSection">
-  <h2 id="priceLabsMinPriceHeading" tabindex="-1">Contrato del Min Price de PriceLabs <span class="hint">la protección contra vender bajo costo</span></h2>
-  <p class="hint">El Min Price que calcula esta app es el <strong>precio final mínimo que PriceLabs puede publicar</strong>. No vuelve a restar temporada, demanda, ocupación ni Last-Minute; sí protege contra Offset de Kunas, descuentos OTA, comisiones y costos. Marca esto solo después de comprobar en PriceLabs que su campo “Precio mínimo” no se cruza después de sus ajustes internos. Las OTA aún pueden publicar por debajo por sus propios descuentos: eso ya está incluido en el cálculo.</p>
-  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-floor-contract-confirmed><span>Confirmé en PriceLabs que el “Precio mínimo” es un piso FINAL para esta unidad.</span></label></div>
-</section>
 <details class="strategy-panel" id="strategySection">
   <summary>Estrategia de PriceLabs <span class="hint">Base Price, Last-Minute, techos y análisis por ventana</span></summary>
   <div class="strategy-content">
@@ -296,7 +291,6 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
       <option value="tiers">Tramos personalizados</option>
     </select>
   </div>
-  <div class="field"><label style="display:flex;gap:8px;align-items:center;"><input type="checkbox" data-lm="verified"><span>Confirmé este modo directamente en PriceLabs</span></label></div>
   <div id="lmModeFields"></div>
 </section>
 <section class="card" id="ceilingsSection">
@@ -470,6 +464,7 @@ function compute(){
        nunca index.html: fuente unica de verdad, ver cost-mode.js. */
     costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
     usingExampleCosts: costGateNow().usingExampleCosts,
+    manualReviewGates: false,
     /* Simplificacion a USD unico (revision externa): `currency` es la moneda
        GUARDADA de la unidad (normalmente 'USD') — engine.js deriva el gate
        real (unidad + canales) el mismo con evaluateUsdOnlyReadiness(), ver
@@ -491,7 +486,7 @@ function suggestedOffset(chId, effBase, netObjetivo){
 function quoteConfig(){
   return {
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
-    fixedCost: state.fixedCost, varCost: state.varCost,
+    fixedCost: state.fixedCost, varCost: state.varCost, manualReviewGates: false,
     costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
   };
@@ -502,7 +497,8 @@ function buildAlerts(model){
     discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
     marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
     chTab: CH_TAB, currency: state.currency, margin: state.margin,
-    lmConfig: state.lmConfig, verification: state.verification, floor: model.floor
+    lmConfig: state.lmConfig, verification: state.verification, floor: model.floor,
+    manualReviewGates: false
   }, model);
 }
 
@@ -526,35 +522,11 @@ function renderKpis(model){
     kFloorWhy.textContent='requiere revisión manual — ver aviso arriba'; kBaseWhy.textContent='requiere revisión manual — ver aviso arriba';
     return;
   }
-  /* BLOQUEANTE 2 (auditoria externa, ronda 4): Costo/Neto SI se siguen
-     mostrando aunque `model.costBlocked` sea true (ejemplo de fabrica, o
-     desglose sin confirmar) — `model.cost` ya cae de forma segura al modelo
-     simple mientras no este confirmado (nunca al desglose parcial, ver
-     src/domain/cost-mode.js), asi que el numero en si nunca es el que
-     causaba el bug original; lo que SI queda oculto es Piso/Base (mas abajo,
-     via floorReadinessBlocked/baseReadinessBlocked, que ya incorporan
-     costBlocked) — el aviso completo vive en #dataProvenanceBanner. */
   kCost.textContent=f$(model.cost); kNet.textContent=f$(model.net);
-  /* Refactor de cierre (revision externa): `floorReadinessBlocked`/
-     `baseReadinessBlocked` (compute(), src/domain/readiness.js —
-     evaluateGlobalRecommendationReadiness()) son la UNICA fuente que decide
-     si Min Price/Base Price GLOBALES se muestran — ya incorporan LM sin
-     verificar (los dos) y el precio fijo activo (solo Base). Aqui NUNCA se
-     recalcula esa decision con `model.lmBlocked`/`model.baseBlocked`; esas
-     dos banderas solo se leen para elegir QUE TEXTO CORTO mostrar (el motivo
-     mas especifico primero), el aviso completo vive en #validationBanner. */
-  if(model.floorReadinessBlocked){
-    kFloor.textContent='—';
-    kFloorWhy.textContent = model.floorContractBlocked ? 'confirma el piso final de PriceLabs — ver aviso arriba'
-      : 'dato financiero sin verificar — ver aviso arriba';
-  } else {
-    kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
-  }
+  kFloor.textContent=f$(model.floor); kFloorWhy.textContent='lo fija '+model.floorCh;
   if(model.baseReadinessBlocked){
     kBase.textContent='—';
-    kBaseWhy.textContent = model.lmBlocked ? 'LM sin verificar — ver aviso arriba'
-      : model.baseBlocked ? 'Precio LM fijo activo — ver aviso arriba'
-      : 'dato financiero sin verificar — ver aviso arriba';
+    kBaseWhy.textContent = 'Precio LM fijo activo — Base no aplica';
   } else {
     kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
   }
@@ -564,70 +536,18 @@ function renderValidation(model){
   if(!box) return;
   const errs = (model.errors||[]).filter(e=>e.level==='error');
   const warns = (model.errors||[]).filter(e=>e.level==='warning');
-  const lmBlock = model.lmBlocked ? [model.lmBlockedReason] : [];
-  const floorContractBlock = model.floorContractBlocked ? [model.floorContractBlockedReason] : [];
-  /* Bloqueante P1 (revision externa, ronda 3): aviso separado de lmBlock —
-     este puede estar activo AUNQUE el LM este verificado (el problema no es
-     "no confirmaste el modo", es "el modo fijo hace que Base no controle
-     nada en el dia de referencia"). Mismo componente visual (#validationBanner),
-     tag distinto para no confundir los dos motivos. */
   const baseBlock = model.baseBlocked ? [model.baseBlockedReason] : [];
-  /* Fase 5 (revision externa — "datos financieros verificados"): avisos
-     separados de lmBlock/baseBlock — un dato de NEGOCIO (comision bancaria,
-     Offset en Kunas, VIP de Expedia, Genius+Mobile de Booking, no-reembolsable
-     de Airbnb) sin confirmar es un motivo de bloqueo DISTINTO a Last-Minute,
-     aunque el LM ya este verificado. */
-  /* Refactor de cierre: floorReadinessBlocked/baseReadinessBlocked ahora
-     tambien quedan true cuando la UNICA causa es LM sin verificar o precio
-     fijo activo (evaluateGlobalRecommendationReadiness() los incluye para
-     que Min Price/Base Price nunca se muestren en ese caso) — esos dos
-     motivos YA tienen su propio banner arriba (lmBlock/baseBlock). Este
-     banner de "dato financiero" solo debe aparecer si además hay un dato de
-     NEGOCIO pendiente (`model.readiness.ready===false`, el mismo campo de
-     siempre de evaluateRecommendationReadiness), para no duplicar el aviso
-     cuando el motivo real es puramente LM/precio fijo. */
-  const hasPendingBusinessData = !!(model.readiness && !model.readiness.ready);
-  const floorReadinessBlock = (model.floorReadinessBlocked && hasPendingBusinessData) ? [model.floorReadinessBlockedReason] : [];
-  const baseReadinessBlock = (model.baseReadinessBlocked && hasPendingBusinessData) ? [model.baseReadinessBlockedReason] : [];
-  if(!errs.length && !warns.length && !lmBlock.length && !floorContractBlock.length && !baseBlock.length && !floorReadinessBlock.length && !baseReadinessBlock.length){ box.innerHTML=''; return; }
+  if(!errs.length && !warns.length && !baseBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
-    ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
-    ${floorContractBlock.length ? `<div class="alert bad"><span class="tag">MIN PRICE SIN CONFIRMAR</span><span>${escapeHtml(floorContractBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:minprice">Confirmar contrato del Min Price →</button></div>` : ''}
     ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
-    ${floorReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — MIN PRICE</span><span>${escapeHtml(floorReadinessBlock[0])}</span> ${financialGateButton(model)}</div>` : ''}
-    ${baseReadinessBlock.length ? `<div class="alert bad"><span class="tag">DATO FINANCIERO SIN VERIFICAR — BASE PRICE</span><span>${escapeHtml(baseReadinessBlock[0])}</span> ${financialGateButton(model)}</div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
 }
-/* Fase 5 — distinguir datos REALES de HIPOTETICOS: fixedCost/varCost arrancan en
-   32/22, el ejemplo ilustrativo del webinar de Kunas (ver CLAUDE.md seccion 5) —
-   NO son los costos reales de ninguna unidad de Dani. Mientras el valor siga
-   exactamente en ese default sin tocar, se avisa explicitamente para que no se
-   confunda con un dato real ya cargado.
-
-   BLOQUEANTE 2 corregido (auditoria externa, ronda 4): este banner es ahora el
-   lugar UNICO y SIEMPRE VISIBLE (no depende de `hasPendingBusinessData` como
-   #validationBanner) donde se explica el estado real de los costos —
-   `costGateNow()` (mismo gate que ya bloquea Piso/Base/Offset/Matriz/Alertas/
-   ver src/domain/cost-mode.js) decide el mensaje:
-   - 'simple_example': costo fijo/variable siguen en el valor ilustrativo de
-     fábrica — nunca antes esto bloqueaba una recomendación, ahora SÍ.
-   - 'detailed_incomplete': el desglose detallado fue editado pero todavía no
-     se confirmó (o una edición posterior invalidó una confirmación previa) —
-     este es exactamente el caso del bug reportado (un campo suelto como
-     "Consumos: 5" ya no baja el Piso en silencio). */
 function renderDataProvenance(){
   const box = document.getElementById('dataProvenanceBanner');
   if(!box) return;
-  const cg = costGateNow();
-  if(cg.mode==='simple_example'){
-    box.innerHTML = `<div class="alert warn"><span class="tag">EJEMPLO</span><span>Costo fijo (${EXAMPLE_COST_DEFAULTS.fixedCost}) y variable (${EXAMPLE_COST_DEFAULTS.varCost}) siguen en el valor ilustrativo del webinar — NO son los costos reales de esta unidad. Cárgalos (o usa la calculadora detallada y confírmala) antes de confiar en el Min Price/Base Price/Offset/Matriz/Alertas: mientras tanto quedan bloqueados, no solo advertidos.</span></div>`;
-  } else if(cg.mode==='detailed_incomplete'){
-    box.innerHTML = `<div class="alert warn"><span class="tag">COSTOS SIN CONFIRMAR</span><span>${escapeHtml(cg.reason)}</span></div>`;
-  } else {
-    box.innerHTML = '';
-  }
+  box.innerHTML = '';
 }
 function discountRowHTML(d){
   /* d.lockN: el nombre está atado a un número específico (Semanal=7, Quincenal=14,
@@ -652,13 +572,6 @@ function discountRowHTML(d){
   </div>`;
 }
 const CH_TAB = {airbnb:'ch-airbnb', booking:'ch-booking', expedia:'ch-expedia', direct:'ch-direct'};
-function firstUnreadyChannel(model){
-  return state.channels.find(c=>model.readiness?.byChannel?.[c.id]?.ready===false) || null;
-}
-function financialGateButton(model){
-  const channel = firstUnreadyChannel(model);
-  return channel ? `<button type="button" class="goto" data-goto="${CH_TAB[channel.id]}">Ir a ${escapeHtml(channel.name)} →</button>` : '';
-}
 function renderChannelPages(model){
   state.channels.forEach(c=>{
     const panel = document.querySelector(`.tab-panel[data-tab="${CH_TAB[c.id]}"]`);
@@ -669,15 +582,6 @@ function renderChannelPages(model){
     const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
     const avgN = Math.max(1, parseFloat(state.avgNights)||1);
-    const verificationField = (key, chId=null) => {
-      const entry = verifEntryRef(key, chId);
-      return `<div class="fld verification-field"><span>${escapeHtml(VERIFICATION_KEYS[key].label)}</span>${verifEntryHTML(key, chId, entry)}</div>`;
-    };
-    const bankVerification = verificationField('bankFeePctByChannel', c.id);
-    const channelVerifications = c.id==='booking' ? verificationField('bookingGeniusMobileBoth')
-      : c.id==='expedia' ? verificationField('expediaVipTierMix')
-      : c.id==='airbnb' ? verificationField('airbnbNonRefundable') + verificationField('airbnbTopRatedGuest')
-      : '';
     /* Fase 2.1: netHoy ya no reimplementa la formula aparte (usaba totalPct redondeado
        y omitia el techo/LM de PriceLabs) — sale de quoteScenario(), la fuente unica.
        Dia 45 sigue siendo el mismo escenario de referencia que suggestedOffset()
@@ -688,8 +592,6 @@ function renderChannelPages(model){
         <div class="chpage-head">
           <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${escapeHtml(c.comm)}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${escapeHtml(c.bankFeePct||0)}"></div>
-          ${bankVerification}
-          ${channelVerifications}
           <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${escapeHtml(c.offsetPct||0)}"></div>
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
@@ -708,10 +610,6 @@ function renderChannelPages(model){
                detras de un aviso generico de datos pendientes — si ambos
                aplican a la vez, el aviso de datos pendientes se agrega como
                nota adicional, nunca reemplaza la explicacion de LM/precio fijo. */
-            const chReady = !model.readiness || !model.readiness.byChannel[c.id] || model.readiness.byChannel[c.id].ready;
-            const readinessNote = (!model.lmBlocked && chReady===false)
-              ? ` <span class="hint">(además, sin confirmar: ${model.readiness.byChannel[c.id].missing.map(m=>escapeHtml(m.label)).join('; ')} — confirma los datos arriba en esta pestaña)</span>`
-              : '';
             /* BLOQUEANTE 1 corregido (auditoria externa, ronda 4): el Offset
                sugerido/neto estimado de ESTE canal tampoco es una
                recomendacion confiable si la unidad esta "requiere revision
@@ -720,9 +618,6 @@ function renderChannelPages(model){
             if(model.currencyBlocked){
               return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: esta unidad está marcada "requiere revisión manual" por moneda (ver aviso arriba en Resumen) — ningún número de este canal es confiable hasta corregirlo.</div>`;
             }
-            if(model.lmBlocked){
-              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: dependen de Last-Minute, que todavía no está verificado — confírmalo en "Last-Minute de PriceLabs" (arriba, en Resumen).</div>`;
-            }
             if(model.baseBlocked){
               /* Bloqueante P1 (revision externa, ronda 3): Base no aplica aqui
                  (precio LM fijo activo en el dia de referencia), pero el
@@ -730,11 +625,7 @@ function renderChannelPages(model){
                  DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
                  Se muestra el numero corregido, con nota explicita de que ya
                  NO se calcula sobre Base. */
-              return `<div class="offset-hint">⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b>${readinessNote}<br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
-            }
-            if(chReady===false){
-              const missing = model.readiness.byChannel[c.id].missing;
-              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado de ${escapeHtml(c.name)} NO son una recomendación confiable — dependen de datos financieros sin confirmar: ${missing.map(m=>escapeHtml(m.label)).join('; ')}. Confírmalos arriba en esta pestaña.</div>`;
+              return `<div class="offset-hint">⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
             }
             /* BLOQUEANTE 2 (auditoria externa, ronda 4): prioridad MAS BAJA
                (solo se muestra si nada mas arriba ya explico un bloqueo) para
@@ -742,9 +633,6 @@ function renderChannelPages(model){
                tienen sus propios textos verificados — un costo sin confirmar
                (ejemplo de fabrica, o desglose sin confirmar) tampoco permite
                tratar el Offset/neto estimado como recomendación. */
-            if(model.costBlocked){
-              return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: el costo real de esta unidad todavía no está confirmado (${escapeHtml(model.costBlockedReason||'')}) — confírmalo en Resumen → "Costos por noche".</div>`;
-            }
             return `<div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
           })()}
         </div>
@@ -773,16 +661,9 @@ function renderMatrix(model){
     matrixBody.innerHTML = '';
     return;
   }
-  /* Bloqueante CRITICO (revision externa, ronda 2): Min Price/Base Price se
-     bloquean aqui tambien (no solo en renderKpis) — matrixIntro es un resumen
-     que Dani puede leer sin haber visto el KPI de Resumen. */
-  /* Refactor de cierre: gate unico por KPI (`floorReadinessBlocked`/
-     `baseReadinessBlocked`, ya incluyen LM/precio fijo) — `model.lmBlocked`/
-     `model.baseBlocked` solo se leen para elegir el texto mas especifico,
-     nunca para decidir si se bloquea (mismo patron que renderKpis()). */
   matrixIntro.innerHTML = `
-    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">piso final que protege el peor canal y promo OTA</span></span><span class="mi-val">${model.floorReadinessBlocked?(model.floorContractBlocked?'— (piso final sin confirmar)':'— (dato financiero sin verificar)'):f$(model.floor)}</span></div>
-    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.baseReadinessBlocked?(model.lmBlocked?'— (LM sin verificar)':model.baseBlocked?'— (precio LM fijo activo)':'— (dato financiero sin verificar)'):f$(model.base)}</span></div>
+    <div class="mi-item"><span class="mi-label">Min Price a poner en PriceLabs <span class="hint">piso final que protege el peor canal y promo OTA</span></span><span class="mi-val">${f$(model.floor)}</span></div>
+    <div class="mi-item"><span class="mi-label">Base Price a poner en PriceLabs <span class="hint">netea tu objetivo con tus descuentos, Offset y LM de hoy</span></span><span class="mi-val">${model.baseBlocked?'— (precio LM fijo activo)':f$(model.base)}</span></div>
     <div class="mi-item"><span class="mi-label">Tu costo por noche</span><span class="mi-val">${f$(model.cost)}</span></div>`;
   /* BLOQUEANTE CRITICO corregido (revision externa): antes se elegia el "peor
      dia" por MAYOR DESCUENTO NATIVO OTA solamente, e ignoraba las fronteras de
@@ -793,12 +674,7 @@ function renderMatrix(model){
      CADA combinacion con quoteScenario(), y la fila se arma sobre el escenario
      que realmente da el PEOR NETO, no el que solo tiene mas descuento nativo.
      El veredicto (vLvl/vTag/vMsg) ya NO se arma inline aqui — vive en
-     buildMatrixVerdict() (src/domain/matrix.js), pura y testeada sin DOM, para
-     que Min Price/Base/Offset/Matriz nunca puedan desalinearse en como tratan
-     un LM no verificable (bloqueante CRITICO ronda 2: antes esta funcion
-     agregaba "⚠ LM SIN VERIFICAR" como texto suelto sin cambiar vLvl='ok' ni
-     el tag "RENTABLE EN TODOS" — una advertencia que nadie lee encima de un
-     veredicto que sigue gritando "estas bien"). */
+     buildMatrixVerdict() (src/domain/matrix.js), pura y testeada sin DOM. */
   const qConfig = quoteConfig();
   matrixBody.innerHTML = WINDOWS.map(w=>{
     const ceil=pct(state.ceilings[w.id]);
@@ -849,22 +725,8 @@ function renderAlerts(model){
     return;
   }
   const tabLabel = id => (TABS.find(t=>t.id===id)||{}).label || id;
-  /* Bug de UX corregido: "Ver en Resumen →" tenia el mismo problema que los
-     banners de bloqueo (goToTab('resumen') sin seccion, ver goToSection()
-     mas arriba) — un tag conocido (LM SIN VERIFICAR/COSTOS SIN CONFIRMAR)
-     SI tiene una seccion concreta que lo resuelve; DATOS SIN VERIFICAR va a
-     la primera pestaña de canal pendiente; el
-     resto (MODELO/INVIABLE/REALIDAD, sobre el resultado del motor, no sobre
-     un dato pendiente puntual) sigue yendo solo a la pestaña, como siempre.
-     Esto es routing de UI puro sobre el `tag` que alerts.js YA devuelve —
-     no reimplementa ni toca ninguna regla financiera de ese modulo. */
-  const RESUMEN_ALERT_ANCHORS = {'LM SIN VERIFICAR':'lm', 'COSTOS SIN CONFIRMAR':'costos'};
   alertsBox.innerHTML = buildAlerts(model).map(a=>{
-    const financialChannel = a.tag==='DATOS SIN VERIFICAR' ? firstUnreadyChannel(model) : null;
-    const anchor = a.tab==='resumen' ? RESUMEN_ALERT_ANCHORS[a.tag] : null;
-    const targetTab = financialChannel ? CH_TAB[financialChannel.id] : a.tab;
-    const gotoValue = anchor ? `${targetTab}:${anchor}` : targetTab;
-    return `<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${gotoValue?` <button type="button" class="goto" data-goto="${gotoValue}">Ver en ${escapeHtml(tabLabel(targetTab))} →</button>`:''}</span></div>`;
+    return `<div class="alert ${a.lvl}"><span class="tag">${a.tag}</span><span>${escapeHtml(a.msg)}${a.tab?` <button type="button" class="goto" data-goto="${a.tab}">Ver en ${escapeHtml(tabLabel(a.tab))} →</button>`:''}</span></div>`;
   }).join('');
 }
 /* La parte NUMERICA (LM, offset, descuentos, comisiones, neto) vive en
@@ -875,28 +737,14 @@ function renderAlerts(model){
    El antiguo src/domain/simulate-legacy.js (registro historico del bug) se
    elimino en la simplificacion de jul 2026 — no lo importaba nadie. */
 function renderSim(model){
-  /* Bloqueante P2 (revision externa, ronda 3): antes, si el campo de precio
-     quedaba vacio, este fallback usaba `model.effBase` — que es EXACTAMENTE
-     el Base bloqueado (`model.base`) cuando no hay marketBase configurado.
-     Eso revivia silenciosamente la recomendacion bloqueada apenas se entraba
-     al Simulador (por el boton "Ver el paso a paso", por click directo en la
-     pestaña, o al escribir en cualquier otro campo — renderSim() se llama en
-     CADA renderAll()). Ahora: si el campo esta vacio Y el modelo esta
-     bloqueado (LM sin verificar o precio LM fijo activo), no se simula nada
-     con un numero inventado — se explica el motivo y se pide un precio manual. */
   const typedPrice = simPrice.value.trim()!=='' ? parseFloat(simPrice.value) : null;
   const chId=simChannel.value||'airbnb';
   /* El simulador recibe un precio FINAL de PriceLabs. Por eso ya no puede
      precargar Base Price (que es una referencia previa a la curva táctica):
      si se usa un valor automático, debe ser el Min Price final protegido. */
-  if((typedPrice==null || !Number.isFinite(typedPrice)) && model.floorReadinessBlocked){
-    const why = model.currencyBlocked ? 'la unidad requiere revisión manual por moneda'
-      : model.floorContractBlocked ? 'aún no confirmaste que PriceLabs respeta su Precio mínimo como piso final'
-      : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
-      : 'un dato financiero del canal que fija Base sigue sin confirmar';
-    const channel = state.channels.find(c=>c.id===chId);
-    const goto = CH_TAB[chId] || 'ch-airbnb';
-    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: Min Price está bloqueado (${why}). Escribe un precio FINAL de PriceLabs a mano arriba, o confirma primero los datos de <button type="button" class="goto" data-goto="${goto}">${escapeHtml(channel?.name||'este canal')} →</button>.</div>`;
+  if((typedPrice==null || !Number.isFinite(typedPrice)) && model.currencyBlocked){
+    const why = 'la unidad requiere revisión manual por moneda';
+    simResult.innerHTML = `<div class="sim-summary">⚠ No hay un precio para simular todavía: ${why}. Escribe un precio FINAL de PriceLabs a mano arriba o corrige la moneda de la unidad.</div>`;
     simIgnored.innerHTML = '';
     return;
   }
@@ -905,23 +753,14 @@ function renderSim(model){
   const nights=Math.max(1,parseFloat(simNights.value)||1);
   const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
   const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, marginPct, markupPct, totalDisc} = s;
-  /* Fase 5 (revision externa — "datos financieros verificados"): la
-     simulacion manual NUNCA se bloquea (a diferencia del precargado
-     automatico de Base, ver guard arriba y goSimBtn) — pero mientras dependa
-     de un supuesto sin confirmar (LM sin verificar, precio LM fijo activo, o
-     un dato de negocio del canal elegido sin verificar), el resultado debe
-     etiquetarse EXPLICITAMENTE como no confiable, para que no se use como si
-     fuera una recomendacion automatica. */
-  const chReadyForSim = !model.readiness || !model.readiness.byChannel[chId] || model.readiness.byChannel[chId].ready;
   const simUnverified = [];
   /* BLOQUEANTE 1 (auditoria externa, ronda 4): la simulacion manual NUNCA se
      bloquea (mismo principio de siempre), pero si la unidad "requiere
      revision manual" por moneda, el resultado tampoco es una recomendacion
      — se etiqueta igual que los demas supuestos sin confirmar. */
   if(model.currencyBlocked) simUnverified.push('la unidad requiere revisión manual por moneda (ver aviso en Resumen)');
-  if(!chReadyForSim) model.readiness.byChannel[chId].missing.forEach(m=>simUnverified.push(m.label));
   const simCaveat = simUnverified.length
-    ? `<div class="alert warn" style="margin-bottom:10px;"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Simulación con supuestos no verificados; no uses este resultado como recomendación automática — depende de: ${escapeHtml(simUnverified.join('; '))}.</span></div>`
+    ? `<div class="alert warn" style="margin-bottom:10px;"><span class="tag">SIMULACIÓN NO DISPONIBLE</span><span>La unidad requiere revisión manual por moneda.</span></div>`
     : '';
   let html=`<div class="sim-group">1 · Precio final de PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio FINAL mostrado por PriceLabs</span><span class="why">ya incluye los factores internos que PriceLabs haya aplicado (temporada, demanda, ocupación y/o Last-Minute); no se descuentan por segunda vez</span><span class="amt">${f$(price)}</span></div>`;
@@ -1056,9 +895,9 @@ function renderCostCalc(){
   if(hint){
     const cg = costGateNow();
     hint.textContent = cg.mode==='detailed_confirmed'
-      ? 'Confirmado — este desglose alimenta Piso/Base/Offset/Matriz/Alertas.'
+      ? 'Activo — este desglose alimenta Piso/Base/Offset/Matriz/Alertas.'
       : cg.mode==='detailed_incomplete'
-        ? 'Sin confirmar todavía — mientras tanto, el motor sigue usando el modelo simple (Fijos/Variables de arriba), no este desglose.'
+        ? 'Desglose no activo — el motor sigue usando Fijos/Variables de arriba.'
         : '';
   }
 }
@@ -1071,7 +910,7 @@ function renderLmConfig(){
   const verChk = document.querySelector('[data-lm="verified"]');
   if(!modeSel) return;
   modeSel.value = state.lmConfig.mode;
-  verChk.checked = !!state.lmConfig.verified;
+  if(verChk) verChk.checked = !!state.lmConfig.verified;
   const box = document.getElementById('lmModeFields');
   const cfg = state.lmConfig;
   if(cfg.mode==='flat'){
@@ -1326,14 +1165,6 @@ document.addEventListener('change',e=>{
     renderAll();
   }
   else if(t.dataset.cb){
-    /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): ya NO se
-       sincroniza automaticamente fixedCost/varCost desde el desglose parcial
-       — ese auto-sync era el otro vector del mismo bug (un campo suelto como
-       "Consumos: 5" contaminaba tambien el modelo simple, ver cost-mode.js).
-       El desglose detallado, una vez CONFIRMADO, alimenta el motor
-       directamente (costBreakdown) — no necesita mezclarse con fixedCost/
-       varCost, que quedan como el modelo simple independiente de siempre.
-       Cualquier edicion aqui invalida una confirmacion previa. */
     const key=t.dataset.cb;
     const opts = key==='occNights' ? {min:1, max:31, integer:true, label:'Noches ocupadas al mes'} : {min:0, max:1e7, label:'Calculadora de costos — '+key};
     const r = readNumField(t, state.costBreakdown[key], opts);
@@ -1343,9 +1174,6 @@ document.addEventListener('change',e=>{
     renderAll();
   }
   else if(t.dataset.cbConfirm!==undefined){
-    /* La casilla "Revisé estos costos reales..." es la UNICA forma de pasar
-       a 'detailed_confirmed' (ver src/domain/cost-mode.js) — nunca se marca
-       sola con datos, siempre requiere esta accion explicita del usuario. */
     state.costBreakdownConfirmed = t.checked;
     renderAll();
   }

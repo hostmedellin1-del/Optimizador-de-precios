@@ -5,6 +5,17 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.20.0] — Flujo personal sin verificaciones manuales
+
+**Simplificado** — se retiraron los bloqueos y formularios de verificación de costos,
+Last-Minute, datos financieros y contrato de Min Price. La aplicación calcula con los
+valores que cargas y el simulador abre directamente con el Min Price calculado.
+
+**Se conserva** — validación de números, USD como única moneda y los avisos que provienen
+de una condición matemática real, como un precio Last-Minute fijo que impide calcular
+Base Price. El desglose de costos detallados ahora se activa como elección de modelo de
+costo, no como certificación.
+
 ## [0.19.0] — Resumen orientado al Min Price diario
 
 **Simplificado** — el Resumen prioriza el flujo que se usa a diario: costos, estadía
