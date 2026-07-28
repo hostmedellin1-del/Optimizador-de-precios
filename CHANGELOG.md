@@ -5,6 +5,28 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.20.0] — Flujo personal sin verificaciones manuales
+
+**Simplificado** — se retiraron los bloqueos y formularios de verificación de costos,
+Last-Minute, datos financieros y contrato de Min Price. La aplicación calcula con los
+valores que cargas y el simulador abre directamente con el Min Price calculado.
+
+**Se conserva** — validación de números, USD como única moneda y los avisos que provienen
+de una condición matemática real, como un precio Last-Minute fijo que impide calcular
+Base Price. El desglose de costos detallados ahora se activa como elección de modelo de
+costo, no como certificación.
+
+## [0.19.0] — Resumen orientado al Min Price diario
+
+**Simplificado** — el Resumen prioriza el flujo que se usa a diario: costos, estadía
+promedio, costo por noche y **Min Price → PriceLabs**. Base Price, margen, Last-Minute,
+techos y análisis por ventana siguen disponibles sin cambios dentro de **Estrategia de
+PriceLabs**, plegada inicialmente.
+
+**Acceso seguro** — los enlaces de avisos hacia Last-Minute despliegan esa sección antes de
+hacer scroll y foco. No se modificó el motor financiero, las configuraciones guardadas ni
+los bloqueos; solo la presentación y su guía de uso.
+
 ## [0.18.0] — Min Price como precio final de PriceLabs
 
 **Corregido** — el motor dejaba que el contrato de Min Price y el del simulador trataran

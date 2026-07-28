@@ -8,6 +8,11 @@
    cualquier pestaña, no solo en Resumen. */
 import {test, expect} from '@playwright/test';
 
+async function openStrategy(page){
+  const strategy = page.locator('#strategySection');
+  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
+}
+
 test('descuento: % fuera de rango (150) se rechaza, conserva el valor anterior, muestra aviso', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="ch-airbnb"]').click();
@@ -60,6 +65,7 @@ test('canal: offset negativo extremo (-500) se rechaza — el input nunca deja e
 
 test('LM tramos: "desde día" mayor que "hasta día" se rechaza con motivo explícito', async ({page}) => {
   await page.goto('/index.html');
+  await openStrategy(page);
   await page.selectOption('[data-lm="mode"]', 'tiers');
   await page.locator('#addTierBtn').click();
   const fromDay = page.locator('[data-tier="fromDay"][data-tier-idx="0"]');
