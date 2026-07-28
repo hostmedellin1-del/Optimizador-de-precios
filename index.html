@@ -153,6 +153,21 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .chpage-head .fld input{width:80px;}
 .offset-hint{font-size:11px;color:var(--dim);margin-top:2px;}
 .offset-hint b{color:var(--accent);font-family:'JetBrains Mono',monospace;}
+/* Probador de promociones: los controles son temporales. La configuración real
+   solo cambia cuando el usuario confirma uno de los botones Aplicar. */
+.promo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px 14px;align-items:end;margin:12px 0;}
+.promo-grid .fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);}
+.promo-grid .fld input,.promo-grid .fld select{width:100%;min-width:0;}
+.promo-result{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:12px;}
+.promo-result h3{font-size:12px;margin:0 0 8px;letter-spacing:.02em;}
+.promo-summary{font-size:13px;line-height:1.55;margin:0 0 10px;}
+.promo-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:10px 0;}
+.promo-metric{border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:8px 10px;}
+.promo-metric .l{display:block;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;}
+.promo-metric .v{display:block;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;margin-top:2px;}
+.promo-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.promo-subhead{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:16px 0 6px;}
+.promo-table{min-width:620px;}
 .chpage-discounts{display:flex;flex-direction:column;gap:0;}
 .chpage-discounts .d-item{padding:9px 0;font-size:13px;}
 .chpage-discounts .d-name{font-size:13px;}
@@ -265,6 +280,11 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver una reserva con este Min Price →</button>
   </div>
 </div>
+<section class="card" id="promotionLabSection">
+  <h2>Probador de promociones <span class="hint">prueba una idea sin cambiar tu configuración guardada</span></h2>
+  <p class="hint">Aquí decides si una promoción de una OTA vale la pena. La prueba usa el precio <strong>FINAL</strong> que muestra PriceLabs y aplica después el Offset de Kunas, la promoción y las comisiones. Solo cambia tu configuración cuando pulses Aplicar y confirmes.</p>
+  <div id="promotionLab"></div>
+</section>
 <details class="strategy-panel" id="strategySection">
   <summary>Estrategia de PriceLabs <span class="hint">Base Price, Last-Minute, techos y análisis por ventana</span></summary>
   <div class="strategy-content">
@@ -374,6 +394,7 @@ import {newUnitId, buildDuplicateUnit, buildV3Record, v3Key, validateImportFile,
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
+import {analyzePromotionProposal} from './src/domain/promotion-lab.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -421,6 +442,12 @@ let state = {
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
   usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
+};
+/* Borrador efímero: probar promociones nunca toca state, localStorage ni la
+   unidad guardada. Solamente Aplicar + confirmación lleva un cambio a state. */
+let promotionDraft = {
+  channelId:'airbnb', discountId:'ab_lm2', pct:15, from:0, to:3, minN:3,
+  days:2, nights:2, finalPrice:null
 };
 
 /* ================== ENGINE ================== */
@@ -489,6 +516,16 @@ function quoteConfig(){
     fixedCost: state.fixedCost, varCost: state.varCost, manualReviewGates: false,
     costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
+  };
+}
+function promotionLabConfig(){
+  return {
+    ...quoteConfig(),
+    fixedCost:state.fixedCost, varCost:state.varCost, margin:state.margin,
+    marketBase:state.marketBase, avgNights:state.avgNights,
+    usingExampleCosts:costGateNow().usingExampleCosts,
+    currency:state.currency, usdManualReviewPending:state.usdManualReviewPending,
+    usdManualReviewLog:state.usdManualReviewLog, manualReviewGates:false
   };
 }
 /* ================== ALERTS ================== */
@@ -855,10 +892,103 @@ function buildTabbar(){
     btn.addEventListener('click',()=>goToTab(btn.dataset.tabbtn));
   });
 }
+function formatOffset(value){
+  if(!Number.isFinite(value)) return '—';
+  return (value>=0?'+':'')+value.toFixed(1)+'%';
+}
+function normalizePromotionDraft(model){
+  const channelDiscounts = state.discounts.filter(d=>d.ch===promotionDraft.channelId);
+  if(!channelDiscounts.length){
+    promotionDraft.channelId=state.channels[0]?.id||'';
+  }
+  const available = state.discounts.filter(d=>d.ch===promotionDraft.channelId);
+  let discount=available.find(d=>d.id===promotionDraft.discountId);
+  if(!discount){
+    discount=available[0];
+    promotionDraft.discountId=discount?.id||'';
+    promotionDraft.pct=discount?.pct||0;
+    promotionDraft.from=discount?.from??0;
+    promotionDraft.to=discount?.to??3;
+    promotionDraft.minN=discount?.minN??1;
+  }
+  if(promotionDraft.finalPrice===null || !Number.isFinite(Number(promotionDraft.finalPrice)) || Number(promotionDraft.finalPrice)<=0){
+    promotionDraft.finalPrice=Math.max(1, model.floor||0);
+  }
+  return discount;
+}
+function renderPromotionLab(model){
+  const mount=document.getElementById('promotionLab');
+  if(!mount) return;
+  const discount=normalizePromotionDraft(model);
+  if(!discount){ mount.innerHTML='<div class="alert bad"><span class="tag">SIN CATÁLOGO</span><span>No hay promociones disponibles para probar.</span></div>'; return; }
+  const channel=state.channels.find(c=>c.id===promotionDraft.channelId);
+  const proposal={
+    discountId:promotionDraft.discountId, pct:Number(promotionDraft.pct), from:Number(promotionDraft.from),
+    to:Number(promotionDraft.to), minN:Number(promotionDraft.minN), days:Number(promotionDraft.days),
+    nights:Number(promotionDraft.nights), finalPrice:Number(promotionDraft.finalPrice)
+  };
+  const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
+  const channelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===promotionDraft.channelId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+  const discountOptions=state.discounts.filter(d=>d.ch===promotionDraft.channelId)
+    .map(d=>`<option value="${escapeHtml(d.id)}" ${d.id===promotionDraft.discountId?'selected':''}>${escapeHtml(d.name)}</option>`).join('');
+  const conditionFields=discount.kind==='window'
+    ? `<div class="fld"><label for="promoLabFrom">Desde (días)</label><input id="promoLabFrom" type="number" min="0" data-promo-lab="from" value="${escapeHtml(promotionDraft.from)}"></div>
+       <div class="fld"><label for="promoLabTo">Hasta (días)</label><input id="promoLabTo" type="number" min="0" data-promo-lab="to" value="${escapeHtml(promotionDraft.to)}"></div>`
+    : discount.kind==='los'
+      ? `<div class="fld"><label for="promoLabMinN">Mínimo de noches</label><input id="promoLabMinN" type="number" min="1" data-promo-lab="minN" value="${escapeHtml(discount.lockN?discount.minN:promotionDraft.minN)}" ${discount.lockN?'disabled':''}></div>`
+      : `<div class="fld"><label>Condición</label><span class="hint" style="padding:8px 0;">Siempre aplica</span></div>`;
+  let result='<div class="alert bad"><span class="tag">REVISAR</span><span>'+escapeHtml(analysis.reason||'No se pudo probar esta promoción.')+'</span></div>';
+  if(analysis.ok){
+    const minChanged=analysis.proposedModel.floor-analysis.baselineModel.floor;
+    const minText=minChanged>0.005
+      ? `Con esta promoción, el Min Price global debería subir de ${f$(analysis.baselineModel.floor)} a ${f$(analysis.proposedModel.floor)} para seguir protegido.`
+      : `El Min Price global queda en ${f$(analysis.proposedModel.floor)} con los Offsets actuales; la promoción no lo obliga a subir en el peor escenario del catálogo.`;
+    const currentStatus=analysis.reachesMargin ? 'sí conserva el margen objetivo' : analysis.coversCost ? 'cubre costo, pero no el margen objetivo' : 'queda bajo costo';
+    const costOffset=analysis.offsetForCost.ok ? formatOffset(analysis.offsetForCost.offsetPct) : 'no disponible';
+    const marginOffset=analysis.offsetForMargin.ok ? formatOffset(analysis.offsetForMargin.offsetPct) : 'no disponible';
+    const rows=analysis.durationRows.map(row=>`<tr><td>${row.nights}</td><td>${row.promoApplies?'Sí':'No'}</td><td class="out">${f$(row.payout)}</td><td class="out">${f$(row.cost)}</td><td class="out">${f$(row.margin)}</td><td class="out">${formatOffset(row.offsetForCost)}</td><td class="out">${formatOffset(row.offsetForMargin)}</td></tr>`).join('');
+    const compareRows=analysis.channelComparison.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td class="out">${f$(row.before.guestWithFees)}</td><td class="out">${f$(row.after.guestWithFees)}</td><td class="out">${f$(row.after.guestWithFees-row.before.guestWithFees)}</td></tr>`).join('');
+    result=`<div class="promo-result">
+      <h3>${escapeHtml(analysis.recommendation)}</h3>
+      ${!analysis.promoApplies?'<div class="alert warn"><span class="tag">NO APLICA AQUÍ</span><span>En los '+analysis.scenario.days+' días / '+analysis.scenario.nights+' noches elegidos, esta promoción no se activa. La tabla muestra exactamente en qué duraciones sí aplicaría.</span></div>':''}
+      <p class="promo-summary"><strong>Instrucción concreta:</strong> en ${escapeHtml(channel?.name||'este canal')}, configura <strong>${escapeHtml(discount.name)}</strong> en <strong>${Number(promotionDraft.pct).toFixed(1)}%</strong>${discount.kind==='window'?` entre los días ${promotionDraft.from} y ${promotionDraft.to}`:discount.kind==='los'?` desde ${discount.lockN?discount.minN:promotionDraft.minN} noches`:''}. Después revisa el Offset de Kunas indicado abajo.</p>
+      <div class="promo-metrics">
+        <div class="promo-metric"><span class="l">Precio huésped propuesto</span><span class="v">${f$(analysis.proposed.guestWithFees)}</span></div>
+        <div class="promo-metric"><span class="l">Neto con Offset actual</span><span class="v">${f$(analysis.proposed.payout)}</span></div>
+        <div class="promo-metric"><span class="l">Costo real (${analysis.scenario.nights} n.)</span><span class="v">${f$(analysis.targetCost)}</span></div>
+        <div class="promo-metric"><span class="l">Resultado actual</span><span class="v">${currentStatus}</span></div>
+      </div>
+      <div class="promo-metrics">
+        <div class="promo-metric"><span class="l">Offset actual en Kunas</span><span class="v">${formatOffset(analysis.currentOffset)}</span></div>
+        <div class="promo-metric"><span class="l">Offset para no perder</span><span class="v">${costOffset}</span></div>
+        <div class="promo-metric"><span class="l">Offset para margen ${Number(state.margin).toFixed(0)}%</span><span class="v">${marginOffset}</span></div>
+        <div class="promo-metric"><span class="l">Min Price protegido</span><span class="v">${f$(analysis.proposedModel.floor)}</span></div>
+      </div>
+      <p class="hint">${minText} El precio probado es final de PriceLabs: nunca se descuenta Last-Minute una segunda vez.</p>
+      <div class="promo-actions">
+        <button type="button" data-promo-apply="cost" ${!analysis.offsetForCost.ok?'disabled':''}>Aplicar promoción + Offset para no perder</button>
+        <button type="button" data-promo-apply="margin" ${!analysis.offsetForMargin.ok?'disabled':''}>Aplicar promoción + Offset con margen</button>
+      </div>
+      <div class="promo-subhead">Por duración real de la reserva</div>
+      <div class="table-wrap"><table class="promo-table"><thead><tr><th>Noches</th><th>¿Promo aplica?</th><th>Neto</th><th>Costo</th><th>Margen</th><th>Offset no perder</th><th>Offset margen</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="promo-subhead">Comparación de precio que ve el huésped por OTA</div>
+      <div class="table-wrap"><table class="promo-table"><thead><tr><th>Canal</th><th>Antes</th><th>Con propuesta</th><th>Cambio</th></tr></thead><tbody>${compareRows}</tbody></table></div>
+    </div>`;
+  }
+  mount.innerHTML=`<div class="promo-grid">
+    <div class="fld"><label for="promoLabChannel">Canal</label><select id="promoLabChannel" data-promo-lab="channelId">${channelOptions}</select></div>
+    <div class="fld"><label for="promoLabDiscount">Promoción</label><select id="promoLabDiscount" data-promo-lab="discountId">${discountOptions}</select></div>
+    <div class="fld"><label for="promoLabPct">Descuento %</label><input id="promoLabPct" type="number" min="0" max="99.999" step="0.1" data-promo-lab="pct" value="${escapeHtml(promotionDraft.pct)}"></div>
+    ${conditionFields}
+    <div class="fld"><label for="promoLabDays">Días antes del check-in</label><input id="promoLabDays" type="number" min="0" data-promo-lab="days" value="${escapeHtml(promotionDraft.days)}"></div>
+    <div class="fld"><label for="promoLabNights">Noches de reserva</label><input id="promoLabNights" type="number" min="1" data-promo-lab="nights" value="${escapeHtml(promotionDraft.nights)}"></div>
+    <div class="fld"><label for="promoLabPrice">Precio FINAL de PriceLabs</label><input id="promoLabPrice" type="number" min="0.01" step="1" data-promo-lab="finalPrice" value="${escapeHtml(promotionDraft.finalPrice)}"></div>
+  </div>${result}`;
+}
 function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance();
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderKpis(model); renderAlerts(model); renderPromotionLab(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig();
   renderCurrencyReviewBanner(model);
 }
@@ -1093,7 +1223,47 @@ function readNumField(t, current, opts={}){
 }
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset.floorContractConfirmed!==undefined){
+  if(t.dataset.promoLab!==undefined){
+    const field=t.dataset.promoLab;
+    if(field==='channelId'){
+      promotionDraft.channelId=t.value;
+      const discount=state.discounts.find(d=>d.ch===t.value);
+      promotionDraft.discountId=discount?.id||'';
+      promotionDraft.pct=discount?.pct||0;
+      promotionDraft.from=discount?.from??0;
+      promotionDraft.to=discount?.to??3;
+      promotionDraft.minN=discount?.minN??1;
+    } else if(field==='discountId'){
+      promotionDraft.discountId=t.value;
+      const discount=state.discounts.find(d=>d.id===t.value);
+      promotionDraft.pct=discount?.pct||0;
+      promotionDraft.from=discount?.from??0;
+      promotionDraft.to=discount?.to??3;
+      promotionDraft.minN=discount?.minN??1;
+    } else {
+      const current=promotionDraft[field];
+      const opts={
+        pct:{min:0,max:99.999,label:'Probador — descuento'},
+        from:{min:0,max:9999,integer:true,label:'Probador — desde día'},
+        to:{min:0,max:9999,integer:true,label:'Probador — hasta día'},
+        minN:{min:1,max:9999,integer:true,label:'Probador — mínimo de noches'},
+        days:{min:0,max:9999,integer:true,label:'Probador — días antes del check-in'},
+        nights:{min:1,max:9999,integer:true,label:'Probador — noches de reserva'},
+        finalPrice:{min:0.01,max:1e7,label:'Probador — precio final de PriceLabs'}
+      };
+      const read=readNumField(t,current,opts[field]);
+      if(!read.ok) return;
+      if(field==='from' && read.value>Number(promotionDraft.to)){
+        t.value=current; showInputError('Probador — el día inicial no puede ser mayor que el final.'); return;
+      }
+      if(field==='to' && read.value<Number(promotionDraft.from)){
+        t.value=current; showInputError('Probador — el día final no puede ser menor que el inicial.'); return;
+      }
+      promotionDraft[field]=read.value;
+    }
+    renderPromotionLab(compute());
+  }
+  else if(t.dataset.floorContractConfirmed!==undefined){
     state.priceLabsMinPriceContractConfirmed = t.checked;
     renderAll();
   }
@@ -1260,6 +1430,35 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
+  const promoApply=e.target.closest('[data-promo-apply]');
+  if(promoApply){
+    const proposal={
+      discountId:promotionDraft.discountId, pct:Number(promotionDraft.pct), from:Number(promotionDraft.from),
+      to:Number(promotionDraft.to), minN:Number(promotionDraft.minN), days:Number(promotionDraft.days),
+      nights:Number(promotionDraft.nights), finalPrice:Number(promotionDraft.finalPrice)
+    };
+    const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
+    const mode=promoApply.dataset.promoApply;
+    const solved=mode==='margin' ? analysis.offsetForMargin : analysis.offsetForCost;
+    if(!analysis.ok || !solved?.ok){
+      showInputError(analysis.reason||'No se pudo resolver el Offset para esta promoción.');
+      return;
+    }
+    const label=mode==='margin' ? `margen objetivo (${Number(state.margin).toFixed(0)}%)` : 'no perder dinero';
+    const message=`Vas a aplicar en ${analysis.channel.name}:\n\n• ${analysis.discount.name}: ${Number(promotionDraft.pct).toFixed(1)}%\n• Offset de Kunas: ${formatOffset(solved.offsetPct)}\n• Objetivo: ${label}\n\nLa prueba temporal dejará de ser solo una prueba y modificará esta unidad. ¿Aplicar?`;
+    if(!confirm(message)) return;
+    const liveDiscount=state.discounts.find(d=>d.id===analysis.discount.id);
+    const liveChannel=state.channels.find(c=>c.id===analysis.channel.id);
+    if(!liveDiscount || !liveChannel){ showInputError('No se encontró la promoción o el canal para aplicar el cambio.'); return; }
+    liveDiscount.on=true;
+    liveDiscount.pct=analysis.discount.pct;
+    if(liveDiscount.kind==='window'){ liveDiscount.from=analysis.discount.from; liveDiscount.to=analysis.discount.to; }
+    if(liveDiscount.kind==='los' && !liveDiscount.lockN) liveDiscount.minN=analysis.discount.minN;
+    liveChannel.offsetPct=solved.offsetPct;
+    status(`Aplicado: ${analysis.discount.name} + Offset ${formatOffset(solved.offsetPct)} para ${label}. Guarda la unidad para conservarlo.`);
+    renderAll();
+    return;
+  }
   const goto=e.target.closest('[data-goto]');
   if(goto){
     const [tabId, anchorKey] = goto.dataset.goto.split(':');
