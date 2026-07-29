@@ -126,6 +126,31 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .wf-line.net{color:var(--safe);font-weight:600;}
 .wf-line.netbad{color:var(--accent);font-weight:600;}
 .wf-line .amt{white-space:nowrap;}
+.promo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px 14px;align-items:end;margin:12px 0;}
+.promo-grid .fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--faint);}
+.promo-grid .fld input,.promo-grid .fld select{width:100%;min-width:0;}
+.promo-result{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:12px;}
+.promo-result h3{font-size:12px;margin:0 0 8px;letter-spacing:.02em;}
+.promo-summary{font-size:13px;line-height:1.55;margin:0 0 10px;}
+.promo-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.promo-subhead{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:16px 0 6px;}
+.promo-table{min-width:620px;}
+.promo-detail{margin-top:14px;}
+.promo-detail summary,.promo-editor>summary{cursor:pointer;color:var(--dim);font-size:12px;font-weight:600;}
+.promo-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin:10px 0;}
+.promo-metric{border:1px solid var(--border);border-radius:7px;background:var(--surface);padding:8px 10px;}
+.promo-metric .l{display:block;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;}
+.promo-metric .v{display:block;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;margin-top:2px;}
+.promo-editor{margin-top:14px;border-top:1px solid var(--border);padding-top:10px;}
+.max-discount-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px;margin:12px 0;}
+.max-discount-card{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;}
+.max-discount-card .ota{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;}
+.max-discount-card .pct{display:block;font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:24px;font-weight:700;margin:2px 0 4px;}
+.max-discount-card .combo{font-size:12.5px;line-height:1.45;color:var(--text);min-height:36px;}
+.max-discount-card .case{font-size:11px;color:var(--faint);margin:6px 0 8px;}
+.max-discount-card .offset{border-top:1px solid var(--border);margin-top:10px;padding-top:8px;font-size:11px;color:var(--dim);line-height:1.4;}
+.max-discount-card .offset strong{display:block;font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:17px;margin-top:1px;}
+.max-discount-card .offset span{display:block;color:var(--faint);margin-top:2px;}
 .ignored{margin-top:10px;font-size:11.5px;color:var(--faint);line-height:1.6;font-family:'Space Grotesk',sans-serif;}
 .footer-note{font-size:11.5px;color:var(--faint);line-height:1.7;padding:14px 16px;border:1px dashed var(--border);border-radius:var(--radius);margin-top:6px;}
 @media(max-width:720px){h1{font-size:24px;}}
@@ -259,6 +284,13 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
+<details class="card" id="promotionLabSection" open>
+  <summary><strong>Qué poner en Kunas por OTA</strong> <span class="hint">descuento máximo + comisión, calculado por canal</span></summary>
+  <div style="margin-top:12px;">
+  <p class="hint">Aquí está la decisión diaria: conserva un único Min Price final en PriceLabs y configura el Offset recomendado de cada OTA en Kunas. Los ajustes internos de PriceLabs no se vuelven a descontar.</p>
+  <div id="promotionLab"></div>
+  </div>
+</details>
 <section class="card" id="lmSection">
   <h2 id="lmSectionHeading" tabindex="-1">Last-Minute de PriceLabs <span class="hint">cómo baja el precio cerca del check-in — configúralo si sabes el modo real de tu cuenta</span></h2>
   <p class="hint">Por defecto usa el modo "Automático" (el techo por ventana de siempre) — cámbialo solo si confirmaste en PriceLabs que tu cuenta usa otro modo. Ninguno de estos modos trae un % de ejemplo activado: los llenas tú.</p>
@@ -353,6 +385,7 @@ import {newUnitId, buildDuplicateUnit, buildV3Record, v3Key, validateImportFile,
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
+import {analyzePromotionProposal, maximumDiscountScenario, compensationOffsetPct} from './src/domain/promotion-lab.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -399,6 +432,13 @@ let state = {
   verification: defaultVerification(), // Fase 4 — registro Verificado/No verificado por unidad
   usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
   usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
+};
+/* Borrador efímero del laboratorio: nunca se guarda en la unidad ni cambia sus
+   promociones/Offsets hasta que el usuario pulsa Aplicar y confirma. */
+let promotionDraft = {
+  detailChannelId:'airbnb',
+  promotions:[{chId:'airbnb', discountId:'ab_lm2', pct:15, from:0, to:3, minN:3}],
+  days:2, nights:2, finalPrice:null
 };
 
 /* ================== ENGINE ================== */
@@ -465,6 +505,16 @@ function quoteConfig(){
     fixedCost: state.fixedCost, varCost: state.varCost,
     costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
     lmConfig: state.lmConfig, verification: state.verification, floor: compute().floor
+  };
+}
+function promotionLabConfig(){
+  return {
+    ...quoteConfig(),
+    fixedCost:state.fixedCost, varCost:state.varCost, margin:state.margin,
+    marketBase:state.marketBase, avgNights:state.avgNights,
+    usingExampleCosts:costGateNow().usingExampleCosts,
+    currency:state.currency, usdManualReviewPending:state.usdManualReviewPending,
+    usdManualReviewLog:state.usdManualReviewLog
   };
 }
 /* ================== ALERTS ================== */
@@ -930,6 +980,64 @@ function renderSim(model){
   simResult.innerHTML=`${simCaveat}<div class="sim-summary">${summary}</div>${html}`;
   simIgnored.innerHTML=s.ignored.length?('<strong>No aplicados por reglas del canal:</strong> '+s.ignored.map(i=>`${escapeHtml(i.name)} — ${escapeHtml(i.reason)}`).join(' · ')):'';
 }
+function formatOffset(value){
+  if(!Number.isFinite(value)) return '—';
+  return (value>=0?'+':'')+value.toFixed(1)+'%';
+}
+function newPromotionLine(discount){
+  return {chId:discount?.ch||'', discountId:discount?.id||'', pct:discount?.pct||0,
+    from:discount?.from??0, to:discount?.to??3, minN:discount?.minN??1};
+}
+function normalizePromotionDraft(model){
+  if(!state.channels.some(c=>c.id===promotionDraft.detailChannelId)) promotionDraft.detailChannelId=state.channels[0]?.id||'';
+  const available=state.discounts.filter(d=>d.group!=='pricelabs-internal');
+  const first=available[0];
+  if(!Array.isArray(promotionDraft.promotions)) promotionDraft.promotions=[newPromotionLine(first)];
+  promotionDraft.promotions=promotionDraft.promotions.map(line=>{
+    const channel=state.channels.some(c=>c.id===line.chId)?line.chId:promotionDraft.detailChannelId;
+    const options=available.filter(d=>d.ch===channel);
+    const discount=options.find(d=>d.id===line.discountId)||options[0]||first;
+    return {...newPromotionLine(discount),...line,chId:discount?.ch||channel,discountId:discount?.id||''};
+  });
+  if(!promotionDraft.promotions.length&&first) promotionDraft.promotions=[newPromotionLine(first)];
+  if(!Number.isFinite(Number(promotionDraft.finalPrice))||Number(promotionDraft.finalPrice)<=0) promotionDraft.finalPrice=Math.max(1,model.floor||0);
+  return available;
+}
+function renderPromotionLab(model){
+  const mount=document.getElementById('promotionLab'); if(!mount) return;
+  const editorOpen=mount.querySelector('.promo-editor')?.open;
+  const available=normalizePromotionDraft(model);
+  const maximumRows=state.channels.map(channel=>{
+    const max=maximumDiscountScenario(state.discounts,channel.id,WINDOWS);
+    const offset=compensationOffsetPct(channel,max.factor);
+    const current=Number(channel.offsetPct)||0;
+    const delta=offset===null?null:offset-current;
+    const combo=max.applied.length?max.applied.map(a=>escapeHtml(a.name)).join(' + '):'Sin descuentos activos';
+    const when=`Caso más fuerte: día ${max.days}, ${max.nights} noche${max.nights===1?'':'s'}`;
+    const text=delta===null?'Revisa las comisiones de esta OTA.':Math.abs(delta)<.05?'Tu Offset actual ya compensa este caso.':delta>0?`Sube ${delta.toFixed(1)} puntos desde ${formatOffset(current)}.`:`Podrías bajar ${Math.abs(delta).toFixed(1)} puntos desde ${formatOffset(current)}.`;
+    return `<article class="max-discount-card"><span class="ota">${escapeHtml(channel.name)}</span><strong class="pct">${max.totalPct.toFixed(1)}%</strong><div class="combo">${combo}</div><div class="case">${when}</div><div class="offset">Offset de compensación en Kunas<strong>${formatOffset(offset)}</strong><span>${text}</span></div><button type="button" class="ghost" data-promo-config="${escapeHtml(CH_TAB[channel.id]||'ch-'+channel.id)}">Configurar ${escapeHtml(channel.name)} →</button></article>`;
+  }).join('');
+  const proposal={promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),detailChannelId:promotionDraft.detailChannelId,days:Number(promotionDraft.days),nights:Number(promotionDraft.nights),finalPrice:Number(promotionDraft.finalPrice)};
+  const analysis=analyzePromotionProposal(promotionLabConfig(),proposal);
+  const channelOptions=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===promotionDraft.detailChannelId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+  const rows=promotionDraft.promotions.map((line,i)=>{
+    const options=available.filter(d=>d.ch===line.chId);
+    const d=options.find(x=>x.id===line.discountId)||options[0];
+    const dOpts=options.map(x=>`<option value="${escapeHtml(x.id)}" ${x.id===line.discountId?'selected':''}>${escapeHtml(x.name)}</option>`).join('');
+    const cOpts=state.channels.map(c=>`<option value="${escapeHtml(c.id)}" ${c.id===line.chId?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+    const condition=d?.kind==='window'?`<div class="fld"><label>Desde día</label><input id="promoLabFrom${i===0?'':'-'+i}" type="number" min="0" data-promo-row="${i}" data-promo-field="from" value="${escapeHtml(line.from)}"></div><div class="fld"><label>Hasta día</label><input id="promoLabTo${i===0?'':'-'+i}" type="number" min="0" data-promo-row="${i}" data-promo-field="to" value="${escapeHtml(line.to)}"></div>`:d?.kind==='los'?`<div class="fld"><label>Mínimo noches</label><input id="promoLabMinN${i===0?'':'-'+i}" type="number" min="1" data-promo-row="${i}" data-promo-field="minN" value="${escapeHtml(d.lockN?d.minN:line.minN)}" ${d.lockN?'disabled':''}></div>`:'<div class="fld"><label>Condición</label><span class="hint">Siempre aplica</span></div>';
+    const ids=i===0?'':'-'+i;
+    return `<div class="promo-grid"><div class="fld"><label>Canal</label><select id="promoLabChannel${ids}" data-promo-row="${i}" data-promo-field="chId">${cOpts}</select></div><div class="fld"><label>Promoción ${i+1}</label><select id="promoLabDiscount${ids}" data-promo-row="${i}" data-promo-field="discountId">${dOpts}</select></div><div class="fld"><label>Descuento %</label><input id="promoLabPct${ids}" type="number" min="0" max="99.999" step="0.1" data-promo-row="${i}" data-promo-field="pct" value="${escapeHtml(line.pct)}"></div>${condition}${promotionDraft.promotions.length>1?`<div class="fld"><button type="button" class="ghost" data-promo-remove="${i}">Quitar</button></div>`:''}</div>`;
+  }).join('');
+  let result=`<div class="alert bad"><span class="tag">REVISAR</span><span>${escapeHtml(analysis.reason||'No se pudo probar esta promoción.')}</span></div>`;
+  if(analysis.ok){
+    const applied=analysis.proposalStatuses.filter(x=>x.applies).map(x=>escapeHtml(x.name)).join(' · ')||'Ninguna aplica en este escenario.';
+    const comparison=analysis.channelResults.map(row=>`<tr><td>${escapeHtml(row.name)}</td><td class="out">${formatOffset(row.currentOffset)}</td><td class="out">${f$(row.proposed.payout)}</td><td class="out">${f$(row.targetCost)}</td><td class="out">${formatOffset(row.offsetForCost.ok?row.offsetForCost.offsetPct:null)}</td><td class="out">${formatOffset(row.offsetForMargin.ok?row.offsetForMargin.offsetPct:null)}</td></tr>`).join('');
+    const detailRows=analysis.durationRows.map(row=>`<tr><td>${row.nights}</td><td>${row.promoApplies?'Sí':'No'}</td><td class="out">${f$(row.payout)}</td><td class="out">${f$(row.cost)}</td><td class="out">${f$(row.margin)}</td><td class="out">${formatOffset(row.offsetForCost)}</td></tr>`).join('');
+    result=`<div class="promo-result"><h3>${escapeHtml(analysis.recommendation)}</h3><div class="alert ok"><span class="tag">PROMOS APLICADAS</span><span>${applied}</span></div><p class="promo-summary"><strong>Instrucción concreta:</strong> prueba una idea antes de aplicarla. El precio probado es el precio FINAL de PriceLabs. Usa el Offset de Kunas por OTA de la tabla; nunca vuelvas a descontar Last-Minute aquí.</p><div class="promo-actions"><button type="button" data-promo-apply="cost">Aplicar promociones + Offsets para no perder</button><button type="button" data-promo-apply="margin">Aplicar promociones + Offsets con margen</button></div><div class="promo-subhead">Offsets de Kunas sugeridos con este precio común de PriceLabs</div><div class="table-wrap"><table class="promo-table"><thead><tr><th>OTA</th><th>Offset actual</th><th>Neto</th><th>Costo</th><th>Offset no perder / Offset para no perder</th><th>Offset margen</th></tr></thead><tbody>${comparison}</tbody></table></div><details class="promo-detail"><summary>Ver cálculo detallado por duración y por OTA</summary><div class="table-wrap"><table class="promo-table"><thead><tr><th>Noches</th><th>¿Promo aplica?</th><th>Neto</th><th>Costo</th><th>Margen</th><th>Offset no perder</th></tr></thead><tbody>${detailRows}</tbody></table></div></details></div>`;
+  }
+  mount.innerHTML=`<div class="promo-result"><h3>Resultado por OTA</h3><div class="alert warn"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Este laboratorio es una simulación: no cambia la unidad ni desbloquea Min Price/Base Price hasta que pulses Aplicar y confirmes.</span></div><p class="promo-summary">El <strong>Min Price</strong> es común en PriceLabs. Aquí ves el descuento máximo real por OTA y el Offset de compensación para conservar tu neto después de la comisión.</p><div class="max-discount-grid">${maximumRows}</div><p class="hint">Airbnb aplica una sola promoción principal por noche; Booking evalúa grupos de huéspedes compatibles y no suma grupos alternativos.</p></div><details class="promo-editor"${editorOpen?' open':''}><summary>Cambiar promociones u Offsets <span class="hint">opcional</span></summary><div class="promo-editor-body"><p class="hint">Prueba una idea antes de aplicarla. PriceLabs mantiene un precio final común y Kunas puede llevar un Offset distinto por OTA.</p><div class="promo-grid"><div class="fld"><label>Canal del detalle</label><select id="promoLabDetailChannel" data-promo-lab="detailChannelId">${channelOptions}</select></div><div class="fld"><label>Días antes del check-in</label><input id="promoLabDays" type="number" min="0" data-promo-lab="days" value="${escapeHtml(promotionDraft.days)}"></div><div class="fld"><label>Noches de reserva</label><input id="promoLabNights" type="number" min="1" data-promo-lab="nights" value="${escapeHtml(promotionDraft.nights)}"></div><div class="fld"><label>Precio FINAL de PriceLabs</label><input id="promoLabPrice" type="number" min="0.01" step="1" data-promo-lab="finalPrice" value="${escapeHtml(promotionDraft.finalPrice)}"></div></div>${rows}<div class="promo-actions"><button type="button" class="ghost" id="promoAddBtn">+ Agregar otra promoción</button></div>${result}</div></details>`;
+}
 const TABS = [
   {id:'resumen', label:'Resumen'},
   {id:'simulador', label:'¿Cómo se calcula?'},
@@ -990,7 +1098,7 @@ function buildTabbar(){
 }
 function renderAll(){
   const model=compute();
-  renderValidation(model); renderDataProvenance();
+  renderValidation(model); renderDataProvenance(); renderPromotionLab(model);
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig();
   renderCurrencyReviewBanner(model);
@@ -1224,7 +1332,29 @@ function readNumField(t, current, opts={}){
 }
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset.k!==undefined){
+  if(t.dataset.promoRow!==undefined){
+    const index=Number(t.dataset.promoRow), field=t.dataset.promoField, line=promotionDraft.promotions[index];
+    if(!line) return;
+    if(field==='chId'){
+      const d=state.discounts.find(x=>x.ch===t.value&&x.group!=='pricelabs-internal');
+      if(d) promotionDraft.promotions[index]=newPromotionLine(d);
+    } else if(field==='discountId'){
+      const d=state.discounts.find(x=>x.id===t.value&&x.ch===line.chId&&x.group!=='pricelabs-internal');
+      if(d) promotionDraft.promotions[index]=newPromotionLine(d);
+    } else {
+      const limits={pct:{min:0,max:99.999,label:'Probador — descuento'},from:{min:0,max:9999,integer:true,label:'Probador — desde día'},to:{min:0,max:9999,integer:true,label:'Probador — hasta día'},minN:{min:1,max:9999,integer:true,label:'Probador — mínimo de noches'}};
+      const read=readNumField(t,line[field],limits[field]); if(!read.ok) return;
+      if(field==='from'&&read.value>Number(line.to)){showInputError('El día inicial no puede ser mayor que el final.');return;}
+      if(field==='to'&&read.value<Number(line.from)){showInputError('El día final no puede ser menor que el inicial.');return;}
+      line[field]=read.value;
+    }
+    renderPromotionLab(compute());
+  } else if(t.dataset.promoLab!==undefined){
+    const field=t.dataset.promoLab;
+    if(field==='detailChannelId') promotionDraft.detailChannelId=t.value;
+    else { const limits={days:{min:0,max:9999,integer:true,label:'Probador — días'},nights:{min:1,max:9999,integer:true,label:'Probador — noches'},finalPrice:{min:.01,max:1e7,label:'Probador — precio final'}}; const read=readNumField(t,promotionDraft[field],limits[field]); if(!read.ok)return; promotionDraft[field]=read.value; }
+    renderPromotionLab(compute());
+  } else if(t.dataset.k!==undefined){
     const key=t.dataset.k;
     const KEY_OPTS = {
       fixedCost:{min:0,max:1e7,label:'Costo fijo por noche'},
@@ -1398,6 +1528,29 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('click',e=>{
   if(e.target.id==='inputErrorClose'){ clearInputError(); return; }
+  const promoConfig=e.target.closest('[data-promo-config]');
+  if(promoConfig){ goToTab(promoConfig.dataset.promoConfig); return; }
+  if(e.target.id==='promoAddBtn'){
+    const used=new Set(promotionDraft.promotions.map(line=>line.discountId));
+    const channel=promotionDraft.promotions.at(-1)?.chId||promotionDraft.detailChannelId;
+    const next=state.discounts.find(d=>d.group!=='pricelabs-internal'&&d.ch===channel&&!used.has(d.id))||state.discounts.find(d=>d.group!=='pricelabs-internal'&&!used.has(d.id));
+    if(!next){showInputError('Ya agregaste todas las promociones disponibles.');return;}
+    promotionDraft.promotions.push(newPromotionLine(next)); renderPromotionLab(compute()); return;
+  }
+  const promoRemove=e.target.closest('[data-promo-remove]');
+  if(promoRemove){promotionDraft.promotions.splice(Number(promoRemove.dataset.promoRemove),1);renderPromotionLab(compute());return;}
+  const promoApply=e.target.closest('[data-promo-apply]');
+  if(promoApply){
+    const proposal={promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),detailChannelId:promotionDraft.detailChannelId,days:Number(promotionDraft.days),nights:Number(promotionDraft.nights),finalPrice:Number(promotionDraft.finalPrice)};
+    const analysis=analyzePromotionProposal(promotionLabConfig(),proposal), key=promoApply.dataset.promoApply==='margin'?'offsetForMargin':'offsetForCost';
+    if(!analysis.ok||analysis.channelResults.some(row=>!row[key]?.ok)){showInputError(analysis.reason||'No se pudo resolver el Offset.');return;}
+    const lines=analysis.discounts.map(d=>`• ${d.name}: ${Number(d.pct).toFixed(1)}%`).join('\n');
+    const offsets=analysis.channelResults.map(row=>`• ${row.name}: ${formatOffset(row[key].offsetPct)}`).join('\n');
+    if(!confirm(`Vas a aplicar estas promociones:\n\n${lines}\n\nOffsets de Kunas por OTA:\n${offsets}\n\n¿Aplicar a esta unidad?`)) return;
+    for(const d of analysis.discounts){const live=state.discounts.find(x=>x.id===d.id);if(!live)continue;live.on=true;live.pct=d.pct;if(live.kind==='window'){live.from=d.from;live.to=d.to;}if(live.kind==='los'&&!live.lockN)live.minN=d.minN;}
+    for(const row of analysis.channelResults){const live=state.channels.find(c=>c.id===row.chId);if(live)live.offsetPct=row[key].offsetPct;}
+    renderAll(); return;
+  }
   const goto=e.target.closest('[data-goto]');
   if(goto){
     const [tabId, anchorKey] = goto.dataset.goto.split(':');
