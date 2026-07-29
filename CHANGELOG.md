@@ -5,6 +5,21 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.19.0] — Probador de promociones ("Qué poner en Kunas por OTA"), en aislamiento real
+
+**Agregado** — se reintroduce `src/domain/promotion-lab.js` (perdido en la corrección
+urgente de la 0.18.0) como una simulación de solo lectura: para cada canal calcula el
+descuento nativo máximo real (combinando el catálogo vigente sin tocarlo) y el Offset de
+Kunas que lo compensa, y permite probar una o varias promociones propuestas antes de
+activarlas de verdad. Nunca muta la unidad hasta que el usuario confirma con "Aplicar".
+
+**Aislamiento verificado** — a diferencia de un intento previo descartado que además
+reescribía `combineChannel()` (Booking) y reclasificaba `ab_rs` sin autorización, esta
+versión no toca `src/domain/engine.js` ni `src/catalog/discounts.js` en absoluto
+(`git diff` vacío contra la base). `maximumDiscountScenario()`/`compensationOffsetPct()`
+viven como utilidades propias de `promotion-lab.js` que llaman al `combineChannel()`
+existente sin modificarlo. `promotionLabConfig()` omite `manualReviewGates` por completo.
+
 ## [0.18.0] — Corrección urgente: restauración de gates financieros
 
 **Corregido urgentemente** — se restaura el estado verificado en `2fd26e6` después de
