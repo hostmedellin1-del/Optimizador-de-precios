@@ -5,6 +5,13 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.20.1] — Panel de Alertas colapsado por defecto
+
+**Cambiado** — la sección "Alertas" (siempre visible, fuera de la estructura de pestañas)
+pasa de `<section>` a `<details>`/`<summary>`, colapsada por defecto — se despliega con un
+clic. Ningún cambio de lógica: sigue mostrando exactamente los mismos avisos, en el mismo
+lugar, con el mismo comportamiento de "Ver en [pestaña] →".
+
 ## [0.20.0] — Se retira la Verificación de datos financieros; Booking usa sus categorías reales
 
 **Retirado** — se elimina por completo el gate de "Verificación de datos financieros" (5

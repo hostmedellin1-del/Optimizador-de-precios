@@ -21,6 +21,7 @@ test('carga limpia: cero errores de consola, alertas render — Min Price/Base P
   await expect(page.locator('#kFloor')).toHaveText('—');
   await expect(page.locator('#kBase')).toHaveText('—');
   await expect(page.locator('#validationBanner')).toContainText('LM SIN VERIFICAR');
+  await page.locator('#alertsCard summary').click(); // panel colapsado por defecto
   await expect(page.locator('#alertsBox .alert').first()).toBeVisible();
   expect(page.__errors, 'no debe haber errores de consola en carga limpia').toEqual([]);
 });

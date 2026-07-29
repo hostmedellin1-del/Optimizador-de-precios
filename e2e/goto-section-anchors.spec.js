@@ -58,6 +58,7 @@ test('Desde la pestaña Simulador, el bloqueo global explica que se escriba el p
 
 test('Alertas (panel siempre visible arriba, fuera de la estructura de pestañas): sigue visible y usable al cambiar de pestaña, y el "Ver en Resumen →" sin sección específica (ej. tag INVIABLE) conserva el comportamiento de siempre (solo cambia de pestaña, sin inventar un destino que alerts.js no dio)', async ({page}) => {
   await page.goto('/index.html');
+  await page.locator('#alertsCard summary').click(); // panel colapsado por defecto
   // Config por defecto: el piso queda por encima de la base de mercado ->
   // alerts.js (dominio, sin tocar) emite el tag INVIABLE con tab:'resumen'
   // y SIN sección específica — index.html no le inventa una.
