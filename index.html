@@ -650,7 +650,15 @@ function renderChannelPages(model){
     if(!panel) return;
     const wasOpen = panel.querySelector('.discounts-more')?.open; /* innerHTML se reconstruye cada render — sin esto, el <details> se cierra solo con cualquier cambio */
     const chDiscounts = state.discounts.filter(d=>d.ch===c.id);
-    const activeD = chDiscounts.filter(d=>d.on).map(discountRowHTML).join('') || '<div class="hint">ningún descuento activo hoy en este canal</div>';
+    const renderDList = list => {
+      if(c.id!=='booking') return list.map(discountRowHTML).join('');
+      const order=['Premium Programmes','Targeting','Campaign deals','Portfolio deals','Deep deals','Duración de estadía'];
+      return order.map(category=>{
+        const items=list.filter(d=>(d.category||'Otros')===category);
+        return items.length ? `<h3 class="discount-category">${escapeHtml(category)}</h3>${items.map(discountRowHTML).join('')}` : '';
+      }).join('');
+    };
+    const activeD = renderDList(chDiscounts.filter(d=>d.on)) || '<div class="hint">ningún descuento activo hoy en este canal</div>';
     const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
     const avgN = Math.max(1, parseFloat(state.avgNights)||1);
@@ -703,7 +711,7 @@ function renderChannelPages(model){
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
         <div class="chpage-discounts">${activeD}</div>
-        ${restD.length ? `<details class="discounts-more"${wasOpen?' open':''}><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${restD.map(discountRowHTML).join('')}</div></details>` : ''}
+        ${restD.length ? `<details class="discounts-more"${wasOpen?' open':''}><summary>Ver catálogo completo (${restD.length} más, hoy apagados)</summary><div class="chpage-discounts">${renderDList(restD)}</div></details>` : ''}
       </section>`;
   });
 }

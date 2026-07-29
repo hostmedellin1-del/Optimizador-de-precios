@@ -38,17 +38,42 @@ test('Booking — replica el simulador oficial: dos descuentos de 10% dan 19%, n
   assert.equal(50*result.factor,40.5,'USD 50 con dos descuentos secuenciales de 10% debe dar USD 40.50');
 });
 
-test('Booking — Campaign/Limited solo se combina con Genius y puede ser el peor grupo',()=>{
+test('Booking — Deep/Limited es una ruta exclusiva y no arrastra Genius',()=>{
   const discounts=bookingOnly();
   const genius=findDiscount(discounts,'bk_gen'); genius.on=true; genius.pct=10;
   const mobile=findDiscount(discounts,'bk_mob'); mobile.on=true; mobile.pct=20;
-  const limited=findDiscount(discounts,'bk_ltd'); limited.on=true; limited.pct=50;
+  const limited=findDiscount(discounts,'bk_ltd'); limited.on=true; limited.pct=30;
 
   const result=combineChannel(discounts,'booking',10,1);
-  assert.equal(result.factor,0.45,'Genius 10% + Campaign 50% debe ganar sobre Genius + Mobile');
-  assert.ok(result.applied.some(item=>item.name==='Genius (constante)'));
+  assert.equal(result.factor,0.70,'Limited-time 30% es la ruta Deep exclusiva');
+  assert.ok(!result.applied.some(item=>item.name==='Genius (constante)'));
   assert.ok(result.applied.some(item=>item.name==='Limited-time Deal'));
   assert.ok(!result.applied.some(item=>item.name==='Mobile Rate'));
+});
+
+test('Booking — Campaign es Genius + Oferta Escapada y no suma Targeting/Portfolio',()=>{
+  const discounts=bookingOnly();
+  const genius=findDiscount(discounts,'bk_gen'); genius.on=true; genius.pct=10;
+  const campaign=findDiscount(discounts,'bk_esc'); campaign.on=true; campaign.pct=20;
+  const mobile=findDiscount(discounts,'bk_mob'); mobile.on=true; mobile.pct=5;
+  const result=combineChannel(discounts,'booking',10,1);
+  assert.ok(Math.abs(result.factor-0.72)<1e-12,'Genius 10% × Campaign 20% = 28% efectivo');
+  assert.deepEqual(result.applied.map(item=>item.name),['Genius (constante)','Oferta Escapada (Campaign deal)']);
+  assert.ok(result.ignored.some(item=>item.name==='Mobile Rate'));
+});
+
+test('Booking — con Deep, Campaign y Targeting/Portfolio activos gana la ruta más profunda',()=>{
+  const discounts=bookingOnly();
+  const genius=findDiscount(discounts,'bk_gen'); genius.on=true; genius.pct=10;
+  const campaign=findDiscount(discounts,'bk_esc'); campaign.on=true; campaign.pct=20;
+  const limited=findDiscount(discounts,'bk_ltd'); limited.on=true; limited.pct=30;
+  const mobile=findDiscount(discounts,'bk_mob'); mobile.on=true; mobile.pct=5;
+  const portfolio=findDiscount(discounts,'bk_lmd'); portfolio.on=true; portfolio.pct=5; portfolio.from=0; portfolio.to=3;
+  const result=combineChannel(discounts,'booking',1,1);
+  assert.equal(result.factor,0.70);
+  assert.ok(result.applied.some(item=>item.name==='Limited-time Deal'));
+  assert.ok(result.ignored.some(item=>item.name==='Oferta Escapada (Campaign deal)'));
+  assert.ok(result.ignored.some(item=>item.name==='Last-Minute Deal'));
 });
 
 test('maximumDiscountScenario encuentra el día y noches donde vive el descuento máximo',()=>{

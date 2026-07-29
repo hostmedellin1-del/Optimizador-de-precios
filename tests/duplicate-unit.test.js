@@ -54,8 +54,8 @@ test('buildDuplicateUnit copia exactamente la configuración de 4 canales, descu
   assert.equal(copy.marketBase, origin.marketBase);
   assert.equal(copy.avgNights, origin.avgNights);
   assert.deepEqual(copy.channels, origin.channels, 'canales: comisión, banco, Offset, aseo y settlementCurrency se copian tal cual');
-  assert.equal(copy.discounts.length, 37);
-  assert.deepEqual(copy.discounts.map(({verified, ...discount}) => discount), origin.discounts.map(({verified, ...discount}) => discount), 'las 37 configuraciones de descuento se conservan exactamente');
+  assert.equal(copy.discounts.length, 38);
+  assert.deepEqual(copy.discounts.map(({verified, ...discount}) => discount), origin.discounts.map(({verified, ...discount}) => discount), 'las 38 configuraciones de descuento se conservan exactamente');
   assert.deepEqual(copy.ceilings, origin.ceilings);
   assert.deepEqual({...copy.lmConfig, verified:undefined}, {...origin.lmConfig, verified:undefined});
 

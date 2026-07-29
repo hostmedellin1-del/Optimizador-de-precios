@@ -91,31 +91,44 @@ export function combineChannel(discounts, chId, daysOut, nights){
     ds.filter(d=>d.group==='stackable-post').forEach(d=>add(d,'descuento no reembolsable del listing: se aplica DESPUÉS de la promo ganadora, no compite con ella'));
   }
   else if(chId==='booking'){
+    /* Booking no suma todas las casillas activas. PriceAdvisor agrupa las
+       promociones en rutas que Booking realmente ofrece al mismo huésped:
+       Deep (Limited-time), Campaign (Genius + Campaign + LOS) y
+       Targeting/Portfolio (Genius + Mobile/Country + Portfolio + LOS).
+       Se calcula cada ruta y se conserva la que deja el menor factor. */
     const limited = ds.find(d=>d.group==='reactive-limited');
+    const genius = ds.find(d=>d.group==='proactive');
     const country = ds.find(d=>d.group==='proactive-country');
     const mobile = ds.find(d=>d.group==='proactive-mobile');
-    const genius = ds.find(d=>d.group==='proactive');
-    if(genius) add(genius,'Genius combina con todo (categoría propia)');
-    if(country) add(country,'Country Rate activa');
-    if(mobile){
-      if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
-      else add(mobile,'apila sobre Genius (categorías distintas)');
-    }
-    /* Descuento por duración de estadía: es tu tarifa (Rates & Availability → Discounts),
-       no un "deal" que compite por categoría — se apila con Genius/Mobile/reactivos.
-       Si varios umbrales califican a la vez, gana el más profundo (igual que Airbnb LOS). */
-    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights));
-    if(losCands.length){
-      losCands.sort((a,b)=>(b.minN||0)-(a.minN||0));
-      const winLos=losCands[0];
-      add(winLos,'tarifa por duración de estadía que configuraste — se apila con Genius/Mobile/deals');
-      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:'ya aplica un umbral de duración más profundo ('+winLos.name+')'}));
-    }
-    const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
-      .sort((a,b)=>pct(b.pct)-pct(a.pct));
-    if(reactives.length){
-      add(reactives[0],'único deal reactivo aplicado (misma categoría no combina)');
-      reactives.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo un deal reactivo aplica; ganó '+reactives[0].name}));
+    const campaign = ds.filter(d=>d.group==='campaign' && windowApplies(d,daysOut)).sort((a,b)=>pct(b.pct)-pct(a.pct))[0];
+    const portfolio = ds.filter(d=>d.group==='reactive' && windowApplies(d,daysOut)).sort((a,b)=>pct(b.pct)-pct(a.pct));
+    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights)).sort((a,b)=>(b.minN||0)-(a.minN||0));
+    const winLos = losCands[0];
+    const routes=[];
+    const route = (name, items) => {
+      if(!items.length) return;
+      const clean = items.filter(Boolean);
+      let rf=1;
+      const rapplied=[];
+      clean.forEach(d=>{rf*=(1-pct(d.pct)/100);rapplied.push(d);});
+      routes.push({name, factor:rf, items:rapplied});
+    };
+    route('Deep deals', limited ? [limited] : []);
+    route('Campaign deals', [genius, campaign, winLos].filter(Boolean));
+    const targetItems=[genius];
+    if(country) targetItems.push(country);
+    else if(mobile) targetItems.push(mobile); // Mobile y Country son excluyentes
+    if(winLos) targetItems.push(winLos);
+    if(portfolio[0]) targetItems.push(portfolio[0]);
+    route('Targeting/Portfolio', targetItems.filter(Boolean));
+    if(routes.length){
+      const winner=routes.reduce((best,current)=>current.factor<best.factor?current:best);
+      const winnerIds=new Set(winner.items.map(d=>d.id));
+      winner.items.forEach(d=>add(d,`ruta Booking ${winner.name}`));
+      ds.filter(d=>!winnerIds.has(d.id)).forEach(d=>ignored.push({name:d.name,reason:`no entra en la ruta ganadora ${winner.name}; Booking elige una ruta compatible por huésped`}));
+      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:`ya aplica un umbral de duración más profundo (${winLos.name})`}));
+      if(country && mobile) ignored.push({name:mobile.name,reason:'Mobile no combina con Country Rate'});
+      if(limited && mobile) ignored.push({name:mobile.name,reason:'Mobile no combina con Limited-time'});
     }
   }
   else if(chId==='expedia'){

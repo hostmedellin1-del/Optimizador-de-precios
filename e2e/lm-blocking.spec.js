@@ -8,7 +8,7 @@
    2. Verificar el LM (o cambiar a un modo configurable y marcarlo verificado)
       desbloquea esos numeros.
    3. La Matriz nunca muestra "RENTABLE EN TODOS" sostenido solo por un LM sin
-      verificar — el tag cambia, no se le agrega solo una advertencia.
+      verificar — el tag cambia, no se le agrega solo una advertencia. */
 
 import {test, expect} from '@playwright/test';
 
@@ -42,21 +42,15 @@ test('marcar el LM automático como "verificado" NO desbloquea — sigue siendo 
 
 test('cambiar a un modo configurable (plano) y marcarlo verificado SÍ desbloquea Min Price/Base Price', async ({page}) => {
   await page.goto('/index.html');
-  /* BLOQUEANTE 2 (auditoria externa, ronda 4): con los costos de fábrica
-     (32/22, nunca tocados) el gate de costos por sí solo mantendría Min
-     Price/Base Price bloqueados aunque LM/datos de negocio ya estén
-     resueltos — este test aísla específicamente el mecanismo de LM, así
-     que se cargan costos reales (no el ejemplo) primero. */
   const fc = page.locator('[data-k="fixedCost"]');
   await fc.click(); await fc.fill('40'); await fc.dispatchEvent('change');
   const vc = page.locator('[data-k="varCost"]');
   await vc.click(); await vc.fill('25'); await vc.dispatchEvent('change');
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lmf="flat.on"]').check();
-  await page.locator('[data-lmf="flat.pct"]').fill('20');
-  await page.locator('[data-lmf="flat.pct"]').dispatchEvent('change');
+  const flat = page.locator('[data-lmf="flat.pct"]');
+  await flat.click(); await flat.fill('20'); await flat.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
-
   await expect(page.locator('#validationBanner')).not.toContainText('LM SIN VERIFICAR');
   await expect(page.locator('#kFloor')).not.toHaveText('—', {timeout: 3000});
   await expect(page.locator('#kBase')).not.toHaveText('—');

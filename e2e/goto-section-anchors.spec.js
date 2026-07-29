@@ -46,23 +46,14 @@ test('Ir a Last-Minute de PriceLabs: tras visitar otra pestaña (Airbnb) y volve
   await expect(page.locator('#lmModeSelect')).toBeFocused();
 });
 
-test('Desde la pestaña Simulador, el botón abre la pestaña del canal simulado', async ({page}) => {
+test('Desde la pestaña Simulador, el bloqueo global explica que se escriba el precio final manualmente', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="simulador"]').click();
   await expect(page.locator('.tab-panel[data-tab="simulador"]')).toHaveClass(/active/);
   await expect(page.locator('.tab-panel[data-tab="resumen"]')).not.toHaveClass(/active/);
 
-  // Base Price sigue bloqueado por defecto (LM sin verificar) y no se
-  // escribió ningún precio a mano -> el mensaje bloqueado del Simulador,
-  // con su botón hacia el canal simulado, debe estar visible AQUÍ MISMO, en la
-  // pestaña Simulador — la prueba real de "funciona desde otra pestaña".
-  const btn = page.locator('#simResult button[data-goto="ch-airbnb"]');
-  await expect(btn).toBeVisible();
-
-  await btn.click();
-
-  await expect(page.locator('.tab-panel[data-tab="ch-airbnb"]')).toHaveClass(/active/);
-  await expect(page.locator('.tab-panel[data-tab="simulador"]')).not.toHaveClass(/active/);
+  await expect(page.locator('#simResult')).toContainText('Escribe un precio FINAL de PriceLabs a mano');
+  await expect(page.locator('#simResult button[data-goto]')).toHaveCount(0);
 });
 
 test('Alertas (panel siempre visible arriba, fuera de la estructura de pestañas): sigue visible y usable al cambiar de pestaña, y el "Ver en Resumen →" sin sección específica (ej. tag INVIABLE) conserva el comportamiento de siempre (solo cambia de pestaña, sin inventar un destino que alerts.js no dio)', async ({page}) => {
