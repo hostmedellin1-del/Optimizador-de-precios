@@ -5,6 +5,27 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.20.0] — Se retira la Verificación de datos financieros; Booking usa sus categorías reales
+
+**Retirado** — se elimina por completo el gate de "Verificación de datos financieros" (5
+ítems: comisión bancaria por canal, Genius+Mobile de Booking, mezcla VIP de Expedia,
+no-reembolsable y Top Rated Guest de Airbnb) a pedido explícito de Dani. `src/domain/verification.js`
+se elimina; `evaluateRecommendationReadiness()` queda simplificada (siempre `ready:true`).
+Los otros 4 gates (Last-Minute sin verificar, costo sin confirmar, moneda distinta de USD,
+precio LM fijo) **no se tocan** — Min Price/Base Price siguen bloqueados por esos motivos
+exactamente igual que antes.
+
+**Corregido/Agregado** — el catálogo de descuentos de Booking se reorganiza según las 5
+categorías reales que usa el simulador oficial de Booking.com (Premium Programmes,
+Targeting, Campaign deals, Portfolio deals, Deep deals), evidencia aportada por Dani.
+`combineChannel()` para Booking pasa a evaluar 3 rutas mutuamente excluyentes (Deep deal /
+Campaign deal / Targeting+Portfolio) y protege el Piso contra la de mayor descuento —
+corrige que "Limited-time Deal" combinaba con Genius quedando por debajo del peor caso
+real (Booking documenta que Limited-time no combina con nada). Se agrega el descuento
+"Oferta Escapada (Campaign deal)", que no existía en el catálogo. La exclusión
+Mobile-vs-Country dentro de la ruta Targeting/Portfolio no se modifica — sigue pendiente
+de verificación con evidencia propia de la cuenta de Dani.
+
 ## [0.19.0] — Probador de promociones ("Qué poner en Kunas por OTA"), en aislamiento real
 
 **Agregado** — se reintroduce `src/domain/promotion-lab.js` (perdido en la corrección
