@@ -73,19 +73,16 @@ XSS (verifica que no se ejecuta), y la matriz. Para cambios que el E2E no
 cubre todavía, corre esto a mano en un navegador real:
 
 1. **Carga limpia**: abre la app, confirma cero errores en consola.
-2. **KPIs por defecto — SÍ deben mostrar "—"**: una unidad nueva trae costos de ejemplo,
-   datos financieros pendientes y el contrato de **Min Price final** sin confirmar. Min
-   Price se bloquea hasta confirmar que PriceLabs lo publica como piso final; Base se
-   bloquea además si Last-Minute sigue sin verificar. Esto es correcto, no un bug.
-3. **Contrato de Min Price final**: con costos y datos financieros reales ya resueltos,
-   activa la confirmación "Min Price es el precio final que muestra PriceLabs". Comprueba
-   que Min Price se habilita aunque LM siga sin verificar; Base debe continuar bloqueado
-   hasta verificar LM. En el Simulador escribe un precio final de PriceLabs y confirma que
-   no aparece una segunda línea de descuento LM.
-4. **Alertas**: pestaña Comparación muestra al menos un veredicto por ventana;
+2. **KPIs por defecto — SÍ deben mostrar "—" (ronda 2)**: una unidad nueva usa LM
+   modo automático sin verificar → Min Price/Base Price arrancan en "—" con un
+   aviso "LM SIN VERIFICAR" que explica qué confirmar y dónde. Esto es
+   correcto, no un bug. Para ver números: en "Last-Minute de PriceLabs" cambia
+   el modo a uno configurable (plano/gradual/precio fijo/tramos) y marca
+   "Confirmé este modo directamente en PriceLabs".
+3. **Alertas**: pestaña Comparación muestra al menos un veredicto por ventana;
    ninguna alerta rota (texto `undefined`/`NaN`); ninguna fila dice "RENTABLE EN
    TODOS" mientras el LM siga sin verificar.
-5. **Simulador**: cambia canal/días/noches, confirma que el desglose
+4. **Simulador**: cambia canal/días/noches, confirma que el desglose
    paso-a-paso se actualiza y que Margen/Markup muestran números distintos.
 5. **Editar un descuento**: activa/desactiva un descuento, cambia su %, confirma
    que KPIs y alertas se recalculan sin recargar la página.

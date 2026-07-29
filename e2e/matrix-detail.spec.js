@@ -8,19 +8,8 @@
    cualquier número al azar). */
 import {test, expect} from '@playwright/test';
 
-async function openStrategy(page){
-  const strategy = page.locator('#strategySection');
-  if(!(await strategy.getAttribute('open'))) await strategy.locator('summary').click();
-}
-
-async function openAdvanced(page){
-  const advanced = page.locator('#advancedNav');
-  if(!(await advanced.getAttribute('open'))) await advanced.locator('summary').click();
-}
-
 test('Techos por ventana: se editan en Resumen con el mismo control y la Matriz conserva su valor sin editor', async ({page}) => {
   await page.goto('/index.html');
-  await openStrategy(page);
 
   const ceiling = page.locator('#ceilingsSection [data-ceil="w0"]');
   await expect(ceiling).toBeVisible();
@@ -29,7 +18,6 @@ test('Techos por ventana: se editan en Resumen con el mismo control y la Matriz 
   await ceiling.dispatchEvent('change');
   await expect(page.locator('#ceilingsSection [data-ceil="w0"]')).toHaveValue('41');
 
-  await openAdvanced(page);
   await page.locator('[data-tabbtn="comparacion"]').click();
   await expect(page.locator('#matrixBody [data-ceil]')).toHaveCount(0);
   await expect(page.locator('#matrixBody tr').first().locator('td').nth(1)).toHaveText('41%');
@@ -37,7 +25,6 @@ test('Techos por ventana: se editan en Resumen con el mismo control y la Matriz 
 
 test('Matriz: el detalle de cada ventana muestra día/noches reales, nunca "undefined", y coincide con el canal de peor payout', async ({page}) => {
   await page.goto('/index.html');
-  await openAdvanced(page);
   await page.locator('[data-tabbtn="comparacion"]').click();
 
   const rows = page.locator('#matrixBody tr');

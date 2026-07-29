@@ -5,82 +5,15 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
-## [0.23.0] — Flujo diario simplificado y corrección de ajuste PriceLabs
+## [0.18.0] — Corrección urgente: restauración de gates financieros
 
-**Corregido** — un ajuste interno de PriceLabs podía conservarse como `ab_rs` y sumarse
-como si fuera una promoción de Airbnb. Eso inflaba el Min Price: por ejemplo, larga
-estadía 25% + ajuste interno 15% convertía un costo de USD 53 en un mínimo cercano a
-USD 84. Ahora ese dato se conserva solo para migrar unidades antiguas, pero nunca entra
-en el descuento OTA ni en el Offset recomendado.
-
-**Simplificado** — la sección principal muestra abierta la decisión diaria: Min Price
-común de PriceLabs y Offset recomendado por OTA. Los ajustes internos de PriceLabs se
-explican como parte del precio final y no vuelven a descontarse.
-
-## [0.22.0] — Offset de compensación visible por OTA
-
-**Instrucción directa** — cada tarjeta del Simulador de descuento máximo muestra ahora el
-**Offset de compensación en Kunas**: el porcentaje absoluto que recupera el precio común de
-PriceLabs después del peor descuento compatible y las comisiones de esa OTA. También explica
-cuántos puntos subir o bajar frente al Offset ya configurado. No reemplaza el Min Price ni
-incluye costos, margen o aseo.
-
-**Airbnb confirmado** — se documenta y prueba el orden oficial de una sola promoción
-principal por noche: anuncio nuevo → personalizada → duración → anticipada → último minuto.
-
-## [0.21.0] — Simulador de descuento máximo por OTA
-
-**Más simple** — la pantalla de promociones ahora muestra primero, para Airbnb, Booking,
-Expedia y Directo, el mayor descuento efectivo que podría recibir un huésped y la
-combinación que lo produce. La edición detallada de promociones y Offsets queda disponible
-en una sección opcional.
-
-**Booking corregido** — Mobile y Country se tratan como grupos de huésped alternativos,
-no como descuentos acumulables. Genius puede acompañar el grupo elegible y un Portfolio
-deal; Campaign/Limited combina solo con Genius. El Piso usa el grupo que recibe el precio
-más bajo, igual que el simulador de Booking, y calcula los descuentos de forma compuesta
-(dos descuentos de 10% equivalen a 19%, no 20%).
-
-## [0.20.0] — Flujo personal sin verificaciones manuales
-
-**Simplificado** — se retiraron los bloqueos y formularios de verificación de costos,
-Last-Minute, datos financieros y contrato de Min Price. La aplicación calcula con los
-valores que cargas y el simulador abre directamente con el Min Price calculado.
-
-**Se conserva** — validación de números, USD como única moneda y los avisos que provienen
-de una condición matemática real, como un precio Last-Minute fijo que impide calcular
-Base Price. El desglose de costos detallados ahora se activa como elección de modelo de
-costo, no como certificación.
-
-## [0.19.0] — Resumen orientado al Min Price diario
-
-**Simplificado** — el Resumen prioriza el flujo que se usa a diario: costos, estadía
-promedio, costo por noche y **Min Price → PriceLabs**. Base Price, margen, Last-Minute,
-techos y análisis por ventana siguen disponibles sin cambios dentro de **Estrategia de
-PriceLabs**, plegada inicialmente.
-
-**Acceso seguro** — los enlaces de avisos hacia Last-Minute despliegan esa sección antes de
-hacer scroll y foco. No se modificó el motor financiero, las configuraciones guardadas ni
-los bloqueos; solo la presentación y su guía de uso.
-
-## [0.18.0] — Min Price como precio final de PriceLabs
-
-**Corregido** — el motor dejaba que el contrato de Min Price y el del simulador trataran
-un precio ya final de PriceLabs como si aún faltara descontarle Last-Minute. Ahora
-`quoteScenario()` distingue explícitamente `price_labs_final`: no vuelve a aplicar
-temporada, demanda, ocupación ni LM; sí aplica Offset, descuentos OTA, aseo y comisiones.
-El simulador usa siempre este contrato y el botón de atajo carga el Min Price, nunca Base.
-
-**Piso** — `compute().floor` calcula el mínimo final global contra los 4 canales y sus
-escenarios OTA/duración. La curva LM no infla ese número, porque ocurre dentro de
-PriceLabs antes del precio final; un `fixed_price` capaz de saltarse el Piso sigue siendo
-un bypass bloqueante. Base Price conserva su análisis de LM para su función distinta.
-
-**Seguridad de uso** — las unidades existentes empiezan con la confirmación del contrato
-del Piso en falso: hay que confirmar manualmente que PriceLabs respeta ese campo como
-precio final mínimo. Costos, moneda y hechos financieros siguen bloqueando ambos números;
-LM solo bloquea Base. Se añadieron pruebas de no doble descuento, propiedad exhaustiva de
-cobertura por OTA/día/noche y persistencia segura del nuevo campo.
+**Corregido urgentemente** — se restaura el estado verificado en `2fd26e6` después de
+detectar que commits posteriores habían desactivado sin revisión los gates de seguridad
+para Last-Minute, costos, datos financieros y el contrato de Min Price final. También se
+restauran las pruebas E2E que protegían esos bloqueos y se corrigen dos navegaciones de
+pestaña faltantes en los tests de comisión bancaria de Directo y del acceso bloqueado al
+Simulador. Esta corrección no reintroduce el probador de promociones eliminado en la
+ronda posterior; se evaluará por separado.
 
 ## [0.17.0] — Guía de uso HTML accesible desde la aplicación
 

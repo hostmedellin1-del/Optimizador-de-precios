@@ -139,17 +139,32 @@ export function buildAlerts(config, model){
       A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(config.margin))} es ${f$(model.base, config.currency)}, pero el mercado paga ~${f$(mb, config.currency)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso real (${peorCh}, incluye LM y aseo): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
     }
   }
-  /* En uso personal los valores cargados son la decisión vigente. El motor
-     conserva el comportamiento estricto como default para sus consumidores
-     explícitos y para sus pruebas históricas. */
+  /* Bloqueante CRITICO (revision externa, ronda 2): "sin conflictos" es, en
+     espiritu, el mismo tipo de afirmacion confiada que "RENTABLE EN TODOS" en
+     la matriz — si no salio ninguna alerta arriba pero el LM configurado no es
+     verificable, ese "sin problemas" tambien depende de una proyeccion sin
+     confirmar. No se agrega como advertencia sobre el mismo tag 'ok' (mismo
+     error que se corrigio en la matriz): se reemplaza el tag/nivel entero. */
   if(!A.length){
     const unready = unreadyChannels(model.readiness, channels);
-    if(config.manualReviewGates!==false && isLmBlocked(config.lmConfig)){
-      A.push({lvl:'warn',tag:'LM SIN VERIFICAR',tab:'resumen',msg:'No se detectó ningún conflicto, pero este chequeo depende de Last-Minute sin confirmar.'});
-    } else if(config.manualReviewGates!==false && model.costBlocked){
-      A.push({lvl:'warn',tag:'COSTOS SIN CONFIRMAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero depende del costo actual (${f$(model.cost, config.currency)}) sin confirmar.`});
-    } else if(config.manualReviewGates!==false && unready.length){
-      A.push({lvl:'warn',tag:'DATOS SIN VERIFICAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero ${unready.map(c=>c.name).join(', ')} tiene datos financieros sin confirmar.`});
+    if(isLmBlocked(config.lmConfig)){
+      A.push({lvl:'warn',tag:'LM SIN VERIFICAR',tab:'resumen',msg:'No se detectó ningún conflicto, pero este chequeo depende de Last-Minute que todavía no está verificado (modo automático, proyección no verificable matemáticamente, o un modo configurado sin marcar como confirmado) — confírmalo en Resumen → "Last-Minute de PriceLabs" antes de tratar esto como "sin problemas".'});
+    } else if(model.costBlocked){
+      /* BLOQUEANTE 2 (auditoria externa, ronda 4): mismo espiritu que LM sin
+         verificar — "sin conflictos" tambien depende de que el costo contra
+         el que se compara (model.cost) sea un dato real confirmado, no el
+         ejemplo de fabrica ni un desglose detallado sin confirmar. */
+      A.push({lvl:'warn',tag:'COSTOS SIN CONFIRMAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero este chequeo depende de un costo (${f$(model.cost, config.currency)}) que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar esto como "sin problemas".`});
+    } else if(unready.length){
+      /* Fase 5 (revision externa — "datos financieros verificados"): mismo
+         espiritu que el bloqueante CRITICO de LM (arriba) — "sin conflictos"
+         tambien depende de datos de negocio (comision bancaria, Offset
+         aislado en Kunas, mezcla VIP de Expedia, Genius+Mobile de Booking,
+         no-reembolsable de Airbnb) que ningun canal afectado tiene todavia
+         confirmados. unreadyChannels() (src/domain/readiness.js) es la unica
+         fuente que decide esto — la misma que usa engine.js para el gate
+         global de Piso/Base (revision externa, P1). */
+      A.push({lvl:'warn',tag:'DATOS SIN VERIFICAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero ${unready.map(c=>c.name).join(', ')} depende${unready.length===1?'':'n'} de datos financieros sin confirmar (${unready.map(c=>model.readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}) — confírmalos en la pestaña del canal correspondiente antes de tratar esto como "sin problemas".`});
     } else {
       A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
     }

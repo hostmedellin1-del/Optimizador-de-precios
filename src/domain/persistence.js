@@ -356,11 +356,6 @@ export function normalizeUnit(raw){
     warnings.push(`usdManualReviewPending: el archivo decía "false", pero la bitácora (usdManualReviewLog) registra una copia sin convertir (copy_created) sin una confirmación de revisión manual (review_confirmed) válida y posterior — se corrigió a "true" (unidad bloqueada) por seguridad. Ninguna recomendación financiera puede depender de un booleano suelto que contradice su propio historial.`);
   }
   const usdManualReviewPending = reviewState.pending;
-  /* Contrato del Min Price (jul 2026): una unidad vieja no puede heredar la
-     confirmación por ausencia. Hasta que Dani confirme que el mínimo de
-     PriceLabs es un piso FINAL en esa cuenta/listing, queda false y el motor
-     no presenta el Piso como recomendación. */
-  const priceLabsMinPriceContractConfirmed = boolField(raw, 'priceLabsMinPriceContractConfirmed', false);
 
   /* Simplificacion a USD unico (revision externa): esta version SOLO opera
      en USD. Una unidad NUEVA (sin `raw.currency`, o con 'USD' exacto) se
@@ -388,7 +383,6 @@ export function normalizeUnit(raw){
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
-    priceLabsMinPriceContractConfirmed,
     usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
@@ -444,7 +438,6 @@ export function buildDuplicateUnit(state, newName){
       },
       verification:defaultVerification(),
       costBreakdownConfirmed:false,
-      priceLabsMinPriceContractConfirmed:false,
       costBreakdown:defaultCostBreakdown(),
       fixedCost:EXAMPLE_COST_DEFAULTS.fixedCost,
       varCost:EXAMPLE_COST_DEFAULTS.varCost,

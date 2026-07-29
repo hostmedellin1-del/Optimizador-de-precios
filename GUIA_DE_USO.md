@@ -11,14 +11,12 @@ en <https://hostmedellin1-del.github.io/Optimizador-de-precios/>.
 
 ## 1. Qué es y qué no es
 
-La herramienta toma el precio **final** que PriceLabs muestra para una noche y estima
-cuánto queda después de Offset, descuentos nativos, comisión OTA y comisión
-bancaria/pasarela por canal. No vuelve a descontar temporada, demanda, ocupación ni
-Last-Minute que PriceLabs ya haya aplicado dentro de ese precio. Con esa configuración calcula:
+La herramienta toma el precio por noche que pondrías en PriceLabs y estima cuánto queda
+después de descuentos nativos, comisión OTA, comisión bancaria/pasarela, Last-Minute y
+Offset por canal. Con esa configuración calcula:
 
-- **Min Price → PriceLabs**: el precio mínimo final que debes configurar en PriceLabs para
-  que, incluso después de las reducciones que aún aplican por canal, cubra el costo en el
-  escenario más exigente.
+- **Min Price → PriceLabs**: el mínimo que debería cubrir el costo incluso en el escenario
+  más exigente que encuentre entre los canales.
 - **Base Price → PriceLabs**: una referencia para que el precio base alcance el neto
   objetivo con la configuración real cargada.
 - **Offset**: ajuste específico por canal que se aplica después del precio de PriceLabs.
@@ -31,8 +29,11 @@ no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal
 1. Abre la URL publicada.
 2. En la barra superior escribe el nombre en **Unidad (ej. Alcázar 902)**.
 3. Pulsa **Guardar** para crear la unidad en este navegador.
-4. Verás un Min Price calculado con los valores cargados. Reemplaza los valores de ejemplo
-   por los de tu unidad antes de tomar una decisión de precio.
+4. Al principio verás `—` en **Min Price → PriceLabs** y **Base Price → PriceLabs**. Es
+   normal y seguro: una unidad nueva trae costos de ejemplo, Last-Minute sin confirmar y
+   datos financieros sin verificar.
+5. No copies esos valores como recomendaciones hasta completar los tres bloqueos de la
+   sección 4.
 
 La app guarda unidades solo en el almacenamiento local de ese navegador. Antes de empezar
 con datos reales, usa **Exportar todo** y guarda el archivo descargado fuera del navegador.
@@ -45,25 +46,22 @@ Este es el orden recomendado. Aunque hay alrededor de 74 campos configurables en
 costos, descuentos y canales, no hace falta llenar todo a la vez: completa primero lo que
 realmente usa cada unidad.
 
-1. En **Precio mínimo → Costos por noche**, ingresa **Fijos** y **Variables**, o abre
+1. En **Resumen → Costos por noche**, ingresa **Fijos** y **Variables**, o abre
    **Calcular a partir de costos detallados**.
-2. Si usas el desglose, llena los costos y activa **Usar estos costos detallados para
-   calcular**. Esa opción reemplaza Fijos/Variables; no es una verificación ni bloquea nada.
-3. Completa **Estadía promedio (noches)**. Es lo único adicional del flujo diario que queda
-   visible junto a los costos y Min Price.
-4. Si vas a definir estrategia de precios, abre **Estrategia de PriceLabs**. Allí están
-   **Margen objetivo total %**, **Ventana de reserva del mercado (días, mediana)** y
-   **Base que recomienda PriceLabs / mercado**.
-5. En esa misma sección configura **Last-Minute de PriceLabs** con el modo que realmente usa
-   esa unidad. La herramienta aplica el modo y los valores que tú escribas.
-6. Abre **Configuración avanzada** cuando necesites revisar **Airbnb**, **Booking.com**,
-   **Expedia** o **Directo**. Allí están las comisiones, comisión bancaria/pasarela,
-   Offset y descuentos de cada canal.
-7. Revisa **Techo total por ventana** dentro de **Estrategia de PriceLabs**. Es el máximo
-   descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo
-   Last-Minute automático.
-8. Revisa Min Price y, si usas estrategia, Base Price, Offset y Diagnóstico completo antes de copiar
-   una configuración a PriceLabs.
+2. Si usas el desglose, llena los costos reales y marca **Revisé estos costos reales en
+   USD, incluidos los valores en cero.** Sin esa confirmación, el desglose no alimenta las
+   recomendaciones.
+3. Completa **Margen objetivo total %**, **Ventana de reserva del mercado (días, mediana)**,
+   **Estadía promedio (noches)** y **Base que recomienda PriceLabs / mercado**.
+4. Configura **Last-Minute de PriceLabs** con el modo que realmente usa esa unidad y marca
+   **Confirmé este modo directamente en PriceLabs**.
+5. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
+   las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones
+   aplicables con fuente y fecha para cada canal.
+7. Revisa **Techo total por ventana** en Resumen. Es el máximo descuento total que estás
+   dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.
+8. Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación
+   antes de copiar una configuración a PriceLabs.
 
 ### Duplicar una unidad parecida
 
@@ -72,23 +70,63 @@ realmente usa cada unidad.
 3. La copia conserva la **configuración operativa**: canales (incluidos comisión, banco,
    Offset y aseo), los 37 descuentos con sus porcentajes/ventanas, techos y parámetros de
    Last-Minute.
-4. La copia mantiene los valores operativos. Revisa sus costos, descuentos, comisiones y LM
-   para decidir si realmente aplican a la nueva unidad.
+4. La copia **no** conserva confirmaciones: Verificación de datos financieros vuelve a
+   **No verificado**, Last-Minute queda sin confirmar, los descuentos quedan sin verificar
+   y los costos reales/desglose confirmado se reinician al ejemplo. Por eso Min Price y
+   Base Price comienzan bloqueados.
+5. Revisa sus costos, LM y datos financieros propios antes de usar una recomendación.
 
 Duplicar nunca modifica la unidad original. Tampoco permite duplicar otra copia USD que
 esté pendiente de revisión manual.
 
-## 4. Cómo usar los resultados
+## 4. Cómo desbloquear recomendaciones
 
-La app calcula con los números que tú ingresas; no pide estados de “verificado” ni bloquea
-el Min Price por una casilla pendiente. Por eso el cuidado ocurre antes de escribirlos:
-completa costos, comisiones, Offset, descuentos y la estrategia Last-Minute que decidiste
-usar para esa unidad.
+Los avisos rojos no son errores técnicos: previenen que una simulación se presente como
+una recomendación real. Resuélvelos en este orden.
 
-El **Min Price** es el precio final mínimo de PriceLabs. No vuelve a descontar temporada,
-demanda, ocupación ni LM que PriceLabs ya hubiera aplicado; sí protege contra Offset de
-Kunas, descuentos OTA, comisiones y costos. Si eliges un precio fijo Last-Minute, revisa
-que no quede por debajo del Min Price.
+### A. Costos sin confirmar
+
+- **EJEMPLO**: los valores de fábrica (Fijos 32 y Variables 22) no son costos reales.
+  Reemplázalos por los de la unidad, o usa el desglose detallado y confirma la casilla.
+- **COSTOS SIN CONFIRMAR**: editaste una línea del desglose, pero no confirmaste que está
+  revisado. Marca la casilla de revisión solo después de comprobar todos los valores,
+  incluso los ceros.
+
+Cada edición posterior del desglose invalida la confirmación; vuelve a revisarlo y marca
+la casilla de nuevo.
+
+### B. LM SIN VERIFICAR
+
+En **Last-Minute de PriceLabs**, el modo predeterminado es **Automático (PriceLabs decide,
+no verificable matemáticamente)**. No basta con asumir que el descuento será un porcentaje
+fijo.
+
+En PriceLabs confirma qué usa esa unidad y elige aquí el equivalente:
+
+- **Descuento plano (% fijo entre dos días)**.
+- **Descuento gradual (decae día a día hasta 0)**.
+- **Precio Last-Minute fijo**.
+- **Tramos personalizados**.
+
+Después marca **Confirmé este modo directamente en PriceLabs**. Si usas el modo
+Automático, la app no puede verificar matemáticamente una curva que PriceLabs decide por
+día y las recomendaciones permanecen bloqueadas por diseño.
+
+### C. DATO FINANCIERO SIN VERIFICAR
+
+En la pestaña de cada canal, las verificaciones aplicables tienen estado, fuente, fecha y
+nota.
+
+- **No verificado**: falta comprobarlo; bloquea la recomendación afectada.
+- **Verificado**: lo confirmaste en extranet, factura, soporte u otra fuente real.
+- **No aplica**: confirmaste que ese dato no corresponde a esa unidad. No significa
+  “no lo sé”.
+
+Los puntos que aparecen incluyen comisión bancaria/pasarela por canal, Genius y Mobile
+Rate de Booking, mezcla VIP de Expedia, y no reembolsable y Top Rated Guest de Airbnb. El
+Offset se configura manualmente por canal: no hay distribución automática que verificar.
+Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales
+de PriceLabs.
 
 ### Caso excepcional: revisión de moneda
 
@@ -97,41 +135,28 @@ MANUAL**. No hay conversión automática. Puedes corregir los datos manualmente 
 copia en USD y revisar cada valor antes de pulsar **Ya revisé manualmente todos los valores
 en USD →**. Hasta entonces, los números quedan bloqueados.
 
-## 5. Para qué sirve cada sección
+## 5. Para qué sirve cada pestaña
 
-### Precio mínimo
+### Resumen
 
-Es la pantalla de decisión diaria. Primero verás **Lo que debes configurar**: el
-**Costo por noche** y el **Min Price → PriceLabs**. Copia ese Min Price en PriceLabs.
-Los avisos técnicos, el respaldo, los costos detallados y la edición avanzada quedan
-plegados para no distraerte. La sección **Qué poner en Kunas por OTA** muestra, por OTA, el grupo de
-huésped que podría recibir el mayor descuento real; combina solo promociones compatibles.
-Usa **Configurar [OTA]** si quieres revisar una estrategia o cambiar sus
-promociones o Offset. Cada tarjeta también muestra el **Offset de compensación en Kunas**:
-el valor que compensa el peor descuento y las comisiones de ese canal, sin sumar porcentajes
-de forma incorrecta. Los ajustes internos de PriceLabs no vuelven a descontarse. No incluye
-margen, costo ni aseo; el Min Price se encarga de protegerlos.
-
-### Configuración avanzada
-
-Agrupa las herramientas que no se usan todos los días: el ejemplo de reserva, la
-configuración de cada OTA y el diagnóstico completo. Al abrir una de esas secciones puedes
-revisar comisiones, descuentos, Offset, Last-Minute y techos sin llenar la pantalla diaria.
+Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos.
+Modifica aquí **Techo total por ventana**; en Comparación solo se muestra.
 
 ### ¿Cómo se calcula?
 
-Es el simulador de una reserva concreta. Ingresa **Precio FINAL mostrado por PriceLabs**,
-**Canal**, **Días antes del check-in** y **Noches de estadía**. Verás el flujo
+Es el simulador de una reserva concreta. Ingresa **Precio calculado por PriceLabs (antes de
+LM/offset)**, **Canal**, **Días antes del check-in** y **Noches de estadía**. Verás el flujo
 paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o
-probar un caso. El simulador no vuelve a aplicar factores internos de PriceLabs a un precio
-que ya es final.
+probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global
+está bloqueada, por lo que debes leer sus avisos de confiabilidad.
 
-### Configurar Airbnb, Booking.com, Expedia y Directo
+### Airbnb, Booking.com, Expedia y Directo
 
 Cada pestaña contiene la configuración de ese canal:
 
 - **Comisión [canal] %** y **Comisión bancaria/pasarela %**.
 - **Offset % sobre PriceLabs (tu markup real)**.
+- **Verificaciones financieras** aplicables a ese canal, con estado, fuente, fecha y nota.
 - En Airbnb, **Tarifa de aseo — reservas 1–2 noches** y **Tarifa de aseo — reservas 3+
   noches**.
 - **Descuentos activos hoy** y **Ver catálogo completo** para el resto.
@@ -139,12 +164,13 @@ Cada pestaña contiene la configuración de ese canal:
 No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está
 activo para ese listing/canal y usa el porcentaje y la ventana reales.
 
-### Diagnóstico completo
+### Comparación
 
 **Panel de decisión por ventana de reserva** resume cada ventana. Lee primero
 **Veredicto**. Si pide atención, abre **Ver por canal** para ver el detalle. Los veredictos
 pueden señalar techo excedido, neto bajo costo, neto bajo objetivo o una configuración
-rentable.
+rentable; un aviso de datos pendientes debe resolverse antes de tratar un resultado positivo
+como recomendación.
 
 ## 6. Gestionar y respaldar propiedades
 
@@ -186,14 +212,16 @@ quieres revisar qué se modificó en una fecha puntual.
 
 ### ¿Por qué Min Price o Base Price muestran `—`?
 
-Porque hay un dato matemáticamente inválido, la unidad no está en USD o, en Base Price,
-un precio Last-Minute fijo cubre el día de referencia. Min Price normalmente se calcula de
-inmediato con los valores cargados.
+Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, dato
+financiero sin verificar, revisión manual de moneda o, en Base Price, un precio
+Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la
+sección exacta que debes revisar.
 
 ### ¿Por qué una unidad duplicada puede tener otro precio?
 
-Porque la copia conserva los parámetros del origen. Revisa que sus costos, descuentos,
-canales, techos y LM sí apliquen a la nueva unidad antes de usar el resultado.
+Porque la copia no hereda hechos confirmados ni costos reales. Aunque conserve descuentos,
+canales, techos y parámetros LM, debes validar que esos parámetros y los costos sí aplican
+a la nueva unidad. Hasta hacerlo, la app bloquea Min Price y Base Price.
 
 ### ¿Puedo ingresar COP?
 
@@ -203,8 +231,8 @@ futura, no está activa hoy.
 
 ### ¿La app sabe automáticamente lo que está configurado en PriceLabs o las OTAs?
 
-No. No hay integración. Tú decides y cargas los descuentos, comisiones, Offset y modo
-Last-Minute que correspondan a la cuenta real.
+No. No hay integración. Tú debes comparar cada descuento, comisión, Offset y modo
+Last-Minute con la cuenta real y registrar la fuente/fecha en Verificación.
 
 ## 9. Límites importantes
 
@@ -218,6 +246,6 @@ Last-Minute que correspondan a la cuenta real.
 - El resultado es una herramienta de decisión de precios, no una garantía de demanda,
   ocupación o liquidación final.
 
-Antes de aplicar un precio en PriceLabs: revisa que los costos, descuentos, comisiones,
-Offset y estrategia LM cargados correspondan a esa unidad. La app calcula exactamente con
-esos valores.
+Antes de aplicar una recomendación en PriceLabs: revisa que la unidad tenga costos reales
+confirmados, modo LM confirmado y todos los datos financieros aplicables resueltos. Solo
+entonces trata Min Price, Base Price y Offset como recomendaciones operativas.

@@ -20,15 +20,6 @@ Expedia y canal Directo, no con supuestos genéricos.
 > posterior como **Duplicar unidad** no pertenece a esta lista y se documenta en la
 > arquitectura vigente más abajo.
 
-> ⚠ **CONTRATO VIGENTE DE MIN PRICE (jul 2026)** — Min Price se configura como el
-> **precio final que PriceLabs publica como piso**, después de sus factores internos
-> (temporada, demanda, ocupación y Last-Minute). Por tanto el motor de Piso no vuelve a
-> aplicar LM: protege frente a Offset de Kunas, descuentos OTA, aseo y comisiones que
-> ocurren después. `Base Price` conserva otro propósito: es una referencia de estrategia
-> que sí analiza LM en su día de referencia. Una unidad debe confirmar explícitamente este
-> contrato (`priceLabsMinPriceContractConfirmed`) antes de mostrar Min Price. Las secciones
-> históricas que describan un Piso afectado por LM están superadas por esta regla.
-
 ---
 
 ## 1. Para qué existe esto (contexto de negocio, resumido)
@@ -65,10 +56,8 @@ gana el umbral MÁS PROFUNDO que se cumple (más noches / más días), NO el por
 alto. Esto ya está implementado en `combineChannel()` con `prio` + sort descendente por
 `minN`/`from` dentro del mismo nivel — no cambiar a "sort por % mayor", es incorrecto.
 
-Los ajustes internos de temporada, demanda, ocupación y Last-Minute de PriceLabs NO son
-promociones OTA y nunca se suman aquí. El identificador histórico `ab_rs` se conserva
-solo para migrar unidades guardadas, con `group:'pricelabs-internal'`; el motor lo ignora
-porque PriceLabs ya entrega un precio final que respeta su propio Min Price.
+Los ajustes de rule set / temporada (`group:'stackable'`) SÍ se suman encima de la promo
+ganadora — no compiten con ella.
 
 ### `lockN` — umbrales con nombre atado a un número específico (jul 2026)
 Semanal (7 noches), Quincenal (14 noches), Larga estadía (28 noches) y Early-bird
@@ -412,8 +401,7 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   `marketBase`, `avgNights` (estadía promedio), `currency`, `channels[]` (cada uno con
   `comm`, `bankFeePct`, `offsetPct`), `discounts[]` (catálogo completo, cada uno con
   `ch`/`kind`/`group`/`prio`/ventana o duración), `ceilings` (techo % por ventana),
-  `lmConfig`, `verification`, `costBreakdown` y su confirmación,
-  `priceLabsMinPriceContractConfirmed`, y la bitácora de revisión
+  `lmConfig`, `verification`, `costBreakdown` y su confirmación, y la bitácora de revisión
   manual USD cuando aplique. `state.matrixNights` fue eliminado y no debe reintroducirse.
 - `combineChannel(chId, daysOut, nights)` — el motor central. Aplica las reglas de la
   sección 2 según el canal. Devuelve `{factor, totalPct, applied[], ignored[]}` —
@@ -424,9 +412,9 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 - `worstNative(chId)` — escanea TODAS las ventanas Y todas las duraciones con descuento
   por LOS activo, para encontrar el peor caso real. (Bug corregido: antes solo probaba 1
   noche y los descuentos por duración quedaban invisibles para el piso.)
-- `compute()` — costo total, neto objetivo, piso (Min Price PriceLabs **final**, incluye
-  Offset y efectos posteriores por canal, pero nunca reaplica LM), y Base Price (referencia
-  de estrategia que sí incorpora LM/Offset en el día de referencia).
+- `compute()` — costo total, neto objetivo, piso (Min Price PriceLabs — incluye el offset
+  de cada canal, ver sección 2), base (Base Price PriceLabs, SIN offset — para netear
+  objetivo en todos con sus nativos constantes).
 - `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2. Usa `state.avgNights`.
 - `cleanFeePerNight(c, nights)` — tarifa de aseo de Airbnb (fija por reserva) diluida por
   noche según la duración dada; devuelve 0 para canales sin aseo. La usan `suggestedOffset`,
@@ -717,23 +705,24 @@ verificado**.
 **Refactor de cierre — `evaluateGlobalRecommendationReadiness()` (`src/domain/readiness.js`),
 la ÚNICA fuente de verdad, y `engine.js` la consume directamente (ya no hay una segunda
 copia de la regla).** Contrato exacto — `evaluateGlobalRecommendationReadiness({readiness,
-channels, lmBlocked, baseBlocked, floorContractBlocked})` devuelve:
+channels, lmBlocked, baseBlocked})` devuelve:
 
 | Campo | Regla |
 |---|---|
-| `floorReady` | `true` **solo si** todos los canales activos tienen sus datos financieros resueltos, moneda/costos están listos y se confirmó el contrato de Min Price final. No depende de `lmBlocked`. |
-| `baseReady` | `true` **solo si** los datos/moneda/costos están listos, `lmBlocked===false` y `baseBlocked===false`. No depende de la confirmación exclusiva del Piso. |
+| `floorReady` | `true` **solo si** todos los canales activos tienen sus datos financieros resueltos (`unreadyChannels(...).length===0`) **y** `lmBlocked===false`. |
+| `baseReady` | `true` **solo si** `floorReady===true` **y** `baseBlocked===false`. |
 | `unreadyChannels` | lista de canales (`{id,name,...}`) con al menos un dato pendiente. |
-| `reasons` | frases reusables (datos de negocio, contrato del Piso, LM y precio fijo, según corresponda). |
+| `reasons` | frases reusables (datos de negocio + LM + precio fijo, las que apliquen). |
 | `floorReason`/`baseReason` | texto listo para mostrar, o `null` si está `ready`. |
 
 Puntos del contrato que NO deben revertirse sin querer:
 - **`baseBlocked` (precio LM fijo activo en el día 45) NUNCA bloquea `floorReady`** — el
-  Piso final no se deja sustituir por una curva interna; un precio fijo que pueda saltarlo
-  se detecta como bypass explícito en `compute()`.
-- **`lmBlocked` bloquea solo Base** — el Min Price final no depende de conocer la curva
-  interna de PriceLabs, pero Base sí.
-- **Un dato de negocio pendiente en CUALQUIER canal activo bloquea ambos** — el mismo
+  Piso sigue protegiendo de verdad porque evalúa el **peor escenario real** (LM incluido,
+  vía `worstScenarioFactor()`), a diferencia de Base, que solo evalúa el día de referencia
+  45 (y por eso SÍ queda irrelevante cuando ese día tiene un precio fijo).
+- **`lmBlocked` bloquea AMBOS** — un LM sin verificar hace que cualquier número global
+  (Piso incluido) sea una proyección no verificable.
+- **Un dato de negocio pendiente en CUALQUIER canal activo bloquea AMBOS** — el mismo
   razonamiento del caso Airbnb/Directo de arriba aplica igual a Base.
 
 `engine.js` deriva `floorReadinessBlocked = !floorReady`, `floorReadinessBlockedReason =

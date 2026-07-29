@@ -39,7 +39,8 @@ import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
 import {reservationCostBreakdown} from './costs.js';
 import {validateCostInputs, validateChannelInputs, validateResultFinite, validateLmTiersOverlap} from './validate.js';
-import {priceLabsLm, isLmBlocked, lmCriticalDays} from './pricelabs-lm.js';
+import {worstScenarioFactor} from './worstcase.js';
+import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
 import {evaluateRecommendationReadiness, evaluateGlobalRecommendationReadiness} from './readiness.js';
 import {evaluateUsdOnlyReadiness} from './usd-only.js';
 import {evaluateCostReadiness} from './cost-mode.js';
@@ -54,14 +55,14 @@ export function losApplies(d, nights){ return d.kind==='los' && nights>=(d.minN|
 /* Returns {factor, totalPct, applied:[{name,pct,why}], ignored:[{name,reason}]} for one channel.
    `discounts` es el arreglo completo del catalogo (equivalente a state.discounts). */
 export function combineChannel(discounts, chId, daysOut, nights){
-  /* Los ajustes internos de PriceLabs ya están absorbidos por su precio FINAL
-     y no pueden volver a descontarse como si fueran una promo OTA. */
-  const ds = discounts.filter(d=>d.ch===chId && d.group!=='pricelabs-internal' && d.on && pct(d.pct)>0);
+  const ds = discounts.filter(d=>d.ch===chId && d.on && pct(d.pct)>0);
   const applied=[], ignored=[];
   let factor=1;
   const add=(d,why)=>{factor*=(1-pct(d.pct)/100); applied.push({name:d.name,pct:pct(d.pct),why});};
 
   if(chId==='airbnb'){
+    /* Capa apilable (rule sets / ajuste estacional) se aplica primero y NO compite */
+    ds.filter(d=>d.group==='stackable').forEach(d=>add(d,'rule set: apila sobre la promo ganadora'));
     /* Grupo promo: solo UNA aplica. 1º por prioridad de tipo (nuevo>personalizada>duración>early-bird>last-minute).
        2º, dentro del mismo tipo con varios escalones, gana el umbral MÁS PROFUNDO que se cumple
        (más noches para duración, más días de anticipación para early-bird) — no el % más alto. */
@@ -90,49 +91,32 @@ export function combineChannel(discounts, chId, daysOut, nights){
     ds.filter(d=>d.group==='stackable-post').forEach(d=>add(d,'descuento no reembolsable del listing: se aplica DESPUÉS de la promo ganadora, no compite con ella'));
   }
   else if(chId==='booking'){
-    /* Booking no aplica un "montón" de descuentos a la misma reserva. Su simulador
-       oficial separa grupos de huésped: Mobile y Country son alternativas de targeting;
-       cada grupo puede combinar con UN Portfolio deal (Basic/LM/Early) y Genius.
-       Campaign/Limited combina únicamente con Genius. Para proteger el Piso hay que
-       cotizar todos esos grupos posibles y quedarnos con el que deja el precio menor. */
+    const limited = ds.find(d=>d.group==='reactive-limited');
+    const country = ds.find(d=>d.group==='proactive-country');
+    const mobile = ds.find(d=>d.group==='proactive-mobile');
     const genius = ds.find(d=>d.group==='proactive');
-    const targets = ds.filter(d=>d.group==='proactive-mobile'||d.group==='proactive-country');
-    const portfolios = ds.filter(d=>d.group==='reactive' && windowApplies(d,daysOut))
-      .sort((a,b)=>pct(b.pct)-pct(a.pct));
-    const campaigns = ds.filter(d=>d.group==='reactive-limited' && windowApplies(d,daysOut))
-      .sort((a,b)=>pct(b.pct)-pct(a.pct));
-    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights))
-      .sort((a,b)=>(b.minN||0)-(a.minN||0));
-    const winLos=losCands[0] || null;
-    const portfolio=portfolios[0] || null;
-    const campaign=campaigns[0] || null;
-    const options=[];
-    const makeOption=(items, why)=>{
-      const active=items.filter(Boolean);
-      const optionFactor=active.reduce((value,item)=>value*(1-pct(item.pct)/100),1);
-      options.push({items:active, factor:optionFactor, why});
-    };
-    const base=[genius,winLos];
-    makeOption(base,'grupo general de Booking');
-    if(portfolio){
-      makeOption([...base,portfolio],'Portfolio deal con Genius/tarifa por duración');
-      targets.forEach(target=>makeOption([genius,target,winLos,portfolio], `${target.name} + ${portfolio.name}: grupo de huésped elegible`));
-    } else {
-      targets.forEach(target=>makeOption([genius,target,winLos], `${target.name}: grupo de huésped elegible`));
+    if(genius) add(genius,'Genius combina con todo (categoría propia)');
+    if(country) add(country,'Country Rate activa');
+    if(mobile){
+      if(limited||country) ignored.push({name:mobile.name,reason:'Mobile no combina con '+(limited?'Limited-time':'Country Rate')});
+      else add(mobile,'apila sobre Genius (categorías distintas)');
     }
-    if(campaign) makeOption([...base,campaign], `${campaign.name}: Campaign deal, solo combina con Genius`);
-    options.sort((a,b)=>a.factor-b.factor);
-    const winner=options[0];
-    winner.items.forEach(item=>add(item,winner.why));
-    const won=new Set(winner.items);
-    ds.filter(item=>!won.has(item)).forEach(item=>{
-      let reason='no corresponde al grupo de huésped con el descuento máximo';
-      if(item.group==='proactive-mobile'||item.group==='proactive-country') reason='Mobile y Country son grupos alternativos; se cotiza el más desfavorable, no ambos';
-      if(item.group==='reactive') reason='solo un Portfolio deal puede aplicar a este grupo/reserva';
-      if(item.group==='reactive-limited') reason='Campaign/Limited solo combina con Genius, no con targeting ni Portfolio deals';
-      if(item.group==='los' && winLos) reason='ya aplica un umbral de duración más profundo ('+winLos.name+')';
-      ignored.push({name:item.name,reason});
-    });
+    /* Descuento por duración de estadía: es tu tarifa (Rates & Availability → Discounts),
+       no un "deal" que compite por categoría — se apila con Genius/Mobile/reactivos.
+       Si varios umbrales califican a la vez, gana el más profundo (igual que Airbnb LOS). */
+    const losCands = ds.filter(d=>d.group==='los' && losApplies(d,nights));
+    if(losCands.length){
+      losCands.sort((a,b)=>(b.minN||0)-(a.minN||0));
+      const winLos=losCands[0];
+      add(winLos,'tarifa por duración de estadía que configuraste — se apila con Genius/Mobile/deals');
+      losCands.slice(1).forEach(d=>ignored.push({name:d.name,reason:'ya aplica un umbral de duración más profundo ('+winLos.name+')'}));
+    }
+    const reactives = ds.filter(d=>(d.group==='reactive'||d.group==='reactive-limited') && windowApplies(d,daysOut))
+      .sort((a,b)=>pct(b.pct)-pct(a.pct));
+    if(reactives.length){
+      add(reactives[0],'único deal reactivo aplicado (misma categoría no combina)');
+      reactives.slice(1).forEach(d=>ignored.push({name:d.name,reason:'solo un deal reactivo aplica; ganó '+reactives[0].name}));
+    }
   }
   else if(chId==='expedia'){
     const bases = ds.filter(d=>d.group==='base' && (windowApplies(d,daysOut)||losApplies(d,nights))).sort((a,b)=>pct(b.pct)-pct(a.pct));
@@ -179,36 +163,11 @@ export function worstNative(discounts, chId, windows){
   return (1-worstFactor)*100;
 }
 
-/* El mismo criterio que usa el Piso, expuesto para la interfaz simple: cuál es
-   el mayor descuento efectivo que PODRÍA recibir un huésped en una OTA, con
-   días/noches y reglas de compatibilidad reales. No suma promociones imposibles. */
-export function maximumDiscountScenario(discounts, chId, windows){
-  let worst={factor:1,totalPct:0,applied:[],ignored:[],days:0,nights:1};
-  criticalDays(discounts, windows).forEach(days=>{
-    criticalNights(discounts).forEach(nights=>{
-      const result=combineChannel(discounts,chId,days,nights);
-      if(result.factor<worst.factor-1e-12){ worst={...result,days,nights}; }
-    });
-  });
-  return worst;
-}
-
 /* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas
    sobre el precio que paga el huésped (no se acumulan una sobre la otra, se restan las dos
    del mismo número — así es como se factura en la práctica, confirmado por Dani). */
 export function payoutFactor(c){
   return Math.max(0, 1 - pct(c.comm)/100 - pct(c.bankFeePct)/100);
-}
-
-/* Offset absoluto que se configura en Kunas para que, después del descuento
-   máximo de la OTA y de sus comisiones, quede el mismo valor del precio común
-   de PriceLabs. Es una compensación de canal: NO sustituye el Min Price ni
-   añade margen, costos o aseo. */
-export function compensationOffsetPct(channel, nativeFactor){
-  const discountFactor=Number(nativeFactor);
-  const feeFactor=payoutFactor(channel||{});
-  if(!Number.isFinite(discountFactor) || discountFactor<=0 || feeFactor<=0) return null;
-  return (1/(discountFactor*feeFactor)-1)*100;
 }
 
 /* Tarifa de aseo fija por reserva (solo Airbnb), diluida por noche según la estadía dada.
@@ -285,11 +244,6 @@ export function lmPctAtDay45(lmConfig, {discounts, channels, windows, ceilings, 
    Sin costBreakdown, cae al modelo simple de siempre (compatibilidad). */
 export function compute(config){
   const {channels, discounts, windows} = config;
-  /* La aplicación personal puede trabajar con los valores cargados sin
-     exigir casillas de revisión. Este flag elimina SOLO esos bloqueos; las
-     validaciones matemáticas y la protección USD siguen activas. El default
-     estricto se conserva para consumidores del motor que no lo declaren. */
-  const manualReviewGates = config.manualReviewGates !== false;
   /* BLOQUEANTE 2 corregido (auditoria externa, ronda 4): un `costBreakdown`
      presente pero explicitamente NO confirmado (`config.costBreakdownConfirmed
      ===false`, lo que manda index.html en cuanto el usuario edita cualquier
@@ -308,58 +262,36 @@ export function compute(config){
     : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
   const m = Math.min(parseFloat(config.margin)||0,90);
   const net = cost/(1-m/100);
-  /* PISO — el número que se carga en "Precio mínimo" de PriceLabs.
-
-     Contrato corregido: este es un PRECIO FINAL de PriceLabs, no una base
-     previa a temporada, demanda, ocupación o Last-Minute. Por eso el motor no
-     vuelve a restar esos factores aquí. Lo que sí puede reducir el neto DESPUÉS
-     de PriceLabs es el Offset por canal, los descuentos OTA y las comisiones.
-
-     Se resuelve cada escenario real (canal × día crítico × noches críticas)
-     en sentido inverso y se toma el máximo. También se considera el aseo y el
-     costo real por duración: una estadía de una noche no debe tener el mismo
-     costo por noche que una de treinta.
-
-     Un LM de precio fijo es una excepción: puede reemplazar el mínimo. Se
-     evalúa aparte y, si genera pérdida, se marca error porque subir el Piso no
-     puede arreglar un precio fijo inferior. */
+  /* floor: pushed price such that worst channel still nets >= cost.
+     Incluye el offset del canal: en producción PriceLabs publica precio×(1+offset), así que
+     el piso DEBE reflejarlo — si no, un offset negativo (bajar precio para competir) rompe
+     la garantía de no vender bajo costo. Con offset positivo el piso baja para ese canal
+     (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
+     baja de verdad si TODOS tienen offset positivo. */
   let floor=0, floorCh='', floorChId=null;
   const lmInfeasible = [];
-  const floorDays = [...new Set([...criticalDays(discounts, windows), ...lmCriticalDays(config.lmConfig)])].sort((a,b)=>a-b);
-  const floorNights = criticalNights(discounts);
   channels.forEach(c=>{
     const pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
-    floorDays.forEach(day=>{
-      const w = windows.find(win=>day>=win.lo && day<=win.hi) || windows[windows.length-1];
-      const ceil = pct((config.ceilings||{})[w.id]);
-      floorNights.forEach(nights=>{
-        const nativeFactor = combineChannel(discounts, c.id, day, nights).factor;
-        const feePerNight = cleanFeePerNight(c, nights);
-        const scenarioCost = costGate.useDetailed
-          ? reservationCostBreakdown(config.costBreakdown, nights).perNight
-          : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
-        /* priceLabsLm() sigue siendo la única fuente que conoce el rango de
-           un precio fijo. Los modos porcentuales no aparecen aquí: el mínimo
-           final confirmado los absorbe por contrato. */
-        const lmAtDay = priceLabsLm(config.lmConfig, {day, ceilingPct:ceil, nativePct:0, floor});
-        if(lmAtDay.priceOverride!=null){
-          const payoutAtOverride = (lmAtDay.priceOverride*(1+off)*nativeFactor + feePerNight)*pf;
-          if(payoutAtOverride < scenarioCost - 1e-9){
-            lmInfeasible.push({chId:c.id, day, night:nights, overridePrice:lmAtDay.priceOverride, payoutAtOverride, cost:scenarioCost});
-          }
-          return;
-        }
-        const priceFactor = (1+off)*nativeFactor;
-        const p = priceFactor>0 && pf>0
-          ? Math.max(0, (scenarioCost/pf-feePerNight)/priceFactor)
-          : Infinity;
-        if(p>floor){
-          floor=p; floorChId=c.id;
-          floorCh=c.name+' (peor escenario final: día '+day+', '+nights+' noche'+(nights===1?'':'s')
-            +(off!==0?' + offset '+fP(off*100):'')+')';
-        }
+    if(config.lmConfig){
+      /* CRITICO corregido (ver worstcase.js): el peor caso ahora incluye LM,
+         no solo el descuento nativo OTA — un LM verificado que el Piso
+         ignoraba podia netear por debajo del costo real aunque el modelo
+         dijera valid:true. */
+      const {worstFactor, worstDay, worstNight, infeasible} = worstScenarioFactor({
+        chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost
       });
-    });
+      lmInfeasible.push(...infeasible);
+      const denom = worstFactor*pf;
+      const p = denom>0 ? cost/denom : Infinity;
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(off!==0?' + offset '+fP(off*100):'')+')';}
+    } else {
+      /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
+         de siempre, solo nativo OTA — no incluye LM. */
+      const wn = worstNative(discounts, c.id, windows)/100;
+      const denom = (1+off)*(1-wn)*pf;
+      const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+    }
   });
   /* base: pushed price that nets target on every channel using its CONSTANT natives
      (window natives are tactical), CON el offset y el LM que ese canal tenga
@@ -420,7 +352,7 @@ export function compute(config){
     ...validateCostInputs({fixedCost: config.fixedCost, varCost: config.varCost, margin: config.margin}),
     ...validateChannelInputs(channels),
     ...validateResultFinite({floor, base, net, cost}, ['floor','base','net','cost']),
-    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${x.cost.toFixed(2)}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`})),
+    ...lmInfeasible.map(x=>({field:'lmConfig.fixedPrice', level:'error', msg:`Precio Last-Minute fijo (${x.overridePrice}) en día ${x.day} garantiza netear bajo costo (${x.payoutAtOverride.toFixed(2)} < ${cost}) sin importar el Min Price — PriceLabs publicaría ese precio tal cual. Sube el precio fijo o revisa el rango de días.`})),
     ...(config.lmConfig && config.lmConfig.mode==='tiers' ? validateLmTiersOverlap(config.lmConfig.tiers) : [])
   ];
   const valid = !errors.some(e=>e.level==='error');
@@ -439,7 +371,7 @@ export function compute(config){
      que si Dani hubiera dejado el modo automatico puesto a proposito. Solo el
      floor tiene una rama legacy que de verdad ignora LM (arriba, "compatibilidad
      con callers que aun no lo pasan") — eso no cambia aqui. */
-  const lmBlocked = manualReviewGates && isLmBlocked(config.lmConfig);
+  const lmBlocked = isLmBlocked(config.lmConfig);
   const lmMode = (config.lmConfig && config.lmConfig.mode) || 'ceiling_auto';
   const lmBlockedReason = lmBlocked
     ? `Last-Minute está en modo "${lmMode==='ceiling_auto'?'Automático':lmMode}"${lmMode==='ceiling_auto'
@@ -459,7 +391,7 @@ export function compute(config){
      bloqueo nuevo que no pidieron. En produccion state.verification SIEMPRE
      esta presente (defaultVerification()), asi que este gate esta activo en
      la app real desde el primer render. */
-  const readiness = manualReviewGates && config.verification
+  const readiness = config.verification
     ? evaluateRecommendationReadiness({channels, discounts, verification: config.verification})
     : null;
   /* Refactor de cierre (revision externa): `evaluateGlobalRecommendationReadiness()`
@@ -510,17 +442,10 @@ export function compute(config){
     : null;
   /* BLOQUEANTE 2 (ver arriba, `costGate`): mismo nivel que lmBlocked/
      currencyBlocked — bloquea Piso Y Base, nunca solo uno. */
-  const costBlocked = manualReviewGates && costGate.blocked;
-  const costBlockedReason = costBlocked ? costGate.reason : null;
-  /* El contrato de Piso final se activa solo si el caller lo declara. Así los
-     callers históricos de dominio siguen siendo compatibles; la UI real lo
-     pasa siempre (false hasta la confirmación explícita). */
-  const floorContractBlocked = manualReviewGates && config.priceLabsMinPriceContractConfirmed===false;
-  const floorContractBlockedReason = floorContractBlocked
-    ? 'Falta confirmar que el "Precio mínimo" de PriceLabs es el precio FINAL que no cruza después de temporada, demanda, ocupación y Last-Minute. El Min Price queda bloqueado hasta confirmarlo en Resumen.'
-    : null;
+  const costBlocked = costGate.blocked;
+  const costBlockedReason = costGate.reason;
   const {floorReady, baseReady, floorReason, baseReason} = evaluateGlobalRecommendationReadiness({
-    readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked, floorContractBlocked
+    readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked
   });
   const floorReadinessBlocked = !floorReady;
   const floorReadinessBlockedReason = floorReason;
@@ -531,8 +456,7 @@ export function compute(config){
     lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason,
     currencyBlocked, currencyBlockedReason,
     costBlocked, costBlockedReason, costMode: costGate.mode,
-    readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason,
-    floorContractBlocked, floorContractBlockedReason, manualReviewGates
+    readiness, floorReadinessBlocked, floorReadinessBlockedReason, baseReadinessBlocked, baseReadinessBlockedReason
   };
 }
 

@@ -60,14 +60,13 @@ export function worstScenariosInWindow(config, w, price){
    encargo pide bloquear explicitamente: Min Price/Base/Offset/veredicto
    "Rentable"). */
 export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, perChannel, currency}){
-  const manualReviewGates = model.manualReviewGates !== false;
   const breach = worstTecho.q.breach;
   const maxN = worstTecho.q.maxNAtScenario;
   const maxCh = worstTecho.q.worstChannelAtScenario;
   const lm = worstPayoutRow.q.lm;
   const worst = perChannel.reduce((a,b)=>b.q.payout<a.q.payout ? b : a, perChannel[0]);
   const worstAsNet = {c: worst.c, netV: worst.q.payout};
-  const lmCaveat = manualReviewGates && worst.q.lmBlocked
+  const lmCaveat = worst.q.lmBlocked
     ? ` (asume LM ${worst.q.lmMode==='ceiling_auto'?'automático':'"'+worst.q.lmMode+'"'} sin verificar — el número real podría variar, confírmalo en Resumen → "Last-Minute de PriceLabs")`
     : '';
   /* Fase 5 (revision externa — "datos financieros verificados"): igual que
@@ -94,12 +93,12 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
   } else if(worstAsNet.netV<model.net){
     vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
     vMsg=`Todos los canales quedan sobre tu costo, pero ${worstAsNet.c.name} solo te deja ${f$(worstAsNet.netV,currency)} — por debajo de tu margen objetivo (${f$(model.net,currency)}). Revisa su Offset si quieres acercarlo.${lmCaveat}`;
-  } else if(manualReviewGates && worst.q.lmBlocked){
+  } else if(worst.q.lmBlocked){
     vLvl='warn'; vTag='LM SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
     vMsg = `Esta ventana solo sale "rentable" asumiendo Last-Minute ${worst.q.lmMode==='ceiling_auto'
       ? 'en modo automático (proyección propia, no verificable matemáticamente sin el precio diario real de PriceLabs)'
       : `en modo "${worst.q.lmMode}" configurado pero sin marcar como verificado`} — confírmalo en Resumen → "Last-Minute de PriceLabs" (modo real + casilla "Confirmé este modo directamente en PriceLabs") antes de tratar este veredicto como definitivo.`;
-  } else if(manualReviewGates && model.costBlocked){
+  } else if(model.costBlocked){
     /* BLOQUEANTE 2 (auditoria externa, ronda 4): mismo espiritu que
        lmBlocked/unready — "rentable en todos" tampoco se puede sostener si
        el costo contra el que se mide (model.cost) todavia no esta
@@ -109,7 +108,7 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
        afirmacion de "todo bien"). Ver src/domain/cost-mode.js. */
     vLvl='warn'; vTag='COSTOS SIN CONFIRMAR — NO USAR COMO RECOMENDACIÓN';
     vMsg = `Esta ventana solo sale "rentable en todos" con el costo actual (${f$(model.cost,currency)}), que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar este veredicto como definitivo.`;
-  } else if(manualReviewGates && unready.length){
+  } else if(unready.length){
     vLvl='warn'; vTag='DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
     vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unready.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unready.map(c=>c.name).join(', ')}: ${unready.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en la pestaña del canal correspondiente antes de tratar este veredicto como definitivo.`;
   } else {

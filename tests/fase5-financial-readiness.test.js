@@ -201,7 +201,7 @@ test('LOS DOS P1 DE LA RONDA 3 SIGUEN PROTEGIDOS: baseBlocked (precio LM fijo en
   assert.equal(model.baseReadinessBlocked, true, 'Base Price global queda bloqueada por el precio fijo activo');
 });
 
-test('compute(): LM sin verificar bloquea Base, pero no el Min Price final, cuando todos los canales están resueltos', () => {
+test('compute(): LM sin verificar bloquea Min Price Y Base Price GLOBALES, aunque todos los canales tengan sus datos financieros resueltos', () => {
   const channels = freshChannels().map(c=>c.id==='direct'?{...c, comm:0, bankFeePct:0, offsetPct:0}:c);
   const discounts = freshDiscounts().map(d=>({...d, on:false}));
   const verification = defaultVerification();
@@ -214,8 +214,9 @@ test('compute(): LM sin verificar bloquea Base, pero no el Min Price final, cuan
   assert.equal(model.readiness.ready, true, 'precondicion: todos los canales tienen sus datos financieros resueltos');
   assert.equal(model.lmBlocked, true, 'precondicion: LM sin verificar es la unica causa de bloqueo bajo prueba');
   assert.equal(model.baseBlocked, false, 'precondicion: no hay precio fijo activo en el dia de referencia');
-  assert.equal(model.floorReadinessBlocked, false, 'el Piso final no depende de conocer la curva interna LM');
+  assert.equal(model.floorReadinessBlocked, true, 'LM sin verificar bloquea el Piso global tambien');
   assert.equal(model.baseReadinessBlocked, true, 'y Base Price global');
+  assert.match(model.floorReadinessBlockedReason, /Last-Minute/);
   assert.match(model.baseReadinessBlockedReason, /Last-Minute/);
 });
 
@@ -390,12 +391,11 @@ test('P1: unreadyChannels() es la fuente central — devuelve el canal pendiente
    reemplaza a la globalRecommendationReady() anterior (existia, tenia tests,
    pero engine.js no la consumia). Contrato exacto:
    - floorReady: true SOLO SI todos los canales activos resolvieron sus datos
-     financieros y se confirmó el contrato de Piso final de PriceLabs.
-   - baseReady: true SOLO SI los canales están resueltos, lmBlocked===false
-     y baseBlocked===false.
+     financieros Y lmBlocked===false.
+   - baseReady: true SOLO SI floorReady===true Y baseBlocked===false.
    - baseBlocked (precio fijo en el dia 45) NUNCA debe bloquear floorReady —
      el Piso sigue protegiendo con el peor escenario real (LM incluido). */
-test('evaluateGlobalRecommendationReadiness(): Piso final y Base tienen gates distintos', () => {
+test('evaluateGlobalRecommendationReadiness(): floorReady exige canales resueltos + LM verificado; baseReady exige ADEMAS que no haya precio fijo activo', () => {
   const {discounts, verification} = readyCatalogExcept('direct-bank-fee');
   const readiness = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
   // Solo el dato de negocio pendiente (Directo):
@@ -405,13 +405,13 @@ test('evaluateGlobalRecommendationReadiness(): Piso final y Base tienen gates di
   assert.equal(r.unreadyChannels.length, 1);
   assert.equal(r.unreadyChannels[0].id, 'direct');
 
-  // Todo resuelto salvo LM: solo Base depende de su curva.
+  // Todo resuelto salvo LM:
   verification.bankFeePctByChannel.direct.status = 'verificado';
   const readinessAllDone = evaluateRecommendationReadiness({channels: freshChannels(), discounts, verification});
   r = evaluateGlobalRecommendationReadiness({readiness: readinessAllDone, channels: freshChannels(), lmBlocked:true, baseBlocked:false});
-  assert.equal(r.floorReady, true, 'LM sin verificar no bloquea el Piso final');
+  assert.equal(r.floorReady, false, 'LM sin verificar tambien debe bloquear el Piso global');
   assert.equal(r.baseReady, false);
-  assert.equal(r.floorReason, null);
+  assert.match(r.floorReason, /GLOBAL/);
 
   // Todo resuelto + LM verificado, pero precio LM fijo activo (baseBlocked):
   // el Piso NO debe bloquearse por esto — solo Base.

@@ -172,16 +172,13 @@ export function unreadyChannels(readiness, channels){
    Matriz/Alertas usan `unreadyChannels()` (arriba) para sus propios veredictos
    por VENTANA/alerta puntual — una pregunta legitimamente distinta a "¿el
    numero GLOBAL es confiable?" — no llaman a esta funcion. */
-export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked, floorContractBlocked}){
+export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked}){
   const unready = unreadyChannels(readiness, channels);
   const dataReason = unready.length
     ? `${unready.map(c=>c.name).join(', ')} ${unready.length===1?'depende':'dependen'} de datos financieros sin confirmar: ${unready.map(c=>(readiness.byChannel[c.id].missing||[]).map(m=>m.reason).join(' ')).join(' ')}`
     : null;
   const lmReason = lmBlocked
     ? 'Last-Minute todavía no está verificado — mientras tanto, ningún número global (Min Price ni Base Price) es matemáticamente confiable, es siempre una proyección.'
-    : null;
-  const floorContractReason = floorContractBlocked
-    ? 'Aún no confirmaste que el campo "Precio mínimo" de esta unidad sea el precio FINAL que PriceLabs no cruza después de sus ajustes internos. Sin esa confirmación, no se puede saber si los factores internos se deben aplicar antes o después del Piso.'
     : null;
   const baseFixedReason = baseBlocked
     ? 'Hay un precio Last-Minute FIJO activo en el día de referencia (45) — PriceLabs publica ese precio tal cual, así que Base Price no controla nada ahí (el Piso sigue protegiendo: evalúa el peor escenario real, LM incluido).'
@@ -204,17 +201,10 @@ export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBl
     ? 'El costo real de esta unidad todavía no está confirmado (sigue en el valor de ejemplo de fábrica, o el desglose detallado está editado pero sin confirmar) — ningún número global es confiable hasta que confirmes tus costos reales en Resumen → "Costos por noche".'
     : null;
 
-  /* Min Price y Base Price ya no comparten el mismo contrato:
-     - El Piso final NO depende de conocer el LM: PriceLabs debe respetarlo
-       después de sus factores internos. Sí requiere confirmar ese hecho.
-     - Base Price es una referencia ANTES/CON la curva LM y por eso conserva
-       su gate de LM. No debe quedar bloqueado solo porque falte confirmar el
-       contrato particular del campo de mínimo. */
-  const commonReady = unready.length===0 && !currencyBlocked && !costBlocked;
-  const floorReady = commonReady && !floorContractBlocked;
-  const baseReady = commonReady && !lmBlocked && !baseBlocked;
+  const floorReady = unready.length===0 && !lmBlocked && !currencyBlocked && !costBlocked;
+  const baseReady = floorReady && !baseBlocked;
 
-  const floorParts = [dataReason, floorContractReason, currencyReason, costReason].filter(Boolean);
+  const floorParts = [dataReason, lmReason, currencyReason, costReason].filter(Boolean);
   const baseParts = [dataReason, lmReason, currencyReason, costReason, baseFixedReason].filter(Boolean);
   const buildReason = (label, parts) => `${label} es un número GLOBAL que se usa en PriceLabs para TODOS los canales — no se puede tratar como recomendación confiable todavía. ${parts.join(' ')} Confirma cada dato financiero en la pestaña del canal correspondiente (y Last-Minute en Resumen) antes de usar este número en PriceLabs.`;
 
