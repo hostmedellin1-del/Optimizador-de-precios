@@ -1452,7 +1452,7 @@ document.addEventListener('click',e=>{
         : model.lmBlocked ? 'Last-Minute sin verificar'
         : model.baseBlocked ? 'precio LM fijo de PriceLabs activo en el día de referencia'
         : model.costBlocked ? 'el costo real de esta unidad todavía no está confirmado'
-        : 'un dato financiero sigue sin confirmar en la pestaña del canal correspondiente';
+        : 'la configuración todavía no está lista';
       showInputError('Base Price está bloqueado (' + why + ') — no se precargó ningún precio en el Simulador. Escribe uno a mano, o confírmalo primero.');
     } else {
       simPrice.value=Math.round(model.base||model.effBase||0);
@@ -1520,7 +1520,7 @@ duplicateUnit.addEventListener('click', async()=>{
   if(promptedName===null) return;
   const newName = promptedName.trim();
   if(!newName) return;
-  if(!confirm(`Se creará una nueva unidad llamada "${newName}". Se copiarán canales, descuentos, techos y parámetros de Last-Minute, pero NO se copiarán verificación de Last-Minute, costos reales ni revisiones de descuentos. La nueva unidad empezará bloqueada hasta que confirmes sus propios datos. ¿Continuar?`)) return;
+  if(!confirm(`Se creará una nueva unidad llamada "${newName}". Se copiarán canales, descuentos, techos y parámetros de Last-Minute, pero NO se copiarán la confirmación de Last-Minute, los costos reales ni las revisiones de descuentos. La nueva unidad empezará bloqueada hasta que confirmes sus propios datos. ¿Continuar?`)) return;
   try{
     // 1-2. Construir un candidato aislado y normalizarlo, sin mutar `state`.
     const duplicate = buildDuplicateUnit(state, newName);
@@ -1572,7 +1572,7 @@ deleteUnit.addEventListener('click',async()=>{
    configurado), marcada "pendiente de revisión manual":
    `usdManualReviewPending:true` (BLOQUEANTE 3 — antes NO existía este campo,
    así que la copia quedaba lista para producir Piso/Base en cuanto se
-   resolvían LM/verificaciones, aunque nadie hubiera revisado un solo número
+   resolvían LM/costos, aunque nadie hubiera revisado un solo número
    copiado) más `costBreakdownConfirmed` reseteado a false a propósito
    (fuerza revisar también los costos, no solo la moneda) y el nombre deja
    explícito que es una copia sin revisar. Se agrega la primera entrada de

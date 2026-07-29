@@ -15,7 +15,7 @@ Expedia y canal Directo, no con supuestos genéricos.
 > (`monthly-economics.js`), conciliación de reservas (`reconciliation.js`), auditoría de
 > datos reales (`audit.js`), `currency.js`/`fxRates`, `simulate-legacy.js`,
 > `costs-legacy.js` y `state.matrixNights`. Toda la prosa anterior que los describa es
-> **historia, no estado actual**. El motor, los 4 canales y los gates de verificación
+> **historia, no estado actual**. El motor, los 4 canales y los gates de LM, costos y USD
 > quedaron intactos. Este aviso enumera únicamente **eliminaciones**: una adición
 > posterior como **Duplicar unidad** no pertenece a esta lista y se documenta en la
 > arquitectura vigente más abajo.
@@ -353,8 +353,7 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   banco, Offset y aseo), los 37 descuentos y sus porcentajes/ventanas, los techos y los
   parámetros del modo Last-Minute. La nueva unidad recibe una identidad nueva y conserva
   la moneda del origen, pero **nunca** hereda hechos: reinicia toda la Verificación de
-  datos financieros a `No verificado`, la confirmación de Last-Minute, la verificación de
-  cada descuento, el desglose confirmado y los costos reales (vuelve al ejemplo 32/22).
+  datos de Last-Minute, el desglose confirmado y los costos reales (vuelve al ejemplo 32/22).
   Por eso nace bloqueada para Min Price/Base Price hasta revisar y confirmar sus propios
   datos. Si el origen ya es una copia USD pendiente de revisión manual, ni siquiera se
   permite duplicarlo: primero hay que terminar esa revisión. La unidad original nunca se
@@ -401,7 +400,7 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   `marketBase`, `avgNights` (estadía promedio), `currency`, `channels[]` (cada uno con
   `comm`, `bankFeePct`, `offsetPct`), `discounts[]` (catálogo completo, cada uno con
   `ch`/`kind`/`group`/`prio`/ventana o duración), `ceilings` (techo % por ventana),
-  `lmConfig`, `verification`, `costBreakdown` y su confirmación, y la bitácora de revisión
+  `lmConfig`, `costBreakdown` y su confirmación, y la bitácora de revisión
   manual USD cuando aplique. `state.matrixNights` fue eliminado y no debe reintroducirse.
 - `combineChannel(chId, daysOut, nights)` — el motor central. Aplica las reglas de la
   sección 2 según el canal. Devuelve `{factor, totalPct, applied[], ignored[]}` —
@@ -658,10 +657,11 @@ del usuario es comprobar cada porcentaje en la cuenta real antes de usar el resu
 **FASE 5 (revisión externa — histórico):** esta descripción conserva el contexto de una
 capa que ya fue retirada. La aplicación actual no tiene este gate. Antes, el código ya sabía que
 estos datos estaban "no verificados", pero ninguna vista lo usaba para impedir nada —
-Piso/Base/Offset/"Rentable" se mostraban igual de confiados. `evaluateRecommendationReadiness()`
-(`src/domain/readiness.js`, función pura, la única fuente de esta regla) recibe
-`{channels, discounts, verification}` y decide, **por canal**, qué dato pendiente lo
-afecta:
+Piso/Base/Offset/"Rentable" se mostraban igual de confiados. La función
+`evaluateRecommendationReadiness()` de `src/domain/readiness.js` se conserva como
+compatibilidad estructural y devuelve todos los canales listos; ya no recibe ni consulta
+confirmaciones por canal. Comisiones, cargos bancarios, Offsets y descuentos se usan
+exactamente como se ingresan:
 
 | Dato histórico | Alcance | Afecta a... | Cuándo aplicaba |
 |---|---|---|---|
@@ -674,8 +674,9 @@ El Offset sigue siendo 100% manual por canal (`offsetPct`) y participa en los c�
 exactamente como antes; no hay distribución automática de PMS que verificar ni un gate
 adicional para ese ajuste.
 
-`compute()` expone `readiness` (el resultado completo, por canal) y
-`floorReadinessBlocked`/`baseReadinessBlocked` — el gate GLOBAL para Min Price/Base Price.
+`compute()` mantiene `readiness` para compatibilidad con consumidores antiguos. Los únicos
+bloqueos globales activos para Min Price/Base Price son Last-Minute no verificable, costos
+no confirmados y moneda distinta de USD; `baseBlocked` afecta adicionalmente solo a Base.
 
 **Corrección P1 (revisión externa — "Min Price/Base Price globales siguen siendo
 inseguros"): `floorReadinessBlocked`/`baseReadinessBlocked` bloquean si CUALQUIER canal

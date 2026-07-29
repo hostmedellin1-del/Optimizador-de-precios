@@ -112,7 +112,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones.</li>
       <li>Completa <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong>, <strong>Estadía promedio (noches)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
       <li>Configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
-      <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones aplicables con fuente y fecha para cada canal.</li>
+      <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset y descuentos de cada canal.</li>
       <li>Revisa <strong>Techo total por ventana</strong> en Resumen. Es el máximo descuento total que estás dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.</li>
       <li>Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación antes de copiar una configuración a PriceLabs.</li>
     </ol>
@@ -121,7 +121,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>Carga primero la unidad origen con <strong>Cargar unidad…</strong>.</li>
       <li>Pulsa <strong>Duplicar</strong>, escribe el nombre de la nueva unidad y confirma.</li>
       <li>La copia conserva la <strong>configuración operativa</strong>: canales (incluidos comisión, banco, Offset y aseo), los 37 descuentos con sus porcentajes/ventanas, techos y parámetros de Last-Minute.</li>
-      <li>La copia <strong>no</strong> conserva confirmaciones: Verificación de datos financieros vuelve a <strong>No verificado</strong>, Last-Minute queda sin confirmar, los descuentos quedan sin verificar y los costos reales/desglose confirmado se reinician al ejemplo. Por eso Min Price y Base Price comienzan bloqueados.</li>
+      <li>La copia <strong>no</strong> conserva confirmaciones: Last-Minute queda sin confirmar, los descuentos quedan sin revisar y los costos reales/desglose confirmado se reinician al ejemplo. Por eso Min Price y Base Price comienzan bloqueados.</li>
       <li>Revisa sus costos, LM y datos financieros propios antes de usar una recomendación.</li>
     </ol>
     <div class="alert warn"><span class="tag">REVISAR</span><span>Duplicar nunca modifica la unidad original. Tampoco permite duplicar otra copia USD que esté pendiente de revisión manual.</span></div>
@@ -196,13 +196,13 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   <section id="preguntas">
     <h2>8. Preguntas frecuentes</h2>
     <h3>¿Por qué Min Price o Base Price muestran <code>—</code>?</h3>
-    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, dato financiero sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la sección exacta que debes revisar.</p>
+    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la sección exacta que debes revisar.</p>
     <h3>¿Por qué una unidad duplicada puede tener otro precio?</h3>
     <p>Porque la copia no hereda hechos confirmados ni costos reales. Aunque conserve descuentos, canales, techos y parámetros LM, debes validar que esos parámetros y los costos sí aplican a la nueva unidad. Hasta hacerlo, la app bloquea Min Price y Base Price.</p>
     <h3>¿Puedo ingresar COP?</h3>
     <p>No. Esta versión es solo USD. No conviertas “cambiando la etiqueta”: convierte y verifica los valores con tu fuente antes de cargarlos como USD. La multimoneda se hará en una fase futura, no está activa hoy.</p>
     <h3>¿La app sabe automáticamente lo que está configurado en PriceLabs o las OTAs?</h3>
-    <p>No. No hay integración. Tú debes comparar cada descuento, comisión, Offset y modo Last-Minute con la cuenta real y registrar la fuente/fecha en Verificación.</p>
+    <p>No. No hay integración. Tú debes comparar cada descuento, comisión, Offset y modo Last-Minute con la cuenta real antes de aplicar una recomendación.</p>
   </section>
 
   <section id="limites">

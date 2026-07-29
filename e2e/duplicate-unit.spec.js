@@ -67,7 +67,7 @@ test('Duplicar crea una nueva unidad bloqueada: conserva configuración, reinici
   page.off('dialog', duplicateDialogHandler);
   expect(duplicateDialogs[0].type).toBe('prompt');
   expect(duplicateDialogs[1].type).toBe('confirm');
-  expect(duplicateDialogs[1].message).toContain('NO se copiarán verificación de Last-Minute');
+  expect(duplicateDialogs[1].message).toContain('NO se copiarán la confirmación de Last-Minute');
   await expect(page.locator('#unitName')).toHaveValue('Copia segura');
   await expect(page.locator('#unitList option', {hasText:'Copia segura'})).toHaveCount(1);
 

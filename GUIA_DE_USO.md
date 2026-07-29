@@ -146,7 +146,7 @@ Cada pestaña contiene la configuración de ese canal:
 
 - **Comisión [canal] %** y **Comisión bancaria/pasarela %**.
 - **Offset % sobre PriceLabs (tu markup real)**.
-- **Verificaciones financieras** aplicables a ese canal, con estado, fuente, fecha y nota.
+- Los porcentajes y reglas que usa ese canal; la aplicación los toma tal como los ingresas.
 - En Airbnb, **Tarifa de aseo — reservas 1–2 noches** y **Tarifa de aseo — reservas 3+
   noches**.
 - **Descuentos activos hoy** y **Ver catálogo completo** para el resto.
@@ -202,8 +202,8 @@ quieres revisar qué se modificó en una fecha puntual.
 
 ### ¿Por qué Min Price o Base Price muestran `—`?
 
-Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, dato
-financiero sin verificar, revisión manual de moneda o, en Base Price, un precio
+Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, revisión
+manual de moneda o, en Base Price, un precio
 Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la
 sección exacta que debes revisar.
 
@@ -222,7 +222,7 @@ futura, no está activa hoy.
 ### ¿La app sabe automáticamente lo que está configurado en PriceLabs o las OTAs?
 
 No. No hay integración. Tú debes comparar cada descuento, comisión, Offset y modo
-Last-Minute con la cuenta real y registrar la fuente/fecha en Verificación.
+Last-Minute con la cuenta real antes de aplicar una recomendación.
 
 ## 9. Límites importantes
 

@@ -32,7 +32,7 @@
    valor — los números copiados podrían seguir representando COP con la
    etiqueta 'USD' encima. Antes de este fix, la copia tenía `unitCurrency
    ==='USD'` desde el instante en que se creaba, así que ESTA MISMA función
-   la daba por buena en cuanto se resolvían LM/verificaciones — sin importar
+   la daba por buena en cuanto se resolvían LM/costos — sin importar
    que nadie hubiera revisado un solo número. `usdManualReviewPending` es el
    gate que cierra ese hueco: es una bandera EXPLICITA (no inferida de la
    moneda) que la copia arranca en `true` y que solo un caller real

@@ -314,7 +314,7 @@ export function normalizeUnit(raw){
      cualquier otro valor) se PRESERVA tal cual — nunca se convierte ni se
      reinterpreta como USD en silencio — y queda marcada "requiere revision
      manual" (engine.js/compute() la excluye de toda recomendacion global
-     mientras `state.currency !== 'USD'`, ver readiness.js). Solo un string
+     mientras `state.currency !== 'USD'`, ver usd-only.js). Solo un string
      no vacio se preserva; ausencia/tipo invalido cae al default seguro
      'USD' (una unidad sin dato de moneda es una unidad nueva, no una que
      "requiere revision"). */
