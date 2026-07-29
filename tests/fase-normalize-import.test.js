@@ -25,7 +25,7 @@ test('normalizeUnit sobrevive a discounts ausente, no-array, channels no-array, 
   assert.doesNotThrow(() => normalizeUnit({name:'X'}));
   assert.doesNotThrow(() => normalizeUnit({name:'X', discounts:'no soy un arreglo'}));
   assert.doesNotThrow(() => normalizeUnit({name:'X', channels:{no:'soy un arreglo'}}));
-  assert.doesNotThrow(() => normalizeUnit({name:'X', discounts:null, channels:null, lmConfig:null, verification:null, costBreakdown:null}));
+  assert.doesNotThrow(() => normalizeUnit({name:'X', discounts:null, channels:null, lmConfig:null, costBreakdown:null}));
   const {state} = normalizeUnit({name:'X', discounts:'no soy un arreglo'});
   assert.equal(state.discounts.length, 37);
 });

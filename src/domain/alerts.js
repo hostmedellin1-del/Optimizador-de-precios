@@ -25,7 +25,7 @@
    worstScenarioFactor()/quoteScenario().
 
    config = {discounts, channels, ceilings, marketWindow, marketBase, windows, chTab,
-   lmConfig?, verification?} */
+   lmConfig?} */
 import {pct} from './percent.js';
 import {fP, f$} from './format.js';
 import {combineChannel} from './engine.js';
@@ -33,7 +33,6 @@ import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays, isLmBlocked} from './pricelabs-lm.js';
 import {worstScenarioFactor} from './worstcase.js';
-import {unreadyChannels} from './readiness.js';
 
 export function buildAlerts(config, model){
   const {discounts, channels, ceilings, windows, chTab} = config;
@@ -146,7 +145,6 @@ export function buildAlerts(config, model){
      confirmar. No se agrega como advertencia sobre el mismo tag 'ok' (mismo
      error que se corrigio en la matriz): se reemplaza el tag/nivel entero. */
   if(!A.length){
-    const unready = unreadyChannels(model.readiness, channels);
     if(isLmBlocked(config.lmConfig)){
       A.push({lvl:'warn',tag:'LM SIN VERIFICAR',tab:'resumen',msg:'No se detectó ningún conflicto, pero este chequeo depende de Last-Minute que todavía no está verificado (modo automático, proyección no verificable matemáticamente, o un modo configurado sin marcar como confirmado) — confírmalo en Resumen → "Last-Minute de PriceLabs" antes de tratar esto como "sin problemas".'});
     } else if(model.costBlocked){
@@ -155,16 +153,6 @@ export function buildAlerts(config, model){
          el que se compara (model.cost) sea un dato real confirmado, no el
          ejemplo de fabrica ni un desglose detallado sin confirmar. */
       A.push({lvl:'warn',tag:'COSTOS SIN CONFIRMAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero este chequeo depende de un costo (${f$(model.cost, config.currency)}) que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar esto como "sin problemas".`});
-    } else if(unready.length){
-      /* Fase 5 (revision externa — "datos financieros verificados"): mismo
-         espiritu que el bloqueante CRITICO de LM (arriba) — "sin conflictos"
-         tambien depende de datos de negocio (comision bancaria, Offset
-         aislado en Kunas, mezcla VIP de Expedia, Genius+Mobile de Booking,
-         no-reembolsable de Airbnb) que ningun canal afectado tiene todavia
-         confirmados. unreadyChannels() (src/domain/readiness.js) es la unica
-         fuente que decide esto — la misma que usa engine.js para el gate
-         global de Piso/Base (revision externa, P1). */
-      A.push({lvl:'warn',tag:'DATOS SIN VERIFICAR',tab:'resumen',msg:`No se detectó ningún conflicto, pero ${unready.map(c=>c.name).join(', ')} depende${unready.length===1?'':'n'} de datos financieros sin confirmar (${unready.map(c=>model.readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}) — confírmalos en la pestaña del canal correspondiente antes de tratar esto como "sin problemas".`});
     } else {
       A.push({lvl:'ok',tag:'OK',msg:'Sin conflictos: techos respetados, piso cubierto en todas las ventanas y sin combinaciones contradictorias.'});
     }

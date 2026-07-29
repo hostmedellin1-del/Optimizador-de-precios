@@ -14,18 +14,10 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
 import {evaluateUsdOnlyReadiness} from '../src/domain/usd-only.js';
-import {defaultVerification} from '../src/domain/verification.js';
 import {freshChannels, freshDiscounts, freshWindows, defaultCeilings} from './helpers/state-factory.js';
 
 function verifiedLmConfig(){
   return {mode:'flat', verified:true, flat:{pct:0, fromDay:0, toDay:0, on:false}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
-}
-function resolveAll(verification){
-  verification.bookingGeniusMobileBoth.status = 'no_aplica';
-  verification.expediaVipTierMix.status = 'no_aplica';
-  verification.airbnbNonRefundable.status = 'no_aplica';
-  Object.keys(verification.bankFeePctByChannel).forEach(id=>{ verification.bankFeePctByChannel[id].status = 'verificado'; });
-  return verification;
 }
 /* Caso reproducido EXACTO del encargo: unidad COP con costos simples 40/25,
    convertida a copia USD sin tocar ningún número. */
@@ -34,11 +26,10 @@ function copyConfig(overrides={}){
   const discounts = overrides.discounts || freshDiscounts();
   const windows = overrides.windows || freshWindows();
   const ceilings = overrides.ceilings || defaultCeilings(windows);
-  const verification = overrides.verification || resolveAll(defaultVerification());
   return {
     fixedCost:40, varCost:25, margin:45, marketBase:0, lmConfig: verifiedLmConfig(),
     currency:'USD', // la copia YA quedó marcada USD — ese es justamente el hueco
-    ...overrides, channels, discounts, windows, ceilings, verification
+    ...overrides, channels, discounts, windows, ceilings
   };
 }
 

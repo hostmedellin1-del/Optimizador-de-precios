@@ -30,8 +30,7 @@ no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal
 2. En la barra superior escribe el nombre en **Unidad (ej. Alcázar 902)**.
 3. Pulsa **Guardar** para crear la unidad en este navegador.
 4. Al principio verás `—` en **Min Price → PriceLabs** y **Base Price → PriceLabs**. Es
-   normal y seguro: una unidad nueva trae costos de ejemplo, Last-Minute sin confirmar y
-   datos financieros sin verificar.
+   normal y seguro: una unidad nueva trae costos de ejemplo y Last-Minute sin confirmar.
 5. No copies esos valores como recomendaciones hasta completar los tres bloqueos de la
    sección 4.
 
@@ -56,8 +55,9 @@ realmente usa cada unidad.
 4. Configura **Last-Minute de PriceLabs** con el modo que realmente usa esa unidad y marca
    **Confirmé este modo directamente en PriceLabs**.
 5. Revisa las pestañas **Airbnb**, **Booking.com**, **Expedia** y **Directo**: allí están
-   las comisiones, comisión bancaria/pasarela, Offset, descuentos y las verificaciones
-   aplicables con fuente y fecha para cada canal.
+   las comisiones, comisión bancaria/pasarela, Offset y descuentos de cada canal. Los
+   valores que ingreses se usan directamente en el cálculo; comprueba que coincidan con
+   tu extranet y tus facturas.
 7. Revisa **Techo total por ventana** en Resumen. Es el máximo descuento total que estás
    dispuesto a aceptar por ventana; afecta especialmente el modo Last-Minute automático.
 8. Cuando los bloqueos se resuelvan, revisa Min Price, Base Price, Offset y Comparación
@@ -68,13 +68,12 @@ realmente usa cada unidad.
 1. Carga primero la unidad origen con **Cargar unidad…**.
 2. Pulsa **Duplicar**, escribe el nombre de la nueva unidad y confirma.
 3. La copia conserva la **configuración operativa**: canales (incluidos comisión, banco,
-   Offset y aseo), los 37 descuentos con sus porcentajes/ventanas, techos y parámetros de
+   Offset y aseo), los 38 descuentos con sus porcentajes/ventanas, techos y parámetros de
    Last-Minute.
-4. La copia **no** conserva confirmaciones: Verificación de datos financieros vuelve a
-   **No verificado**, Last-Minute queda sin confirmar, los descuentos quedan sin verificar
-   y los costos reales/desglose confirmado se reinician al ejemplo. Por eso Min Price y
-   Base Price comienzan bloqueados.
-5. Revisa sus costos, LM y datos financieros propios antes de usar una recomendación.
+4. La copia reinicia Last-Minute sin confirmar, los descuentos quedan sin verificar y los
+   costos reales/desglose confirmado vuelven al ejemplo. Por eso Min Price y Base Price
+   comienzan bloqueados.
+5. Revisa sus costos, LM, comisiones y descuentos propios antes de usar una recomendación.
 
 Duplicar nunca modifica la unidad original. Tampoco permite duplicar otra copia USD que
 esté pendiente de revisión manual.
@@ -112,21 +111,12 @@ Después marca **Confirmé este modo directamente en PriceLabs**. Si usas el mod
 Automático, la app no puede verificar matemáticamente una curva que PriceLabs decide por
 día y las recomendaciones permanecen bloqueadas por diseño.
 
-### C. DATO FINANCIERO SIN VERIFICAR
+### C. Datos de cada canal
 
-En la pestaña de cada canal, las verificaciones aplicables tienen estado, fuente, fecha y
-nota.
-
-- **No verificado**: falta comprobarlo; bloquea la recomendación afectada.
-- **Verificado**: lo confirmaste en extranet, factura, soporte u otra fuente real.
-- **No aplica**: confirmaste que ese dato no corresponde a esa unidad. No significa
-  “no lo sé”.
-
-Los puntos que aparecen incluyen comisión bancaria/pasarela por canal, Genius y Mobile
-Rate de Booking, mezcla VIP de Expedia, y no reembolsable y Top Rated Guest de Airbnb. El
-Offset se configura manualmente por canal: no hay distribución automática que verificar.
-Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales
-de PriceLabs.
+Las comisiones, la comisión bancaria/pasarela, el Offset y los descuentos que escribas en
+cada pestaña se aplican directamente al cálculo. Comprueba esos valores en la extranet,
+facturas o contratos del canal antes de usarlos: la aplicación no puede confirmar por sí
+sola las reglas de Booking, Airbnb o Expedia y no inventa ningún porcentaje.
 
 ### Caso excepcional: revisión de moneda
 

@@ -11,11 +11,8 @@
      v3:<uuid>             — formato nuevo: mismo contenido de unidad + {id,
                               schemaVersion, savedAt, migratedFromV2Key?}. */
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
-import {VERIFICATION_KEYS, defaultVerification} from './verification.js';
 import {evaluateUsdManualReviewState} from './usd-only.js';
 import {EXAMPLE_COST_DEFAULTS} from './cost-mode.js';
-
-const VERIFICATION_STATUSES = ['no_verificado', 'verificado', 'no_aplica'];
 
 export const SCHEMA_VERSION = 3;
 
@@ -162,52 +159,6 @@ function normalizeLmConfig(raw, warnings){
   };
 }
 
-/* Fase 5 (revision externa — "datos financieros verificados"): un registro de
-   verificacion ahora guarda status/fuente/fecha/nota (antes solo status/nota),
-   y las claves de alcance 'channel' (hoy solo bankFeePctByChannel) guardan UN
-   registro POR CANAL, no uno solo plano. La regla de seguridad de siempre se
-   mantiene y se REFUERZA: cualquier campo con forma o tipo invalido se
-   DESCARTA a favor de 'no_verificado' — un import malformado (o el formato
-   viejo, plano, de antes de esta fase) JAMAS puede terminar marcando algo como
-   'verificado' por accidente. Si `raw[key]` viene en el formato viejo (un
-   objeto plano {status,note} en vez de {canalId: {...}}), sus sub-claves de
-   canal (raw[key][chId]) simplemente no existen — cada canal cae al default
-   'no_verificado', que es exactamente la migracion segura que se pidio. */
-function normalizeVerificationEntry(raw, warnings, path){
-  const def = {status:'no_verificado', source:'', date:'', note:''};
-  if(!raw || typeof raw!=='object') return def;
-  let status = 'no_verificado';
-  if(VERIFICATION_STATUSES.includes(raw.status)) status = raw.status;
-  else if(raw.status!==undefined) warnings.push(`${path}.status: valor desconocido ("${String(raw.status).slice(0,40)}") — se uso 'no_verificado'.`);
-  const date = (typeof raw.date==='string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.date)) ? raw.date : '';
-  if(raw.date!==undefined && raw.date!=='' && !date) warnings.push(`${path}.date: "${String(raw.date).slice(0,40)}" no tiene forma AAAA-MM-DD — se descarto.`);
-  return {
-    status,
-    source: strField(raw, 'source', '', warnings, path, 300),
-    date,
-    note: strField(raw, 'note', '', warnings, path, 800)
-  };
-}
-
-function normalizeVerification(raw, warnings){
-  const def = defaultVerification();
-  if(!raw || typeof raw!=='object') return def;
-  const out = {};
-  Object.keys(VERIFICATION_KEYS).forEach(key=>{
-    const meta = VERIFICATION_KEYS[key];
-    if(meta.scope==='channel'){
-      const rawVal = raw[key] && typeof raw[key]==='object' ? raw[key] : {};
-      out[key] = {};
-      CHANNELS.forEach(c=>{
-        out[key][c.id] = normalizeVerificationEntry(rawVal[c.id], warnings, `verification.${key}.${c.id}`);
-      });
-    } else {
-      out[key] = normalizeVerificationEntry(raw[key], warnings, `verification.${key}`);
-    }
-  });
-  return out;
-}
-
 const CHANNEL_IDS = CHANNELS.map(c => c.id);
 
 /* usdManualReviewLog: bitácora de auditoria de la revisión manual COP→USD
@@ -272,17 +223,17 @@ function normalizeCostBreakdown(raw, warnings){
 /* BLOQUEANTE ALTO/MEDIO corregido (revision externa) — funcion UNICA de
    normalizacion para CUALQUIER registro v2/v3 (guardado, cargado o
    importado). Nunca confia en la forma ni el tipo de un campo:
-   - Solo preserva canales/descuentos/ventanas/claves de verificacion
-     CONOCIDOS (whitelist contra el catalogo) — un id desconocido se descarta,
+   - Solo preserva canales/descuentos/ventanas CONOCIDOS (whitelist contra el
+     catalogo) — un id desconocido se descarta,
      nunca se inventa un descuento/canal nuevo desde un import.
    - Todo campo numerico pasa por coercion ESTRICTA (numField/pctField): un
      valor no numerico, fuera de rango, o con from>to, se DESCARTA a favor del
      default y se reporta en `warnings` — nunca se convierte en 0 en silencio
      (Bloqueante 6) ni queda como string capaz de romper un atributo HTML
      (Bloqueante 4 — un `number` de JS jamas puede contener comillas/`<`).
-   - Deep merge de lmConfig (mode/flat/gradual/fixedPrice/tiers) y de
-     verification — una unidad vieja sin estas claves recibe los defaults
-     completos, nunca queda con un objeto a medias que rompa `.gradual.on` etc.
+   - Deep merge de lmConfig (mode/flat/gradual/fixedPrice/tiers) — una unidad
+     vieja sin estas claves recibe los defaults completos, nunca queda con un
+     objeto a medias que rompa `.gradual.on` etc.
    - Devuelve SIEMPRE un estado completo y renderizable, mas la lista de
      `warnings` (que se descarto y por que) para que Dani pueda revisarla. */
 export function normalizeUnit(raw){
@@ -326,7 +277,6 @@ export function normalizeUnit(raw){
      de contrato invalida. */
   const costBreakdownConfirmed = boolField(raw, 'costBreakdownConfirmed', false);
   const lmConfig = normalizeLmConfig(raw.lmConfig, warnings);
-  const verification = normalizeVerification(raw.verification, warnings);
   /* BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js:
      `usdManualReviewPending` es EXPLICITO, nunca inferido. Una unidad sin
      este campo (normal, preexistente, o nueva) cae a `false` — no queda
@@ -382,7 +332,7 @@ export function normalizeUnit(raw){
     marketWindow: nonNegField(raw, 'marketWindow', 16, warnings, 'unidad', {min:0}),
     marketBase: nonNegField(raw, 'marketBase', 100, warnings, 'unidad', {min:0}),
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
-    costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig, verification,
+    costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig,
     usdManualReviewPending, usdManualReviewLog,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
@@ -436,7 +386,6 @@ export function buildDuplicateUnit(state, newName){
         fixedPrice:{...(sourceLm.fixedPrice||{})},
         tiers:(Array.isArray(sourceLm.tiers) ? sourceLm.tiers : []).map(tier=>({...tier}))
       },
-      verification:defaultVerification(),
       costBreakdownConfirmed:false,
       costBreakdown:defaultCostBreakdown(),
       fixedCost:EXAMPLE_COST_DEFAULTS.fixedCost,

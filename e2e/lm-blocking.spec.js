@@ -10,29 +10,7 @@
    3. La Matriz nunca muestra "RENTABLE EN TODOS" sostenido solo por un LM sin
       verificar — el tag cambia, no se le agrega solo una advertencia.
 
-   Fase 5 (revision externa — "datos financieros verificados"): Min Price/Base
-   Price ahora tienen un SEGUNDO gate ortogonal a LM — datos de negocio
-   (comision bancaria real, Genius+Mobile de Booking, VIP de Expedia, etc,
-   ver src/domain/readiness.js). Verificar LM ya NO es suficiente por si solo
-   para desbloquear con el catalogo de fabrica (que trae esos datos activos
-   y sin confirmar) — los tests que antes asumian "solo LM" ahora usan
-   resolveAllFinancialFacts() para aislar especificamente el comportamiento
-   de LM bajo prueba, dejando el resto de los datos ya resueltos. */
 import {test, expect} from '@playwright/test';
-
-async function resolveAllFinancialFacts(page){
-  await page.locator('[data-tabbtn="ch-booking"]').click();
-  await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'no_aplica');
-  await page.locator('[data-tabbtn="ch-expedia"]').click();
-  await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'verificado');
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="expedia"]', 'no_aplica');
-  await page.locator('[data-tabbtn="ch-airbnb"]').click();
-  await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]', 'no_aplica');
-  await page.locator('[data-tabbtn="ch-direct"]').click();
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'no_aplica');
-}
 
 test('config por defecto: Min Price, Base Price y el Offset sugerido arrancan bloqueados por LM sin verificar', async ({page}) => {
   await page.goto('/index.html');
@@ -78,7 +56,6 @@ test('cambiar a un modo configurable (plano) y marcarlo verificado SÍ desbloque
   await page.locator('[data-lmf="flat.pct"]').fill('20');
   await page.locator('[data-lmf="flat.pct"]').dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
-  await resolveAllFinancialFacts(page); // aisla el comportamiento de LM bajo prueba (Fase 5)
 
   await expect(page.locator('#validationBanner')).not.toContainText('LM SIN VERIFICAR');
   await expect(page.locator('#kFloor')).not.toHaveText('—', {timeout: 3000});
@@ -126,7 +103,6 @@ test('Matriz: un escenario que SERÍA "RENTABLE EN TODOS" con LM verificado, se 
   await page.locator('[data-tabbtn="resumen"]').click();
   await page.selectOption('[data-lm="mode"]', 'flat');
   await page.locator('[data-lm="verified"]').check();
-  await resolveAllFinancialFacts(page); // aisla el comportamiento de LM bajo prueba (Fase 5)
   await page.locator('[data-tabbtn="comparacion"]').click();
   const unblockedTags = await page.locator('#matrixBody .v-tag').allInnerTexts();
   expect(unblockedTags.every(t => t.trim()==='RENTABLE EN TODOS'), `una vez verificado, el mismo escenario generoso debería quedar "RENTABLE EN TODOS": ${JSON.stringify(unblockedTags)}`).toBe(true);

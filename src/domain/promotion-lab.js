@@ -57,7 +57,6 @@ export function clonePricingConfig(config){
     ceilings: {...(config.ceilings || {})},
     costBreakdown: config.costBreakdown ? {...config.costBreakdown} : config.costBreakdown,
     lmConfig: config.lmConfig ? clone(config.lmConfig) : config.lmConfig,
-    verification: config.verification ? clone(config.verification) : config.verification,
     usdManualReviewLog: config.usdManualReviewLog ? clone(config.usdManualReviewLog) : config.usdManualReviewLog
   };
 }

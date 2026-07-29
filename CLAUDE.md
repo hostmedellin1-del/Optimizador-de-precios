@@ -125,7 +125,7 @@ confirmar"): **`ab_topguest`, `group:'stackable-post'`** (capa aparte, se aplica
 de la promo ganadora, no compite con ella — decisión conservadora, a confirmar cuando Dani
 lo vea en su panel de Airbnb), **apagado, `pct:0`, `verified:false`** por defecto. No
 afecta ningún número hasta que Dani confirme disponibilidad/%/comportamiento real y lo
-active él mismo. Bloquea Airbnb (clave `airbnbTopRatedGuest`, `readiness.js`) si se activa
+active él mismo. La aplicación usa el porcentaje que configures directamente
 sin confirmar — mismo mecanismo que `ab_nonref`.
 
 ### Booking.com
@@ -455,11 +455,10 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
    cargue el dato real de cada unidad.
 2. Confirmar en la extranet real de Booking.com: ¿Genius y Mobile Rate están AMBOS
    activos hoy? Se asumió que sí (10% + 10%) — cambia cuál canal termina fijando el piso.
-   **(clave `bookingGeniusMobileBoth` — bloquea Booking mientras esté pendiente.)**
+   **(compruébalo en la extranet antes de guardar el porcentaje.)**
 3. % real de comisión bancaria por canal. Hoy: Booking 6%, Directo 6%, Airbnb 0%,
    Expedia 0% — son estimados de Dani a falta de revisar facturas, no verificados.
-   **(clave `bankFeePctByChannel`, POR CANAL — bloquea cada canal con comisión > 0%
-   mientras esté pendiente; Airbnb/Expedia en 0% no lo necesitan.)**
+   **(comprueba la comisión real por canal en tu factura.)**
 4. **[Actualizado de nuevo — multimoneda DESACTIVADA a propósito]** Esta versión
    opera **exclusivamente en USD** — la app NUNCA convierte, suma ni compara
    valores de monedas distintas (ver "Contrato de moneda" arriba). El módulo
@@ -481,17 +480,17 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
    Expedia siempre trae 20% mínimo, o acepta que en esas ventanas Expedia va a estar
    siempre marcado como excedido (y competir menos ahí)? No es un bug, es una decisión de
    negocio que depende de qué tanto peso le da Dani a Expedia en esas ventanas.
-   **(la mezcla VIP real, clave `expediaVipTierMix`, bloquea Expedia por separado —
+   **(la mezcla VIP real se introduce directamente en el catálogo —
    confirmar el % del techo no reemplaza confirmar la mezcla real de huéspedes.)**
 9. % exacto del descuento no reembolsable de Airbnb, si este listing lo tiene activo.
-   Hoy apagado en 0% por defecto (nadie inventó un 10%). **(clave `airbnbNonRefundable` —
+   Hoy apagado en 0% por defecto (nadie inventó un 10%). **(
    solo bloquea Airbnb si Dani activa este descuento sin confirmar el % real.)**
 12. **[Nuevo, jul 2026]** Confirmar si el "Top Rated Guest Discount" de Airbnb (huésped
     4,8★+ y 3+ reseñas) está realmente disponible/activo en esta cuenta, el % exacto
     (fuentes contradicen: 15% fijo vs 10/15/20% elegible por el host), y si compite con
     las demás promos o se apila aparte (se asumió que se apila, como el no-reembolsable,
     hasta que Dani lo confirme). Hoy apagado en 0% por defecto (nadie inventó un 15%).
-    **(clave `airbnbTopRatedGuest` — solo bloquea Airbnb si Dani activa este descuento
+    **(se usa únicamente cuando Dani activa este descuento
     sin confirmar el % real.)**
 10. **[Actualizado de nuevo]** Moneda real y tipo de cambio por canal — la UI para
     configurar esto (`channel.settlementCurrency`, `state.fxRates`) se **eliminó**
@@ -651,37 +650,25 @@ Capa apilable POST-promo en `combineChannel()` — se aplica DESPUÉS de que gan
 del grupo `'promo'`, no compite dentro de ese grupo. Apagado, en 0% y `verified:false`
 por defecto: nadie inventó un 10%, Dani debe confirmar por listing si aplica y el % real.
 
-### Verificado / No-verificado (`src/domain/verification.js`) y bloqueo real por canal (`src/domain/readiness.js`, FASE 5)
-Registro por unidad para hechos que la app NUNCA puede confirmar sola (Genius+Mobile
-ambos activos en Booking, comisión bancaria real por canal, mezcla de niveles VIP de
-Expedia y descuentos de Airbnb). Cada clave declara un `scope`: `'global'` (un registro
-para toda la unidad) o
-`'channel'` (un registro POR CANAL — hoy solo `bankFeePctByChannel`, porque la comisión
-bancaria real puede confirmarse en un canal y no en otro). Cada registro guarda
-`{status, source, date, note}` — no solo `status/note` como antes. `status` puede ser
-`'no_verificado'` (pendiente, bloquea), `'verificado'` (confirmado, no bloquea) o
-`'no_aplica'` (Dani confirmó explícitamente que ese dato no es relevante para esta
-unidad/canal — tampoco bloquea, pero es una resolución explícita, distinta de "pendiente").
-Todo arranca en `'no_verificado'` — pasar a otro estado es una acción explícita de Dani,
-nunca automática ni asumida al cargar una unidad vieja que no tenía esta clave (ni al
-importar un archivo con un `status` desconocido o con forma inválida — se descarta a favor
-de `'no_verificado'`, ver `src/domain/persistence.js`).
+### Datos financieros por canal: cálculo directo
+Las comisiones, cargos bancarios, Offsets y descuentos son entradas de negocio. La aplicación
+los utiliza directamente y no intenta confirmar la extranet por su cuenta. La responsabilidad
+del usuario es comprobar cada porcentaje en la cuenta real antes de usar el resultado.
 
-**FASE 5 (revisión externa — "datos financieros verificados"): esto dejó de ser una
-etiqueta visual y pasó a ser una regla real de bloqueo.** Antes, el código ya sabía que
+**FASE 5 (revisión externa — histórico):** esta descripción conserva el contexto de una
+capa que ya fue retirada. La aplicación actual no tiene este gate. Antes, el código ya sabía que
 estos datos estaban "no verificados", pero ninguna vista lo usaba para impedir nada —
 Piso/Base/Offset/"Rentable" se mostraban igual de confiados. `evaluateRecommendationReadiness()`
 (`src/domain/readiness.js`, función pura, la única fuente de esta regla) recibe
 `{channels, discounts, verification}` y decide, **por canal**, qué dato pendiente lo
 afecta:
 
-| Dato (`VERIFICATION_KEYS`) | Alcance | Afecta a... | Cuándo aplica |
+| Dato histórico | Alcance | Afecta a... | Cuándo aplicaba |
 |---|---|---|---|
-| `bankFeePctByChannel` | **por canal** | el canal cuya comisión bancaria/pasarela > 0% | por defecto Booking y Directo (6%); Airbnb/Expedia en 0% no lo necesitan |
-| `bookingGeniusMobileBoth` | global | Booking | solo si Genius Y Mobile Rate están AMBOS activos |
-| `expediaVipTierMix` | global | Expedia | solo si la Oferta VIP (`ex_mod`) está activa |
-| `airbnbNonRefundable` | global | Airbnb | solo si el no-reembolsable (`ab_nonref`) está activo |
-| `airbnbTopRatedGuest` | global | Airbnb | solo si el "Top Rated Guest Discount" (`ab_topguest`) está activo |
+| comisión bancaria | por canal | el canal correspondiente | histórico |
+| combinación Genius/Mobile | global | Booking | histórico |
+| mezcla VIP | global | Expedia | histórico |
+| promociones Airbnb | global | Airbnb | histórico |
 
 El Offset sigue siendo 100% manual por canal (`offsetPct`) y participa en los cálculos
 exactamente como antes; no hay distribución automática de PMS que verificar ni un gate
@@ -746,7 +733,7 @@ filtro de `matrix.js`/`alerts.js`.
 
 La Matriz (`buildMatrixVerdict()`) nunca dice "RENTABLE EN TODOS" si CUALQUIERA de los 4
 canales de esa ventana depende de un dato pendiente (no solo el más ajustado) — el
-veredicto cambia a "DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN". Igual la alerta
+veredicto cambia a un aviso de revisión. Igual la alerta
 "Sin conflictos" (`buildAlerts()`) de Resumen. El Simulador NUNCA bloquea la simulación
 manual por canal (diagnóstico/simulación individual sigue disponible aunque el global esté
 bloqueado por OTRO canal), pero la etiqueta "SIMULACIÓN NO CONFIABLE" mientras el canal
@@ -1253,27 +1240,26 @@ Tests nuevos: `tests/fase-lm-blocking.test.js`, `tests/fase-input-validation.tes
 `e2e/manual-input-validation.spec.js`, `e2e/matrix-detail.spec.js`; `e2e/smoke.spec.js`
 actualizado (la carga limpia ahora arranca bloqueada por diseño).
 
-### Actualización (revisión externa, FASE 5) — verificación de datos financieros como regla real, no etiqueta
-La revisión externa señaló que el registro de `verification.js` reconocía datos "no
+### Actualización histórica (revisión externa, FASE 5)
+La revisión externa señaló que un registro histórico reconocía datos "no
 verificados" pero ningún cálculo se bloqueaba por eso — el motor podía estar
 matemáticamente correcto y aun así dar una recomendación incorrecta si esos datos no
 representaban la cuenta real. Se agregó `src/domain/readiness.js`
 (`evaluateRecommendationReadiness()`), la única fuente que decide, por canal, qué dato
 pendiente lo afecta (ver tabla en la sección "Verificado / No-verificado" arriba). Cambios:
 
-1. `verification.js`: cada registro guarda `status`/`source`/`date`/`note` (antes solo
+1. El registro histórico guardaba `status`/`source`/`date`/`note` (antes solo
    `status`/`note`); nuevo estado `'no_aplica'` (resuelto, no bloquea, distinto de
-   `'no_verificado'`); `bankFeePctByChannel` pasó de un registro plano a uno POR CANAL.
+   `'no_verificado'`); los cargos bancarios pasaron de un registro plano a uno POR CANAL.
 2. `engine.js`: `compute()` rastrea `floorChId`/`baseChId` (qué canal fija cada número) y
    expone `readiness`/`floorReadinessBlocked`/`floorReadinessBlockedReason`/
    `baseReadinessBlocked`/`baseReadinessBlockedReason` — ortogonales a `lmBlocked`/
-   `baseBlocked`, sin tocarlos. Solo se activa si `config.verification` viene explícito
-   (mismo patrón que `lmConfig` — callers de test que no lo pasan no ven un bloqueo nuevo
-   que no pidieron; en producción `state.verification` siempre está presente).
+   `baseBlocked`, sin tocarlos. Esta descripción corresponde a la versión histórica y no
+   a la implementación actual.
 3. `matrix.js`/`alerts.js`: "RENTABLE EN TODOS" y "Sin conflictos" ya no se sostienen si
    CUALQUIER canal de esa ventana depende de un dato pendiente (no solo el más ajustado).
 4. `persistence.js`: `normalizeVerification()` migra unidades viejas (incluido el formato
-   plano pre-Fase-5 de `bankFeePctByChannel`) siempre a `'no_verificado'` por canal —
+   plano pre-Fase-5 de cargos bancarios) siempre a `'no_verificado'` por canal —
    JAMÁS hereda `'verificado'` de un registro que no era por canal. Un payload malformado
    (status inventado, campos no-string, objetos rotos) nunca se acepta como verificado.
 5. `index.html`: KPIs/pestañas de canal/Matriz bloquean por canal con una explicación

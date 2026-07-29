@@ -3,21 +3,7 @@ import assert from 'node:assert/strict';
 import {buildDuplicateUnit, normalizeUnit} from '../src/domain/persistence.js';
 import {compute} from '../src/domain/engine.js';
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../src/catalog/discounts.js';
-import {VERIFICATION_KEYS, defaultVerification} from '../src/domain/verification.js';
 import {EXAMPLE_COST_DEFAULTS} from '../src/domain/cost-mode.js';
-
-function resolvedVerification(){
-  const verification = defaultVerification();
-  Object.entries(VERIFICATION_KEYS).forEach(([key, meta]) => {
-    if(meta.scope === 'channel'){
-      Object.values(verification[key]).forEach(entry => { entry.status = 'no_aplica'; entry.source = 'Cuenta real'; });
-    } else {
-      verification[key].status = 'no_aplica';
-      verification[key].source = 'Cuenta real';
-    }
-  });
-  return verification;
-}
 
 function configuredSource(){
   const discounts = defaultDiscounts().map((discount, index) => ({
@@ -47,7 +33,7 @@ function configuredSource(){
     margin:37, marketWindow:12, marketBase:155, avgNights:4,
     channels, discounts,
     ceilings:Object.fromEntries(WINDOWS.map((window, index) => [window.id, index + 3])),
-    lmConfig, verification:resolvedVerification(),
+    lmConfig,
     costBreakdown:{...defaultCostBreakdown(), rent:950, admin:45, utilities:70, insurance:12, tech:8, cleaning:35, laundry:6, consumables:4, supplies:5},
     costBreakdownConfirmed:true,
     usdManualReviewPending:false,
@@ -55,11 +41,7 @@ function configuredSource(){
   };
 }
 
-function expectedResetVerification(){
-  return defaultVerification();
-}
-
-test('buildDuplicateUnit copia exactamente la configuración de 4 canales, 37 descuentos, techos y LM; nunca sus confirmaciones', () => {
+test('buildDuplicateUnit copia exactamente la configuración de 4 canales, descuentos, techos y LM; nunca sus confirmaciones', () => {
   const origin = configuredSource();
   const result = buildDuplicateUnit(origin, 'Unidad clon');
 
@@ -78,7 +60,6 @@ test('buildDuplicateUnit copia exactamente la configuración de 4 canales, 37 de
   assert.deepEqual({...copy.lmConfig, verified:undefined}, {...origin.lmConfig, verified:undefined});
 
   assert.equal(copy.id, undefined);
-  assert.deepEqual(copy.verification, expectedResetVerification());
   assert.equal(copy.lmConfig.verified, false);
   assert.ok(copy.discounts.every(discount => discount.verified === false));
   assert.equal(copy.costBreakdownConfirmed, false);
@@ -87,24 +68,6 @@ test('buildDuplicateUnit copia exactamente la configuración de 4 canales, 37 de
   assert.equal(copy.varCost, EXAMPLE_COST_DEFAULTS.varCost);
   assert.equal(copy.usdManualReviewPending, false);
   assert.deepEqual(copy.usdManualReviewLog, []);
-});
-
-test('todos los estados de verificación, incluso verificado y no_aplica, vuelven individualmente a no_verificado', () => {
-  const origin = configuredSource();
-  origin.verification.bookingGeniusMobileBoth.status = 'no_aplica';
-  origin.verification.bankFeePctByChannel.airbnb.status = 'verificado';
-  origin.verification.bankFeePctByChannel.booking.status = 'no_aplica';
-  const {state: copy} = buildDuplicateUnit(origin, 'Clon sin afirmaciones');
-
-  Object.entries(VERIFICATION_KEYS).forEach(([key, meta]) => {
-    if(meta.scope === 'channel'){
-      Object.values(copy.verification[key]).forEach(entry => {
-        assert.equal(entry.status, 'no_verificado', `${key} por canal no puede heredar ningún estado`);
-      });
-    } else {
-      assert.equal(copy.verification[key].status, 'no_verificado', `${key} no puede heredar ningún estado`);
-    }
-  });
 });
 
 test('buildDuplicateUnit no muta profundamente el origen y devuelve arreglos/objetos independientes', () => {
@@ -138,15 +101,14 @@ test('la copia pasa por normalizeUnit sin warnings y conserva todos los reseteos
   assert.equal(state.fixedCost, EXAMPLE_COST_DEFAULTS.fixedCost);
   assert.equal(state.varCost, EXAMPLE_COST_DEFAULTS.varCost);
   assert.ok(state.discounts.every(discount => discount.verified === false));
-  assert.deepEqual(state.verification, defaultVerification());
 });
 
-test('aunque la unidad origen está desbloqueada, el duplicado queda bloqueado para Min Price por confirmaciones reseteadas', () => {
+test('aunque la unidad origen está desbloqueada, el duplicado queda bloqueado para Min Price por costos reseteados', () => {
   const origin = configuredSource();
   const originalModel = compute({...origin, windows:WINDOWS.map(window => ({...window}))});
   const {state: duplicate} = buildDuplicateUnit(origin, 'Clon bloqueado');
   const duplicateModel = compute({...duplicate, windows:WINDOWS.map(window => ({...window}))});
 
   assert.equal(originalModel.floorReadinessBlocked, false, 'el origen es una unidad completamente confirmada');
-  assert.equal(duplicateModel.floorReadinessBlocked, true, 'el clon no puede producir una recomendación hasta confirmar sus propios datos');
+  assert.equal(duplicateModel.floorReadinessBlocked, true, 'el clon no puede producir una recomendación hasta cargar sus propios costos');
 });

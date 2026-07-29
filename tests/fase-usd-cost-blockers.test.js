@@ -8,27 +8,18 @@ import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
 import {buildMatrixVerdict, worstScenariosInWindow} from '../src/domain/matrix.js';
 import {buildAlerts} from '../src/domain/alerts.js';
-import {defaultVerification} from '../src/domain/verification.js';
 import {defaultLmConfig} from '../src/catalog/discounts.js';
 import {freshChannels, freshDiscounts, freshWindows, defaultCeilings} from './helpers/state-factory.js';
 
 function verifiedLmConfig(){
   return {mode:'flat', verified:true, flat:{pct:0, fromDay:0, toDay:0, on:false}, gradual:{maxPct:0,days:3,on:false}, fixedPrice:{price:0,fromDay:0,toDay:3,on:false}, tiers:[]};
 }
-function resolveAll(verification){
-  verification.bookingGeniusMobileBoth.status = 'no_aplica';
-  verification.expediaVipTierMix.status = 'no_aplica';
-  verification.airbnbNonRefundable.status = 'no_aplica';
-  Object.keys(verification.bankFeePctByChannel).forEach(id=>{ verification.bankFeePctByChannel[id].status = 'verificado'; });
-  return verification;
-}
 function baseConfig(overrides={}){
   const channels = overrides.channels || freshChannels();
   const discounts = overrides.discounts || freshDiscounts();
   const windows = overrides.windows || freshWindows();
   const ceilings = overrides.ceilings || defaultCeilings(windows);
-  const verification = overrides.verification || resolveAll(defaultVerification());
-  return {fixedCost:32, varCost:22, margin:45, marketBase:0, lmConfig: verifiedLmConfig(), ...overrides, channels, discounts, windows, ceilings, verification};
+  return {fixedCost:32, varCost:22, margin:45, marketBase:0, lmConfig: verifiedLmConfig(), ...overrides, channels, discounts, windows, ceilings};
 }
 
 /* ======================= BLOQUEANTE 1 — canal no-USD ======================= */
@@ -55,7 +46,7 @@ test('BLOQUEANTE 1: con el canal COP, la Matriz NUNCA dice "RENTABLE EN TODOS" n
   const channels = freshChannels().map(c=>c.id==='airbnb' ? {...c, settlementCurrency:'COP'} : c);
   const config = baseConfig({currency:'USD', channels, fixedCost:5, varCost:0, margin:5});
   const model = compute(config);
-  const qConfig = {channels: config.channels, discounts: config.discounts, windows: config.windows, ceilings: config.ceilings, fixedCost: config.fixedCost, varCost: config.varCost, lmConfig: config.lmConfig, verification: config.verification};
+  const qConfig = {channels: config.channels, discounts: config.discounts, windows: config.windows, ceilings: config.ceilings, fixedCost: config.fixedCost, varCost: config.varCost, lmConfig: config.lmConfig};
   let sawRentable = false;
   config.windows.forEach(w=>{
     const {worstTecho, worstPayoutRow, perChannel} = worstScenariosInWindow(qConfig, w, model.effBase||100);
@@ -139,6 +130,6 @@ test('BLOQUEANTE 2: sin usingExampleCosts (callers de test que no participan del
 test('BLOQUEANTE 2: con costo bloqueado, Alertas nunca dice "OK: sin conflictos" — aparece el tag COSTOS SIN CONFIRMAR', () => {
   const config = baseConfig({fixedCost:5, varCost:0, margin:5, usingExampleCosts:false, costBreakdown: cb({consumables:5}), costBreakdownConfirmed:false});
   const model = compute(config);
-  const alerts = buildAlerts({discounts: config.discounts, channels: config.channels, ceilings: config.ceilings, marketWindow:16, marketBase:0, windows: config.windows, chTab:{airbnb:'ch-airbnb',booking:'ch-booking',expedia:'ch-expedia',direct:'ch-direct'}, currency:'USD', margin: config.margin, lmConfig: config.lmConfig, verification: config.verification}, model);
+  const alerts = buildAlerts({discounts: config.discounts, channels: config.channels, ceilings: config.ceilings, marketWindow:16, marketBase:0, windows: config.windows, chTab:{airbnb:'ch-airbnb',booking:'ch-booking',expedia:'ch-expedia',direct:'ch-direct'}, currency:'USD', margin: config.margin, lmConfig: config.lmConfig}, model);
   assert.ok(!alerts.some(a=>a.tag==='OK'), 'no debe afirmar "sin conflictos" mientras el costo no este confirmado');
 });

@@ -146,14 +146,8 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>Tramos personalizados</strong>.</li>
     </ul>
     <p>Después marca <strong>Confirmé este modo directamente en PriceLabs</strong>. Si usas el modo Automático, la app no puede verificar matemáticamente una curva que PriceLabs decide por día y las recomendaciones permanecen bloqueadas por diseño.</p>
-    <h3>C. DATO FINANCIERO SIN VERIFICAR</h3>
-    <p>En la pestaña de cada canal, las verificaciones aplicables tienen estado, fuente, fecha y nota.</p>
-    <ul>
-      <li><strong>No verificado</strong>: falta comprobarlo; bloquea la recomendación afectada.</li>
-      <li><strong>Verificado</strong>: lo confirmaste en extranet, factura, soporte u otra fuente real.</li>
-      <li><strong>No aplica</strong>: confirmaste que ese dato no corresponde a esa unidad. No significa “no lo sé”.</li>
-    </ul>
-    <p>Los puntos que aparecen incluyen comisión bancaria/pasarela por canal, Genius y Mobile Rate de Booking, mezcla VIP de Expedia, y no reembolsable y Top Rated Guest de Airbnb. El Offset se configura manualmente por canal: no hay distribución automática que verificar. Un único canal pendiente puede bloquear Min Price y Base Price porque son valores globales de PriceLabs.</p>
+    <h3>C. Datos de cada canal</h3>
+    <p>Las comisiones, la comisión bancaria/pasarela, el Offset y los descuentos que escribas en cada pestaña se aplican directamente al cálculo. Comprueba esos valores en la extranet, facturas o contratos del canal antes de usarlos: la aplicación no puede confirmar por sí sola las reglas de Booking, Airbnb o Expedia y no inventa ningún porcentaje.</p>
     <h3>Caso excepcional: revisión de moneda</h3>
     <p>Si cargas una unidad antigua con una moneda distinta de USD, verás <strong>REQUIERE REVISIÓN MANUAL</strong>. No hay conversión automática. Puedes corregir los datos manualmente o crear una copia en USD y revisar cada valor antes de pulsar <strong>Ya revisé manualmente todos los valores en USD →</strong>. Hasta entonces, los números quedan bloqueados.</p>
   </section>
@@ -169,13 +163,13 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <ul>
       <li><strong>Comisión [canal] %</strong> y <strong>Comisión bancaria/pasarela %</strong>.</li>
       <li><strong>Offset % sobre PriceLabs (tu markup real)</strong>.</li>
-      <li><strong>Verificaciones financieras</strong> aplicables a ese canal, con estado, fuente, fecha y nota.</li>
+      <li>Comisiones, comisión bancaria/pasarela, Offset y descuentos que tú hayas comprobado en ese canal.</li>
       <li>En Airbnb, <strong>Tarifa de aseo — reservas 1–2 noches</strong> y <strong>Tarifa de aseo — reservas 3+ noches</strong>.</li>
       <li><strong>Descuentos activos hoy</strong> y <strong>Ver catálogo completo</strong> para el resto.</li>
     </ul>
     <p>No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está activo para ese listing/canal y usa el porcentaje y la ventana reales.</p>
     <h3>Comparación</h3>
-    <p><strong>Panel de decisión por ventana de reserva</strong> resume cada ventana. Lee primero <strong>Veredicto</strong>. Si pide atención, abre <strong>Ver por canal</strong> para ver el detalle. Los veredictos pueden señalar techo excedido, neto bajo costo, neto bajo objetivo o una configuración rentable; un aviso de datos pendientes debe resolverse antes de tratar un resultado positivo como recomendación.</p>
+    <p><strong>Panel de decisión por ventana de reserva</strong> resume cada ventana. Lee primero <strong>Veredicto</strong>. Si pide atención, abre <strong>Ver por canal</strong> para ver el detalle. Los veredictos pueden señalar techo excedido, neto bajo costo, neto bajo objetivo o una configuración rentable; revisa siempre que los datos que ingresaste coincidan con la realidad del canal.</p>
   </section>
 
   <section id="gestionar">

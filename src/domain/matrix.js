@@ -14,10 +14,9 @@ import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays} from './pricelabs-lm.js';
 import {fP, f$} from './format.js';
-import {unreadyChannels} from './readiness.js';
 
 /* config = {channels, discounts, windows, ceilings, ...costBreakdown/fixedCost/
-   varCost/lmConfig/verification (todo lo que necesita quoteScenario)}
+   varCost/lmConfig (todo lo que necesita quoteScenario)}
    w = una ventana de WINDOWS ({id,label,lo,hi,ceil})
    price = precio de referencia a cotizar (normalmente model.effBase) */
 export function worstScenariosInWindow(config, w, price){
@@ -69,20 +68,6 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
   const lmCaveat = worst.q.lmBlocked
     ? ` (asume LM ${worst.q.lmMode==='ceiling_auto'?'automático':'"'+worst.q.lmMode+'"'} sin verificar — el número real podría variar, confírmalo en Resumen → "Last-Minute de PriceLabs")`
     : '';
-  /* Fase 5 (revision externa — "datos financieros verificados"): igual que
-     lmBlocked (bloqueante CRITICO ronda 2, ver comentario mas abajo), "RENTABLE
-     EN TODOS" es una afirmacion sobre LOS 4 CANALES — si CUALQUIERA de ellos
-     depende de un dato de negocio sin confirmar (comision bancaria real,
-     aislamiento del Offset en Kunas, mezcla VIP de Expedia, Genius+Mobile real
-     de Booking, no-reembolsable de Airbnb), esa afirmacion conjunta no se
-     puede sostener, aunque el canal problematico no sea el "peor" de la
-     ventana. model.readiness (src/domain/readiness.js) es la UNICA fuente que
-     decide esto — no se reimplementa aqui ninguna regla nueva. unreadyChannels()
-     (readiness.js) es la MISMA funcion que ahora tambien usa engine.js para el
-     gate global de Piso/Base (revision externa, P1) — ninguno de los dos
-     reimplementa el filtro por su cuenta. */
-  const readiness = model.readiness;
-  const unready = unreadyChannels(readiness, perChannel.map(p=>p.c));
   let vLvl, vTag, vMsg;
   if(breach){
     vLvl='bad'; vTag='TECHO EXCEDIDO';
@@ -108,9 +93,6 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
        afirmacion de "todo bien"). Ver src/domain/cost-mode.js. */
     vLvl='warn'; vTag='COSTOS SIN CONFIRMAR — NO USAR COMO RECOMENDACIÓN';
     vMsg = `Esta ventana solo sale "rentable en todos" con el costo actual (${f$(model.cost,currency)}), que todavía no está confirmado como un dato real de esta unidad — confírmalo en Resumen → "Costos por noche" antes de tratar este veredicto como definitivo.`;
-  } else if(unready.length){
-    vLvl='warn'; vTag='DATOS SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
-    vMsg = `Esta ventana solo sale "rentable en todos" asumiendo datos financieros que ${unready.length===1?'todavía no confirmaste':'todavía no confirmaste'} para ${unready.map(c=>c.name).join(', ')}: ${unready.map(c=>readiness.byChannel[c.id].missing.map(m=>m.label).join('; ')).join(' · ')}. Confírmalos en la pestaña del canal correspondiente antes de tratar este veredicto como definitivo.`;
   } else {
     vLvl='ok'; vTag='RENTABLE EN TODOS';
     vMsg=`Los 4 canales quedan sobre tu objetivo de margen en esta ventana. El más ajustado es ${worstAsNet.c.name}, con ${f$(worstAsNet.netV,currency)}.`;

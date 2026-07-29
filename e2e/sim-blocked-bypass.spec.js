@@ -10,26 +10,8 @@
    manual disponible (escribiendo un precio a mano) claramente separada de
    cualquier recomendación automática.
 
-   Fase 5 (revision externa — "datos financieros verificados"): Base Price
-   ahora tiene un segundo gate ortogonal a LM (ver src/domain/readiness.js) —
-   resolveAllFinancialFacts() aisla el comportamiento de LM/bypass bajo
-   prueba dejando esos otros datos ya resueltos. */
+   El precio fijo y LM siguen siendo gates independientes de esta prueba. */
 import {test, expect} from '@playwright/test';
-
-async function resolveAllFinancialFacts(page){
-  await page.locator('[data-tabbtn="ch-booking"]').click();
-  await page.selectOption('select[data-verif-status="bookingGeniusMobileBoth"]', 'verificado');
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="booking"]', 'no_aplica');
-  await page.locator('[data-tabbtn="ch-expedia"]').click();
-  await page.selectOption('select[data-verif-status="expediaVipTierMix"]', 'verificado');
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="expedia"]', 'no_aplica');
-  await page.locator('[data-tabbtn="ch-airbnb"]').click();
-  await page.selectOption('select[data-verif-status="airbnbNonRefundable"]', 'no_aplica');
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="airbnb"]', 'no_aplica');
-  await page.locator('[data-tabbtn="ch-direct"]').click();
-  await page.selectOption('select[data-verif-status="bankFeePctByChannel"][data-verif-ch="direct"]', 'no_aplica');
-  await page.locator('[data-tabbtn="resumen"]').click();
-}
 
 test('config por defecto (LM sin verificar): el botón del Simulador NO precarga Base Price bloqueado', async ({page}) => {
   await page.goto('/index.html');
@@ -80,7 +62,6 @@ test('una vez el LM está verificado (no bloqueado), el botón SÍ precarga Base
   const pct = page.locator('[data-lmf="flat.pct"]');
   await pct.click(); await pct.fill('20'); await pct.dispatchEvent('change');
   await page.locator('[data-lm="verified"]').check();
-  await resolveAllFinancialFacts(page);
   await expect(page.locator('#kBase')).not.toHaveText('—');
 
   await page.locator('#goSimBtn').click();

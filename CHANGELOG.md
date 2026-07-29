@@ -18,7 +18,7 @@ reescribía `combineChannel()` (Booking) y reclasificaba `ab_rs` sin autorizaci�
 versión no toca `src/domain/engine.js` ni `src/catalog/discounts.js` en absoluto
 (`git diff` vacío contra la base). `maximumDiscountScenario()`/`compensationOffsetPct()`
 viven como utilidades propias de `promotion-lab.js` que llaman al `combineChannel()`
-existente sin modificarlo. `promotionLabConfig()` omite `manualReviewGates` por completo.
+existente sin modificarlo. `promotionLabConfig()` omite los gates históricos por completo.
 
 ## [0.18.0] — Corrección urgente: restauración de gates financieros
 
@@ -117,8 +117,7 @@ reembolsable de Airbnb (`ab_nonref`): nueva entrada de catálogo `ab_topguest`
 de la promo ganadora, decisión conservadora ante la incertidumbre de si compite),
 **apagada, `pct:0`, `verified:false`** por defecto — no afecta ningún número hasta que
 Dani confirme disponibilidad/%/comportamiento real en su cuenta de Airbnb y lo active
-él mismo. Nueva clave de verificación `airbnbTopRatedGuest`
-(`src/domain/verification.js`) con su gate en `src/domain/readiness.js` (bloquea
+él mismo. Existía una clave histórica para ese caso con un gate que bloqueaba
 Airbnb si se activa sin confirmar, igual que `ab_nonref`) y en `src/domain/audit.js`
 (`PROMO_KEYS`). Cero cambios a `combineChannel()` — el grupo `'stackable-post'` ya
 existía. Cero cambios de UI — el catálogo de descuentos y el formulario de
@@ -526,7 +525,7 @@ verde (incluye los fixes de rondas 2/3 y Fase 5, sin regresión).
 
 ## [0.6.0] — Verificación de datos financieros como regla real, no etiqueta
 
-La revisión externa señaló que `src/domain/verification.js` reconocía datos "no
+La revisión externa señaló que un registro histórico reconocía datos "no
 verificados" (comisión bancaria real, aislamiento del Offset en Kunas, mezcla VIP
 de Expedia, Genius+Mobile de Booking, no-reembolsable de Airbnb) pero ningún
 cálculo se bloqueaba por eso — el motor podía ser matemáticamente correcto y aun
@@ -535,9 +534,9 @@ así dar una recomendación incorrecta.
 - **Nuevo `src/domain/readiness.js`** (`evaluateRecommendationReadiness()`) — la
   única fuente que decide, **por canal**, qué dato pendiente lo afecta y bloquea
   su Piso/Base/Offset/"Rentable" como recomendación confiable.
-- **`verification.js`**: cada registro guarda `status`/`source`/`date`/`note`
+- **Registro histórico**: cada dato guardaba `status`/`source`/`date`/`note`
   (antes solo `status`/`note`); nuevo estado `'no_aplica'` (resuelto, no bloquea);
-  `bankFeePctByChannel` pasó de un registro plano a uno **por canal**.
+  los cargos bancarios pasaron de un registro plano a uno **por canal**.
 - **`engine.js`**: `compute()` expone `readiness`/`floorReadinessBlocked`/
   `baseReadinessBlocked` — ortogonales a `lmBlocked`/`baseBlocked` (ronda 2/3, sin
   tocarlos).
@@ -706,7 +705,7 @@ en navegador). `node --test` reemplaza los `node -e` ad hoc.
 - PriceLabs Last-Minute configurable por unidad, 5 modos (automático, plano,
   gradual, precio fijo, tramos con política de solape explícita) —
   `src/domain/pricelabs-lm.js`.
-- Registro de Verificado/No-verificado por unidad (`verification.js`) para los
+- Registro histórico de estados por unidad para los
   hechos que no se pueden confirmar sin revisar la cuenta real.
 
 ### Fase 5 — Validación y bloqueo
