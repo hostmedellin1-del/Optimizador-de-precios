@@ -65,8 +65,10 @@ gana el umbral MÁS PROFUNDO que se cumple (más noches / más días), NO el por
 alto. Esto ya está implementado en `combineChannel()` con `prio` + sort descendente por
 `minN`/`from` dentro del mismo nivel — no cambiar a "sort por % mayor", es incorrecto.
 
-Los ajustes de rule set / temporada (`group:'stackable'`) SÍ se suman encima de la promo
-ganadora — no compiten con ella.
+Los ajustes internos de temporada, demanda, ocupación y Last-Minute de PriceLabs NO son
+promociones OTA y nunca se suman aquí. El identificador histórico `ab_rs` se conserva
+solo para migrar unidades guardadas, con `group:'pricelabs-internal'`; el motor lo ignora
+porque PriceLabs ya entrega un precio final que respeta su propio Min Price.
 
 ### `lockN` — umbrales con nombre atado a un número específico (jul 2026)
 Semanal (7 noches), Quincenal (14 noches), Larga estadía (28 noches) y Early-bird

@@ -5,6 +5,18 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.23.0] — Flujo diario simplificado y corrección de ajuste PriceLabs
+
+**Corregido** — un ajuste interno de PriceLabs podía conservarse como `ab_rs` y sumarse
+como si fuera una promoción de Airbnb. Eso inflaba el Min Price: por ejemplo, larga
+estadía 25% + ajuste interno 15% convertía un costo de USD 53 en un mínimo cercano a
+USD 84. Ahora ese dato se conserva solo para migrar unidades antiguas, pero nunca entra
+en el descuento OTA ni en el Offset recomendado.
+
+**Simplificado** — la sección principal muestra abierta la decisión diaria: Min Price
+común de PriceLabs y Offset recomendado por OTA. Los ajustes internos de PriceLabs se
+explican como parte del precio final y no vuelven a descontarse.
+
 ## [0.22.0] — Offset de compensación visible por OTA
 
 **Instrucción directa** — cada tarjeta del Simulador de descuento máximo muestra ahora el

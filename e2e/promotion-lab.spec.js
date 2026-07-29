@@ -1,15 +1,16 @@
 import {test, expect} from '@playwright/test';
 
 async function openPromotionLab(page){
-  await page.locator('#promotionLabSection > summary').click();
+  const section = page.locator('#promotionLabSection');
+  if(await section.getAttribute('open') === null) await page.locator('#promotionLabSection > summary').click();
   await page.locator('#promotionLab .promo-editor > summary').click();
 }
 
 test('Simulador de descuento máximo: muestra el peor grupo posible por OTA sin sumar promociones imposibles', async ({page}) => {
   await page.goto('/index.html');
-  await page.locator('#promotionLabSection > summary').click();
 
-  await expect(page.locator('#promotionLab')).toContainText('El peor descuento posible para cada OTA');
+  await expect(page.locator('#promotionLabSection > summary')).toContainText('Qué poner en Kunas por OTA');
+  await expect(page.locator('#promotionLab')).toContainText('Resultado por OTA');
   await expect(page.locator('#promotionLab')).toContainText('Booking.com');
   await expect(page.locator('#promotionLab')).toContainText('Genius (constante) + Mobile Rate');
   await expect(page.locator('#promotionLab')).toContainText('Offset de compensación en Kunas');

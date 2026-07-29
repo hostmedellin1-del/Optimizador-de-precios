@@ -35,7 +35,10 @@ export function defaultDiscounts(){ return [
   {id:'ab_lm1',  ch:'airbnb', name:'Last-minute 1', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:1,  on:false, note:'ventana y % completamente variables — configúralos tú'},
   {id:'ab_lm2',  ch:'airbnb', name:'Last-minute 2', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:3,  on:false, note:'ventana y % completamente variables — configúralos tú'},
   {id:'ab_lm3',  ch:'airbnb', name:'Last-minute 3', kind:'window', group:'promo', prio:5, pct:0,  from:0, to:7,  on:false, note:'ventana y % completamente variables — configúralos tú'},
-  {id:'ab_rs',  ch:'airbnb', name:'Ajuste de rule set / temporada', kind:'constant', group:'stackable', prio:0, pct:0, on:false, note:'apila sobre la promo ganadora'},
+  /* Ajuste interno de PriceLabs: se conserva el id para migrar unidades
+     antiguas, pero nunca se cuenta como una promoción de Airbnb. PriceLabs ya
+     respeta su propio Min Price después de aplicar temporada/demanda/LM. */
+  {id:'ab_rs',  ch:'airbnb', name:'Ajuste interno de PriceLabs (no se suma)', kind:'constant', group:'pricelabs-internal', prio:0, pct:0, on:false, note:'PriceLabs ya lo aplica antes de respetar el Min Price; no se cuenta como promoción Airbnb'},
   {id:'ab_nonref', ch:'airbnb', name:'Descuento no reembolsable (por listing)', kind:'constant', group:'stackable-post', pct:0, on:false, verified:false, note:'No verificado — confirma por listing si aplica y el % exacto (Fase 4). No asumir 10%. Capa aparte: se aplica DESPUES de la promo ganadora, no compite dentro del grupo promo.'},
   {id:'ab_topguest', ch:'airbnb', name:'Descuento a huésped Top Rated (4,8★+, 3+ reseñas)', kind:'constant', group:'stackable-post', pct:0, on:false, verified:false, note:'Programa nuevo de Airbnb en prueba limitada (jul 2026) — no confirmado que esté disponible en esta cuenta. Elegibilidad la decide Airbnb (huésped 4,8★+ y 3+ reseñas), no el host. % reportado varía según fuente (10/15/20% vs 15% fijo) — no asumir 15%. Confirma en tu cuenta de Airbnb (Configuración de precios → Descuentos) antes de activar. Capa aparte, apilable: se aplica DESPUÉS de la promo ganadora, no compite con ella (misma lógica que el no-reembolsable).'},
   /* BOOKING — proactive stack; reactive exclusive; mobile conflicts w/ country & limited */

@@ -54,14 +54,14 @@ export function losApplies(d, nights){ return d.kind==='los' && nights>=(d.minN|
 /* Returns {factor, totalPct, applied:[{name,pct,why}], ignored:[{name,reason}]} for one channel.
    `discounts` es el arreglo completo del catalogo (equivalente a state.discounts). */
 export function combineChannel(discounts, chId, daysOut, nights){
-  const ds = discounts.filter(d=>d.ch===chId && d.on && pct(d.pct)>0);
+  /* Los ajustes internos de PriceLabs ya están absorbidos por su precio FINAL
+     y no pueden volver a descontarse como si fueran una promo OTA. */
+  const ds = discounts.filter(d=>d.ch===chId && d.group!=='pricelabs-internal' && d.on && pct(d.pct)>0);
   const applied=[], ignored=[];
   let factor=1;
   const add=(d,why)=>{factor*=(1-pct(d.pct)/100); applied.push({name:d.name,pct:pct(d.pct),why});};
 
   if(chId==='airbnb'){
-    /* Capa apilable (rule sets / ajuste estacional) se aplica primero y NO compite */
-    ds.filter(d=>d.group==='stackable').forEach(d=>add(d,'rule set: apila sobre la promo ganadora'));
     /* Grupo promo: solo UNA aplica. 1º por prioridad de tipo (nuevo>personalizada>duración>early-bird>last-minute).
        2º, dentro del mismo tipo con varios escalones, gana el umbral MÁS PROFUNDO que se cumple
        (más noches para duración, más días de anticipación para early-bird) — no el % más alto. */

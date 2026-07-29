@@ -74,6 +74,19 @@ test('Airbnb — respeta la prioridad oficial: una promo principal por noche (nu
   assert.deepEqual(result.applied.map(item=>item.name),['Promo anuncio nuevo (20%)']);
 });
 
+test('Airbnb — un ajuste interno de PriceLabs nunca se suma como descuento OTA',()=>{
+  const discounts = freshDiscounts().map(d=>({...d}));
+  const longStay = discounts.find(d=>d.id==='ab_los4');
+  const priceLabsAdjustment = discounts.find(d=>d.id==='ab_rs');
+  longStay.on = true;
+  longStay.pct = 25;
+  priceLabsAdjustment.on = true;
+  priceLabsAdjustment.pct = 15;
+  const result = combineChannel(discounts,'airbnb',0,34);
+  assert.equal(result.factor,0.75,'solo debe quedar la larga estadía de Airbnb');
+  assert.deepEqual(result.applied.map(item=>item.name),[longStay.name]);
+});
+
 test('Offset de compensación: Airbnb 25% de descuento + 15.5% de comisión requiere +57.8% en Kunas, no sumar 40.5%',()=>{
   const airbnb=freshChannels().find(channel=>channel.id==='airbnb');
   const result=compensationOffsetPct(airbnb,0.75);

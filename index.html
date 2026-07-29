@@ -266,7 +266,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <div class="card" id="costsSection">
     <h2>Costos por noche</h2>
     <div class="field"><span id="currencyLabel">Moneda de esta unidad</span><span id="currencyDisplay" role="status" aria-labelledby="currencyLabel" style="display:block;padding:8px 0;font-weight:600;">USD</span></div>
-    <p class="hint" id="usdOnlyNotice">Todos los valores deben ingresarse en USD. Esta versión no convierte ni mezcla monedas — la multimoneda se implementará en una fase posterior.</p>
+    <p class="hint" id="usdOnlyNotice">Todos los valores se ingresan en USD.</p>
     <p class="hint" id="usdReviewTrail" style="display:none;"></p>
     <div class="field"><label for="f-fixedCost">Costo fijo por noche <span class="hint">arriendo, administración, servicios y tech</span></label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
     <div class="field"><label for="f-varCost">Costo variable por noche <span class="hint">limpieza, lavandería, consumos e insumos</span></label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
@@ -317,10 +317,10 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Entender una reserva →</button>
   </div>
 </div>
-<details class="tool-panel" id="promotionLabSection">
-  <summary>Simulador de descuento máximo <span class="hint">ve el peor descuento posible por OTA</span></summary>
+<details class="tool-panel" id="promotionLabSection" open>
+  <summary>Qué poner en Kunas por OTA <span class="hint">descuento máximo + comisión, calculado por canal</span></summary>
   <div class="tool-panel-body">
-    <p class="hint">La herramienta busca el grupo de huésped que recibe el mayor descuento real en cada OTA. Solo combina descuentos compatibles: no suma promociones imposibles.</p>
+    <p class="hint">Aquí está la decisión diaria: conserva un único Min Price final en PriceLabs y configura el Offset recomendado de cada OTA en Kunas. Los ajustes internos de PriceLabs no se vuelven a descontar.</p>
     <div id="promotionLab"></div>
   </div>
 </details>
@@ -400,14 +400,17 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 </section>
 </div>
 
-<div class="footer-note" id="rulesNote">
+<details class="tool-panel rules-note-panel" id="rulesNote">
+  <summary>Ver reglas de cálculo <span class="hint">solo si quieres auditar un resultado</span></summary>
+  <div class="tool-panel-body footer-note">
   <strong>Reglas de combinación aplicadas (verificadas jul 2026):</strong><br>
-  · <strong>Airbnb</strong>: orden precio → duración → early-bird/last-minute. Si duración y EB/LM califican a la vez, solo aplica duración (regla oficial de rule sets); EB y LM nunca aplican juntos. Hay reportes de hosts de apilamiento fuera de rule sets — verifica una reserva de prueba en tu anuncio.<br>
+  · <strong>Airbnb</strong>: PriceLabs entrega un precio final y Airbnb aplica una sola promoción principal por noche: anuncio nuevo → personalizada → duración → anticipada → último minuto. Los ajustes de temporada, demanda, ocupación y Last-Minute de PriceLabs no se vuelven a descontar aquí.<br>
   · <strong>Booking</strong>: categorías distintas se multiplican (Genius × Mobile × un deal reactivo × duración de estadía). Misma categoría no combina: solo un deal reactivo (Basic/Early/Last-Minute/Getaway) a la vez, y solo el umbral de duración más profundo que califique — el motor usa el mayor aplicable en cada caso. Mobile no combina con Country Rate ni Limited-time Deal. La duración de estadía es tu tarifa configurada en Rates & Availability → Discounts, no un "deal": se apila con todo.<br>
   · <strong>Expedia</strong>: una sola promo base por reserva, incluida la duración de estadía (el motor usa la mayor aplicable); Oferta VIP miembros apila encima de esa promo.<br>
   · <strong>PriceLabs</strong>: su precio (con LM incluido) es la base; el <strong>Offset por canal</strong> (Pricing Offset de PriceLabs, Dynamic Pricing → Customizations) se aplica DESPUÉS, específico por canal — confirmado con soporte de PriceLabs. Ojo: si tu PMS (Kunas) distribuye el offset a todos los canales conectados en vez de aplicarlo solo al elegido, verifica en Kunas antes de confiar en la separación. Los nativos de cada OTA se aplican después de eso, y la comisión al final sobre lo que paga el huésped.<br>
   · <strong>Comisión bancaria/pasarela</strong>: Booking y Directo tienen 6% adicional configurado (tarjeta virtual, transferencia, pasarela de pago) — se calcula SOBRE EL PRECIO QUE PAGA EL HUÉSPED, igual que la comisión de la OTA; ambas se restan del mismo número, no se acumulan una sobre la otra (confirmado por Dani con sus facturas reales). Ajusta el % real por canal en su pestaña; Airbnb y Expedia están en 0% por defecto (paga por depósito directo) — cámbialo si tu banco te cobra algo distinto.
 </div>
+</details>
 
 </div>
 <script type="module">
@@ -656,7 +659,7 @@ function renderChannelPages(model){
     const panel = document.querySelector(`.tab-panel[data-tab="${CH_TAB[c.id]}"]`);
     if(!panel) return;
     const wasOpen = panel.querySelector('.discounts-more')?.open; /* innerHTML se reconstruye cada render — sin esto, el <details> se cierra solo con cualquier cambio */
-    const chDiscounts = state.discounts.filter(d=>d.ch===c.id);
+    const chDiscounts = state.discounts.filter(d=>d.ch===c.id && d.group!=='pricelabs-internal');
     const activeD = chDiscounts.filter(d=>d.on).map(discountRowHTML).join('') || '<div class="hint">ningún descuento activo hoy en este canal</div>';
     const restD = chDiscounts.filter(d=>!d.on);
     const sugg = suggestedOffset(c.id, model.effBase, model.net);
@@ -952,14 +955,15 @@ function newPromotionLine(discount){
 }
 function normalizePromotionDraft(model){
   if(!state.channels.some(c=>c.id===promotionDraft.detailChannelId)) promotionDraft.detailChannelId=state.channels[0]?.id||'';
-  const firstDiscount=state.discounts[0];
+  const editableDiscounts=state.discounts.filter(d=>d.group!=='pricelabs-internal');
+  const firstDiscount=editableDiscounts[0];
   /* Migra el borrador de la primera versión (una sola promo) sin tocar state. */
   if(!Array.isArray(promotionDraft.promotions)){
-    promotionDraft.promotions=[newPromotionLine(state.discounts.find(d=>d.id===promotionDraft.discountId)||firstDiscount)];
+    promotionDraft.promotions=[newPromotionLine(editableDiscounts.find(d=>d.id===promotionDraft.discountId)||firstDiscount)];
   }
   promotionDraft.promotions=promotionDraft.promotions.map(line=>{
     const lineChannel=state.channels.some(c=>c.id===line.chId) ? line.chId : promotionDraft.detailChannelId;
-    const available=state.discounts.filter(d=>d.ch===lineChannel);
+    const available=editableDiscounts.filter(d=>d.ch===lineChannel);
     const discount=available.find(d=>d.id===line.discountId)||available[0]||firstDiscount;
     return {...newPromotionLine(discount), ...line, discountId:discount?.id||''};
   });
@@ -991,7 +995,7 @@ function renderPromotionLab(model){
         : `Podrías bajar ${Math.abs(change).toFixed(1)} puntos desde tu Offset actual (${formatOffset(currentOffset)}).`;
     return `<article class="max-discount-card"><span class="ota">${escapeHtml(channelItem.name)}</span><strong class="pct">${maximum.totalPct.toFixed(1)}%</strong><div class="combo">${combination}</div><div class="case">${when}</div><div class="offset">Offset de compensación en Kunas<strong>${compensationText}</strong><span>${changeText}</span></div><button type="button" class="ghost" data-promo-config="ch-${escapeHtml(channelItem.id)}">Configurar ${escapeHtml(channelItem.name)} →</button></article>`;
   }).join('');
-  const maximumSummary=`<div class="promo-result"><h3>El peor descuento posible para cada OTA</h3><p class="promo-summary">Estos son los grupos de huéspedes que podrían recibir el precio más bajo. El <strong>Min Price</strong> se calcula usando estos casos junto con el Offset y las comisiones de cada OTA.</p><div class="max-discount-grid">${maximumRows}</div><p class="hint"><strong>Offset de compensación</strong> deja el mismo neto que el precio común de PriceLabs después del descuento y las comisiones; no incluye margen, costo ni aseo. Booking aplica descuentos compuestos: dos descuentos de 10% dejan 19%. Airbnb aplica una sola promoción principal por noche, en este orden: anuncio nuevo → personalizada → duración → anticipada → último minuto.</p></div>`;
+  const maximumSummary=`<div class="promo-result"><h3>Resultado por OTA</h3><p class="promo-summary">El <strong>Min Price</strong> se mantiene común en PriceLabs. Este cuadro te dice cuánto descuento real puede recibir un huésped y qué <strong>Offset de compensación</strong> configurar en Kunas para que, después de la comisión, ese canal conserve el mismo neto.</p><div class="max-discount-grid">${maximumRows}</div><p class="hint">No se cuentan dos veces los ajustes internos de PriceLabs: temporada, demanda, ocupación y Last-Minute ya están dentro de su precio final. Airbnb aplica una sola promoción principal por noche; Booking evalúa grupos de huéspedes compatibles y no suma grupos alternativos.</p></div>`;
   const channel=state.channels.find(c=>c.id===promotionDraft.detailChannelId);
   const proposal={
     promotions:promotionDraft.promotions.map(line=>({discountId:line.discountId,pct:Number(line.pct),from:Number(line.from),to:Number(line.to),minN:Number(line.minN)})),
@@ -1323,7 +1327,7 @@ document.addEventListener('change',e=>{
     const line=promotionDraft.promotions[index];
     if(!line) return;
     if(field==='chId'){
-      const discount=state.discounts.find(d=>d.ch===t.value);
+      const discount=state.discounts.find(d=>d.ch===t.value && d.group!=='pricelabs-internal');
       if(!discount) return;
       promotionDraft.promotions[index]=newPromotionLine(discount);
     }
@@ -1333,7 +1337,7 @@ document.addEventListener('change',e=>{
         showInputError('Probador — esa promoción ya está agregada. Cambia su porcentaje en la fila existente, o elige otra.');
         return;
       }
-      const discount=state.discounts.find(d=>d.id===t.value && d.ch===line.chId);
+      const discount=state.discounts.find(d=>d.id===t.value && d.ch===line.chId && d.group!=='pricelabs-internal');
       if(!discount) return;
       promotionDraft.promotions[index]=newPromotionLine(discount);
     } else {
@@ -1550,8 +1554,12 @@ document.addEventListener('click',e=>{
   }
   if(e.target.id==='promoAddBtn'){
     const existing=new Set(promotionDraft.promotions.map(line=>line.discountId));
-    const next=state.discounts.find(discount=>discount.ch===promotionDraft.detailChannelId && !existing.has(discount.id))
-      || state.discounts.find(discount=>!existing.has(discount.id));
+    /* Al agregar otra fila, conserva la OTA de la última fila. Así, después
+       de elegir Booking/Airbnb, la siguiente promoción ofrece opciones del
+       mismo canal; luego se puede cambiar la OTA manualmente si hace falta. */
+    const addChannel=promotionDraft.promotions.at(-1)?.chId||promotionDraft.detailChannelId;
+    const next=state.discounts.find(discount=>discount.group!=='pricelabs-internal' && discount.ch===addChannel && !existing.has(discount.id))
+      || state.discounts.find(discount=>discount.group!=='pricelabs-internal' && !existing.has(discount.id));
     if(!next){ showInputError('Ya agregaste todas las promociones disponibles.'); return; }
     promotionDraft.promotions.push(newPromotionLine(next));
     renderPromotionLab(compute());

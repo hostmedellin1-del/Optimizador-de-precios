@@ -103,13 +103,14 @@ en USD →**. Hasta entonces, los números quedan bloqueados.
 
 Es la pantalla de decisión diaria. Primero verás **Lo que debes configurar**: el
 **Costo por noche** y el **Min Price → PriceLabs**. Copia ese Min Price en PriceLabs.
-Los avisos técnicos, el respaldo, los costos detallados y el **Simulador de descuento
-máximo** quedan plegados para no distraerte. Este último muestra, por OTA, el grupo de
+Los avisos técnicos, el respaldo, los costos detallados y la edición avanzada quedan
+plegados para no distraerte. La sección **Qué poner en Kunas por OTA** muestra, por OTA, el grupo de
 huésped que podría recibir el mayor descuento real; combina solo promociones compatibles.
-Ábrelo cuando quieras revisar una estrategia y usa **Configurar [OTA]** para cambiar sus
+Usa **Configurar [OTA]** si quieres revisar una estrategia o cambiar sus
 promociones o Offset. Cada tarjeta también muestra el **Offset de compensación en Kunas**:
 el valor que compensa el peor descuento y las comisiones de ese canal, sin sumar porcentajes
-de forma incorrecta. No incluye margen, costo ni aseo; el Min Price se encarga de protegerlos.
+de forma incorrecta. Los ajustes internos de PriceLabs no vuelven a descontarse. No incluye
+margen, costo ni aseo; el Min Price se encarga de protegerlos.
 
 ### Configuración avanzada
 
