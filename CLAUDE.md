@@ -1793,3 +1793,19 @@ dejaron así a propósito porque esos dos archivos estaban prohibidos de tocar e
 recorte (son el motor y un gate). No afectan nada ejecutable.
 
 **234/234 unitarios, lint limpio, 60/60 e2e, cero skip.**
+
+### Estancias largas y Last-Minute (jul 2026)
+
+`LONG_STAY_NIGHTS` (`src/domain/pricelabs-lm.js`) fija en 28 noches el umbral
+real de "estadia larga", alineado con el descuento Airbnb de larga estadía y
+los umbrales equivalentes del catálogo. Dani confirmó que PriceLabs solo baja
+el precio en los últimos días antes del check-in; no es realista proteger el
+Piso contra una reserva de un mes completo hecha el día 0 con Last-Minute
+activo durante toda la estadía.
+
+Por eso las búsquedas de peor caso —Piso, alertas TECHO/PISO/REALIDAD y la
+Matriz— excluyen Last-Minute cuando evalúan 28 noches o más. La cotización
+normal no cambia: `quoteScenario()` solo aplica esa exclusión cuando su caller
+lo pide explícitamente, y el Simulador no pasa ese flag. Si Dani escribe día 0
+y 34 noches en el Simulador, sigue viendo el LM configurado completo; la regla
+solo evita que un combo hipotético e irrealista infle el Min Price global.

@@ -36,9 +36,9 @@
 import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
-import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
+import {priceLabsLm, isLmBlocked, LONG_STAY_NIGHTS} from './pricelabs-lm.js';
 
-export function quoteScenario(scenario, config){
+export function quoteScenario(scenario, config, opts = {}){
   const {channels, discounts, windows, ceilings} = config;
   const chId = scenario.chId;
   const ch = channels.find(c=>c.id===chId);
@@ -68,7 +68,11 @@ export function quoteScenario(scenario, config){
   /* Fase 4: modo de LM despachado por pricelabs-lm.js. Sin config.lmConfig, usa
      'ceiling_auto' (el comportamiento de siempre) — cero cambio de resultado
      para quien no configuro nada nuevo. */
-  const lmResult = priceLabsLm(config.lmConfig, {day: days, ceilingPct: ceil, nativePct: maxNAtScenario, floor: config.floor});
+  const lmResult = opts.excludeLmOnLongStay===true && nights>=LONG_STAY_NIGHTS
+    ? {lmPct:0, priceOverride:null, blocked:false,
+       note:`Last-Minute excluido del peor caso: esta es una reserva de ${nights}+ noches — no es realista que se reserve a último momento con LM activo.`,
+       mode:config.lmConfig?.mode||'ceiling_auto', verified:!!config.lmConfig?.verified}
+    : priceLabsLm(config.lmConfig, {day: days, ceilingPct: ceil, nativePct: maxNAtScenario, floor: config.floor});
   const lm = lmResult.lmPct;
   if(lmResult.note) assumptions.push(lmResult.note);
   if(lmResult.mode!=='ceiling_auto' && !lmResult.verified)

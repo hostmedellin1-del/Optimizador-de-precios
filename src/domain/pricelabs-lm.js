@@ -1,3 +1,10 @@
+/* Umbral real de "estadia larga" (mismo que ab_los4/bk_los3/ex_los3 en
+   catalog/discounts.js). Por debajo de esto, Last-Minute puede combinarse con
+   el peor caso; a partir de esto se excluye SOLO en las busquedas de peor caso
+   (Piso/alertas/Matriz), segun la operacion real confirmada por Dani. El
+   Simulador manual no aplica esta excepcion. */
+export const LONG_STAY_NIGHTS = 28;
+
 /* Fase 4 — PriceLabs Last-Minute configurable por unidad/listing. 5 modos, pedidos
    explicitamente por Dani. NINGUNO inventa un % real de negocio: todos arrancan
    apagados/en 0 (ver defaultLmConfig(), src/catalog/discounts.js) hasta que Dani

@@ -16,7 +16,7 @@
 import {combineChannel, payoutFactor} from './engine.js';
 import {pct, pct2} from './percent.js';
 import {criticalDays, criticalNights} from './thresholds.js';
-import {priceLabsLm, lmCriticalDays} from './pricelabs-lm.js';
+import {priceLabsLm, lmCriticalDays, LONG_STAY_NIGHTS} from './pricelabs-lm.js';
 
 /* Para UN canal: el peor multiplicador combinado (LM x nativo OTA x offset)
    sobre TODOS los días/noches críticos (unión de fronteras OTA y fronteras LM).
@@ -57,7 +57,9 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
           if(p2>sharedNative) sharedNative=p2;
         });
       }
-      const lmResult = priceLabsLm(lmConfig, {day:d, ceilingPct:ceil, nativePct:sharedNative});
+      const lmResult = n>=LONG_STAY_NIGHTS
+        ? {lmPct:0, priceOverride:null}
+        : priceLabsLm(lmConfig, {day:d, ceilingPct:ceil, nativePct:sharedNative});
       if(lmResult.priceOverride!=null){
         const payoutAtOverride = lmResult.priceOverride*(1+off)*nativeFactor*pf;
         if(typeof cost==='number' && payoutAtOverride < cost - 1e-9){

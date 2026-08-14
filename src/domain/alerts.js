@@ -56,7 +56,7 @@ export function buildAlerts(config, model){
     daysGrid.forEach(d=>{
       nightsGrid.forEach(n=>{
         channels.forEach(c=>{
-          const q = quoteScenario({chId:c.id, days:d, nights:n, price:model.effBase}, config);
+          const q = quoteScenario({chId:c.id, days:d, nights:n, price:model.effBase}, config, {excludeLmOnLongStay:true});
           if(!worstTecho || q.maxNAtScenario>worstTecho.q.maxNAtScenario) worstTecho={q,d,n};
           const cur = worstPisoByCh.get(c.id);
           if(!cur || q.payout<cur.q.payout) worstPisoByCh.set(c.id, {q,d,n});

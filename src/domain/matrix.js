@@ -28,7 +28,7 @@ export function worstScenariosInWindow(config, w, price){
   daysGrid.forEach(d=>{
     nightsGrid.forEach(n=>{
       channels.forEach(c=>{
-        grid.push({day:d, night:n, c, q: quoteScenario({chId:c.id, days:d, nights:n, price}, config)});
+        grid.push({day:d, night:n, c, q: quoteScenario({chId:c.id, days:d, nights:n, price}, config, {excludeLmOnLongStay:true})});
       });
     });
   });
