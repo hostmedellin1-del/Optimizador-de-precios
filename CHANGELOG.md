@@ -5,6 +5,23 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.21.0] — Last-Minute se excluye del peor caso en estancias de 28+ noches
+
+**Cambiado** — el Piso (Min Price), las alertas TECHO/PISO/REALIDAD y el veredicto de la
+Matriz dejan de combinar Last-Minute al máximo con una reserva de 28+ noches al buscar el
+peor caso: `LONG_STAY_NIGHTS = 28` (`src/domain/pricelabs-lm.js`), mismo umbral real de
+"estadía larga" que ya usaba el catálogo. Dani confirmó, con su operación real en
+PriceLabs, que Last-Minute solo descuenta los últimos 4-6 días antes del check-in — nunca
+sostiene el descuento durante una reserva de un mes completo — así que ese combo
+(mes completo + reservado el mismo día) dejó de contarse como el escenario a proteger.
+Caso real verificado: el Piso de la unidad 902 Alcázar de Oviedo bajó de USD 117.79 a
+**USD 103.94**, casi exacto al precio de mercado (USD 103).
+
+**Sin cambios** — el Simulador (cotización manual) sigue aplicando el Last-Minute
+configurado tal cual, sin ningún recorte: `quoteScenario()` solo excluye Last-Minute
+cuando su caller pasa `{excludeLmOnLongStay:true}` explícitamente (alertas y Matriz), el
+Simulador nunca lo pasa. `engine.js` y `index.html` no se tocaron.
+
 ## [0.20.1] — Panel de Alertas colapsado por defecto
 
 **Cambiado** — la sección "Alertas" (siempre visible, fuera de la estructura de pestañas)
