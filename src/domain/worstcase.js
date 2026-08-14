@@ -10,10 +10,11 @@
    Este modulo enumera el peor escenario REAL — canal x día crítico x noche
    crítica x descuento OTA x LM x offset — usando las MISMAS funciones fuente
    (combineChannel, priceLabsLm) que quoteScenario(), nunca reimplementando su
-   lógica. NO incluye la tarifa de aseo (decisión de arquitectura preexistente,
-   documentada en CLAUDE.md: el Piso/Base son modelos agregados por noche, sin
-   reserva puntual — igual que antes de este fix). */
-import {combineChannel, payoutFactor} from './engine.js';
+   lógica. También incluye la tarifa de aseo de Airbnb: es un ingreso fijo por
+   reserva y, por tanto, se diluye según las noches del escenario. Cuando recibe
+   `cost`, el peor caso se elige por el precio requerido real (no solo por el
+   factor), porque ese ingreso aditivo rompe la equivalencia anterior. */
+import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
 import {pct, pct2} from './percent.js';
 import {criticalDays, criticalNights} from './thresholds.js';
 import {priceLabsLm, lmCriticalDays, LONG_STAY_NIGHTS} from './pricelabs-lm.js';
@@ -39,6 +40,8 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
   const needsSharedCeiling = !lmConfig || lmConfig.mode==='ceiling_auto';
 
   let worstFactor = Infinity;
+  let worstFeePerNight = 0;
+  let worstRequiredPrice = -Infinity;
   let worstDay = days[0], worstNight = nights[0];
   const infeasible = [];
 
@@ -46,6 +49,7 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
     const w = windows.find(win=>d>=win.lo && d<=win.hi) || windows[windows.length-1];
     const ceil = pct((ceilings||{})[w.id]);
     nights.forEach(n=>{
+      const feePerNight = cleanFeePerNight(ch, n);
       const nativeFactor = combineChannel(discounts, chId, d, n).factor;
       // ceiling_auto es una politica COMPARTIDA entre canales: el LM depende del
       // peor nativo entre TODOS los canales a este mismo (dia,noche), no solo el propio.
@@ -61,16 +65,33 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
         ? {lmPct:0, priceOverride:null}
         : priceLabsLm(lmConfig, {day:d, ceilingPct:ceil, nativePct:sharedNative});
       if(lmResult.priceOverride!=null){
-        const payoutAtOverride = lmResult.priceOverride*(1+off)*nativeFactor*pf;
+        const payoutAtOverride = (lmResult.priceOverride*(1+off)*nativeFactor + feePerNight)*pf;
         if(typeof cost==='number' && payoutAtOverride < cost - 1e-9){
           infeasible.push({chId, day:d, night:n, overridePrice:lmResult.priceOverride, payoutAtOverride});
         }
         return; // el Piso no puede "arreglar" un precio fijo — no participa en worstFactor
       }
       const combinedFactor = (1-lmResult.lmPct/100)*(1+off)*nativeFactor;
-      if(combinedFactor < worstFactor){ worstFactor=combinedFactor; worstDay=d; worstNight=n; }
+      if(typeof cost==='number'){
+        const costPerPf = cost/pf;
+        const requiredPrice = combinedFactor>0
+          ? Math.max(0, costPerPf-feePerNight)/combinedFactor
+          : Infinity;
+        if(requiredPrice > worstRequiredPrice){
+          worstRequiredPrice=requiredPrice;
+          worstFactor=combinedFactor;
+          worstFeePerNight=feePerNight;
+          worstDay=d;
+          worstNight=n;
+        }
+      } else if(combinedFactor < worstFactor){
+        worstFactor=combinedFactor;
+        worstFeePerNight=feePerNight;
+        worstDay=d;
+        worstNight=n;
+      }
     });
   });
   if(worstFactor===Infinity) worstFactor=0; // todo el dominio era precio-fijo inviable
-  return {worstFactor, worstDay, worstNight, infeasible, pf};
+  return {worstFactor, worstFeePerNight, worstDay, worstNight, infeasible, pf};
 }

@@ -290,13 +290,17 @@ export function compute(config){
          no solo el descuento nativo OTA — un LM verificado que el Piso
          ignoraba podia netear por debajo del costo real aunque el modelo
          dijera valid:true. */
-      const {worstFactor, worstDay, worstNight, infeasible} = worstScenarioFactor({
+      const {worstFactor, worstFeePerNight, worstDay, worstNight, infeasible} = worstScenarioFactor({
         chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost
       });
       lmInfeasible.push(...infeasible);
-      const denom = worstFactor*pf;
-      const p = denom>0 ? cost/denom : Infinity;
-      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(off!==0?' + offset '+fP(off*100):'')+')';}
+      /* Conserva la aritmética histórica cuando el aseo es 0: además de ser
+         algebraicamente idéntica, evita cambiar ni un bit de los resultados
+         heredados por redondeo de punto flotante. */
+      const p = worstFactor>0
+        ? (worstFeePerNight>0 ? Math.max(0, cost/pf-worstFeePerNight)/worstFactor : cost/(worstFactor*pf))
+        : Infinity;
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(worstFeePerNight>0?' + aseo diluido':'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     } else {
       /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
          de siempre, solo nativo OTA — no incluye LM. */
@@ -324,8 +328,11 @@ export function compute(config){
        queda marcado `baseBlocked` mas abajo y la UI no debe mostrar este numero
        como recomendacion — ver bloqueante P1, ronda 3. */
     const lm45 = day45Lm.priceOverride!=null ? 0 : day45Lm.lmPct;
-    const denom = (1+off)*(1-lm45/100)*(1-cn)*pf;
-    const p = denom>0 ? net/denom : Infinity; /* offset <= -100% = imposible netear con un Base finito */
+    const feePN = cleanFeePerNight(c, 1);
+    const factor = (1+off)*(1-lm45/100)*(1-cn);
+    const p = factor>0
+      ? (feePN>0 ? Math.max(0, net/pf-feePN)/factor : net/(factor*pf))
+      : Infinity; /* offset <= -100% = imposible netear con un Base finito */
     if(p>base){base=p;baseChId=c.id;baseCh=c.name+(lm45!==0||off!==0?' (':'')+(lm45!==0?'LM '+fP(lm45):'')+(lm45!==0&&off!==0?' + ':'')+(off!==0?'offset '+fP(off*100):'')+(lm45!==0||off!==0?')':'');}
   });
   /* Bloqueante P1 (revision externa, ronda 3): un precio LM FIJO activo en el

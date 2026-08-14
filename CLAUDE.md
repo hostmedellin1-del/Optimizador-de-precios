@@ -412,8 +412,8 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   por LOS activo, para encontrar el peor caso real. (Bug corregido: antes solo probaba 1
   noche y los descuentos por duración quedaban invisibles para el piso.)
 - `compute()` — costo total, neto objetivo, piso (Min Price PriceLabs — incluye el offset
-  de cada canal, ver sección 2), base (Base Price PriceLabs, SIN offset — para netear
-  objetivo en todos con sus nativos constantes).
+  de cada canal, ver sección 2), base (Base Price PriceLabs — incluye Offset/LM reales
+  de cada canal en su referencia de día 45 y sus nativos constantes).
 - `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2. Usa `state.avgNights`.
 - `cleanFeePerNight(c, nights)` — tarifa de aseo de Airbnb (fija por reserva) diluida por
   noche según la duración dada; devuelve 0 para canales sin aseo. La usan `suggestedOffset`,
@@ -421,10 +421,14 @@ daba 0% cuando el offset REAL necesario era +46.5%.
 - Tarifa de aseo de Airbnb (`cleanFeeShort`/`cleanFeeLong` en `state.channels` — solo el
   canal `airbnb` tiene estos campos). Fija por reserva, no por noche: 1–2 noches usa
   `cleanFeeShort`, 3+ usa `cleanFeeLong`. Airbnb no la descuenta con los promos de noche,
-  pero SÍ cobra comisión sobre ella (modelo Host-Only Fee). El Piso/Base de Resumen NO la
-  incluyen todavía (son modelos agregados por noche, sin reserva puntual) — sí la incluyen
-  `suggestedOffset`, el neto estimado por canal y el Simulador, todos evaluados a
-  `avgNights`.
+  pero SÍ cobra comisión sobre ella (modelo Host-Only Fee). El Piso y el Base de Resumen
+  ahora SÍ la incluyen: el Piso la diluye según las noches del peor escenario real que
+  encuentra, mientras que el Base la evalúa a 1 noche, su punto de referencia fijo.
+  Ambos aplican la misma secuencia que `quoteScenario()`/`suggestedOffset()`:
+  `(precio + aseo diluido) × payoutFactor`. En `worstScenarioFactor()`, la búsqueda
+  maximiza el precio requerido en vez de minimizar solo el factor; cuando el aseo es 0
+  ambos criterios son matemáticamente equivalentes. `suggestedOffset`, el neto estimado
+  por canal y el Simulador siguen evaluando la duración que les corresponde.
 - Pestañas (`TABS` array + `.tab-panel[data-tab=...]`): Resumen, Simulador (label
   "¿Cómo se calcula?", 2ª posición — ver sección 3), `ch-airbnb`, `ch-booking`,
   `ch-expedia`, `ch-direct`, Comparación.
