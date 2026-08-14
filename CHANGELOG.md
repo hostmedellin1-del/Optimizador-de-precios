@@ -5,6 +5,26 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.21.1] — La tarifa de aseo de Airbnb entra al Piso y al Base
+
+**Cambiado** — el Piso (Min Price) y el Base Price ahora incluyen la tarifa de aseo de
+Airbnb (`cleanFeeShort`/`cleanFeeLong`) como el ingreso real que es: fija por reserva, paga
+comisión (modelo Host-Only Fee) y se diluye entre las noches de la estadía. Antes,
+`worstScenarioFactor()` (el Piso) y el cálculo principal del Base la ignoraban por completo
+— un hueco que ya no existía en `quoteScenario()`, `suggestedOffset()` ni el Simulador.
+Dani lo señaló directamente al revisar la 902 real: "el aseo es un valor que si es por
+Airbnb lo pagan aparte y si es más de una noche se diluye en esas noches". Como la tarifa es
+un ingreso aditivo (no un descuento multiplicativo), el criterio de "peor caso" del Piso
+cambió de *minimizar el factor de descuento* a *maximizar el precio requerido real* — con
+tarifa en 0 (el default de fábrica) ambos criterios dan el mismo resultado, byte por byte.
+Caso real verificado: el Piso de la 902 Alcázar de Oviedo bajó de USD 140.22 a
+**USD 138.69** (el peor caso se corrió de 21 a 27 noches); en una unidad con el peor caso en
+una reserva corta, el efecto es bastante mayor.
+
+**Sin cambios** — `quoteScenario()`, `combineChannel()`, `suggestedOffset()`, el Simulador,
+las Alertas y la Matriz no se tocaron (las Alertas/Matriz se benefician automáticamente de
+la búsqueda corregida, sin cambio propio). Ningún canal que no sea Airbnb se ve afectado.
+
 ## [0.21.0] — Last-Minute se excluye del peor caso en estancias de 28+ noches
 
 **Cambiado** — el Piso (Min Price), las alertas TECHO/PISO/REALIDAD y el veredicto de la
