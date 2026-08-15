@@ -126,6 +126,25 @@ test('unidad con currency de tipo inválido (número, objeto, array, boolean): c
   }
 });
 
+test('snapshot PriceLabs válido sobrevive normalización y round trip', () => {
+  const sync = {kind:'pricelabs-sync',version:1,listingId:'15195',pmsName:'otasync',fetchedAt:'2026-08-14T02:54:14Z',min:60,base:103,max:null,currency:'USD',recommendedBasePrice:103,prices:[{date:'2026-08-14',price:88,minStay:1}]};
+  const {state,warnings} = normalizeUnit({name:'902',pricelabsListingId:'15195',pricelabsPmsName:'otasync',pricelabsSync:sync});
+  assert.equal(warnings.length,0); assert.equal(state.pricelabsListingId,'15195'); assert.equal(state.pricelabsSync.min,60); assert.equal(state.pricelabsSync.prices[0].minStay,1);
+  const again = normalizeUnit(state).state;
+  assert.deepEqual(again.pricelabsSync,state.pricelabsSync);
+});
+
+test('unidad vieja sin snapshot recibe campos vacíos sin warning', () => {
+  const {state,warnings} = normalizeUnit({name:'Unidad vieja'});
+  assert.equal(state.pricelabsListingId,''); assert.equal(state.pricelabsPmsName,''); assert.equal(state.pricelabsSync,null);
+  assert.equal(warnings.some(w=>w.includes('PriceLabs')),false);
+});
+
+test('snapshot PriceLabs malformado se descarta con warning y no rompe la unidad', () => {
+  const {state,warnings} = normalizeUnit({name:'Unidad',pricelabsSync:{kind:'pricelabs-sync',listingId:'x',fetchedAt:'no',min:60,base:100,recommendedBasePrice:100}});
+  assert.equal(state.pricelabsSync,null); assert.ok(warnings.some(w=>w.includes('PriceLabs')));
+});
+
 /* BLOQUEANTE 3 (auditoria externa, ronda 5) — usdManualReviewPending: mismo
    criterio estricto que costBreakdownConfirmed arriba — nunca `true` por
    default ni por un valor no-booleano; solo un `true`/`false` EXPLICITO

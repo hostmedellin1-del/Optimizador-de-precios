@@ -13,6 +13,7 @@
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from '../catalog/discounts.js';
 import {evaluateUsdManualReviewState} from './usd-only.js';
 import {EXAMPLE_COST_DEFAULTS} from './cost-mode.js';
+import {normalizePricelabsSync} from './pricelabs-sync.js';
 
 export const SCHEMA_VERSION = 3;
 
@@ -307,6 +308,18 @@ export function normalizeUnit(raw){
   }
   const usdManualReviewPending = reviewState.pending;
 
+  /* Snapshot PriceLabs opcional, de solo lectura. Las unidades anteriores no
+     tienen estos campos: reciben vacío/null sin warning para conservar una
+     migración silenciosa y compatible. Los datos del snapshot sí pasan por
+     su normalizador dedicado; nunca se persiste el JSON crudo. */
+  const syncWarnings = [];
+  const pricelabsSync = raw.pricelabsSync === undefined
+    ? null
+    : normalizePricelabsSync(raw.pricelabsSync, syncWarnings);
+  warnings.push(...syncWarnings);
+  const pricelabsListingId = strField(raw, 'pricelabsListingId', '', warnings, 'unidad', 100);
+  const pricelabsPmsName = strField(raw, 'pricelabsPmsName', '', warnings, 'unidad', 160);
+
   /* Simplificacion a USD unico (revision externa): esta version SOLO opera
      en USD. Una unidad NUEVA (sin `raw.currency`, o con 'USD' exacto) se
      crea/carga en USD, sin configuracion adicional. Una unidad VIEJA
@@ -334,6 +347,7 @@ export function normalizeUnit(raw){
     avgNights: nonNegField(raw, 'avgNights', 3, warnings, 'unidad', {min:1}),
     costBreakdown, costBreakdownConfirmed, channels, discounts, ceilings, lmConfig,
     usdManualReviewPending, usdManualReviewLog,
+    pricelabsListingId, pricelabsPmsName, pricelabsSync,
     id: (typeof raw.id==='string' && raw.id) ? raw.id : undefined
   };
   return {state, warnings};
