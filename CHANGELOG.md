@@ -5,6 +5,28 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.22.0] — Snapshot de solo lectura de PriceLabs
+
+**Agregado** — nuevo botón **"Sincronizar con PriceLabs"**: carga un archivo `.json` con
+un snapshot (Min/Base/Max Price, precio recomendado y precios diarios) que Claude prepara
+manualmente con las herramientas de PriceLabs. La app sigue siendo un sitio estático sin
+backend (GitHub Pages, sin build) — no hay forma segura de que el navegador llame a la API
+de PriceLabs con un token propio, así que el refresco es manual en vez de una conexión en
+vivo. Una nueva tarjeta en Resumen (`pricelabsSync`) muestra esos valores junto al Piso y
+Base calculados por la app, con aviso explícito cuando el Min Price real de PriceLabs
+queda por debajo del piso protector. Caso real que motivó la función: la 902 Alcázar de
+Oviedo tenía un Min Price en PriceLabs de USD 60 mientras el piso calculado daba
+**USD 138.69** — una diferencia de USD 78.69 invisible hasta ahora. La tarjeta aclara en su
+encabezado que es **estrictamente de solo lectura**: ningún código de este repo llama
+`fetch`/`XMLHttpRequest` ni escribe de vuelta a PriceLabs — la decisión de corregir el Min
+Price en PriceLabs siempre queda del lado de Dani.
+
+**Sin cambios** — `compute()`, `quoteScenario()`, `worstScenarioFactor()` y el resto del
+motor financiero no se tocaron: el snapshot es puramente comparativo, nunca un insumo del
+cálculo. Unidades guardadas antes de esta versión cargan igual, sin warnings — los campos
+nuevos (`pricelabsListingId`, `pricelabsPmsName`, `pricelabsSync`) quedan vacíos por
+default.
+
 ## [0.21.1] — La tarifa de aseo de Airbnb entra al Piso y al Base
 
 **Cambiado** — el Piso (Min Price) y el Base Price ahora incluyen la tarifa de aseo de

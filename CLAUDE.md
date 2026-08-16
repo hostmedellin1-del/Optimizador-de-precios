@@ -1813,3 +1813,16 @@ normal no cambia: `quoteScenario()` solo aplica esa exclusión cuando su caller
 lo pide explícitamente, y el Simulador no pasa ese flag. Si Dani escribe día 0
 y 34 noches en el Simulador, sigue viendo el LM configurado completo; la regla
 solo evita que un combo hipotético e irrealista infle el Min Price global.
+
+### Snapshot de PriceLabs (ago 2026)
+
+La app acepta un snapshot JSON de solo lectura con `kind:"pricelabs-sync"`,
+`listingId`, `fetchedAt`, Min Price, Base Price, precio máximo, base recomendado y
+una lista opcional de precios diarios. Se carga con **Sincronizar con PriceLabs**
+después de que Claude lo prepare; no hay conexión automática, fetch ni escritura
+remota porque la arquitectura sigue siendo estática. El snapshot queda guardado
+junto a la unidad y muestra si el Min Price real de PriceLabs está por debajo del
+piso calculado por la app. La tarjeta siempre aclara que es solo lectura y que no
+cambia nada en PriceLabs. El motivo es contrastar el dato real observado (por
+ejemplo, un Min Price de PriceLabs de USD 60 frente a un piso calculado de USD
+138.69) sin convertir esa diferencia en una modificación automática.

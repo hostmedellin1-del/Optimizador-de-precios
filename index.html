@@ -151,6 +151,15 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .max-discount-card .offset{border-top:1px solid var(--border);margin-top:10px;padding-top:8px;font-size:11px;color:var(--dim);line-height:1.4;}
 .max-discount-card .offset strong{display:block;font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:17px;margin-top:1px;}
 .max-discount-card .offset span{display:block;color:var(--faint);margin-top:2px;}
+.pricelabs-sync-card{border:1px solid var(--border);background:var(--surface-2);}
+.pricelabs-sync-head{font-size:12.5px;font-weight:600;margin-bottom:10px;}
+.pricelabs-sync-note{font-size:11.5px;color:var(--faint);line-height:1.5;margin:5px 0 10px;}
+.pricelabs-sync-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:10px 0;}
+.pricelabs-sync-metric{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px;}
+.pricelabs-sync-metric .l{display:block;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;}
+.pricelabs-sync-metric .v{display:block;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:600;margin-top:2px;}
+.pricelabs-sync-table{min-width:420px;margin-top:8px;}
+.pricelabs-sync-warning{color:var(--accent);font-weight:600;font-size:12.5px;line-height:1.5;padding:9px 10px;border:1px solid rgba(214,65,44,.35);background:var(--accent-soft);border-radius:7px;}
 .ignored{margin-top:10px;font-size:11.5px;color:var(--faint);line-height:1.6;font-family:'Space Grotesk',sans-serif;}
 .footer-note{font-size:11.5px;color:var(--faint);line-height:1.7;padding:14px 16px;border:1px dashed var(--border);border-radius:var(--radius);margin-top:6px;}
 @media(max-width:720px){h1{font-size:24px;}}
@@ -206,6 +215,8 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
   <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
   <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
+  <button class="ghost" id="syncPricelabsBtn" title="Carga un snapshot JSON de solo lectura entregado por Claude">Sincronizar con PriceLabs</button>
+  <input type="file" id="syncPricelabsFile" accept="application/json" style="display:none">
   <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
   <span id="saveStatus"></span>
 </div>
@@ -224,6 +235,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 <div id="currencyReviewBanner"></div>
 <div id="validationBanner"></div>
 <div id="dataProvenanceBanner"></div>
+<section class="card pricelabs-sync-card" id="pricelabsSyncCard" aria-live="polite"></section>
 <div class="row stack">
   <div class="card" id="costsSection">
     <h2>Costos por noche</h2>
@@ -385,6 +397,7 @@ import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
 import {analyzePromotionProposal, maximumDiscountScenario, compensationOffsetPct} from './src/domain/promotion-lab.js';
+import {normalizePricelabsSync, comparePricelabsSync, validatePricelabsSyncFile} from './src/domain/pricelabs-sync.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
    Este polyfill lo simula con localStorage, mismo contrato (get/set/delete/list),
    para que Guardar/Cargar unidad funcione igual en cualquier navegador. */
@@ -428,6 +441,7 @@ let state = {
   discounts: defaultDiscounts(),
   ceilings: Object.fromEntries(WINDOWS.map(w=>[w.id,w.ceil])),
   lmConfig: defaultLmConfig(), // Fase 4 — modo Last-Minute de PriceLabs por unidad
+  pricelabsListingId:'', pricelabsPmsName:'', pricelabsSync:null,
   usdManualReviewPending: false, // BLOQUEANTE 3 (auditoria externa, ronda 5) — ver src/domain/usd-only.js
   usdManualReviewLog: [] // bitácora append-only de la revisión manual COP→USD — ver src/domain/persistence.js
 };
@@ -620,6 +634,34 @@ function renderDataProvenance(){
   } else {
     box.innerHTML = '';
   }
+}
+function renderPricelabsSyncCard(model){
+  const box = document.getElementById('pricelabsSyncCard');
+  if(!box) return;
+  const sync = state.pricelabsSync;
+  if(!sync){
+    box.innerHTML = '<p class="hint">Pedile a Claude que sincronice esta unidad con PriceLabs</p>';
+    return;
+  }
+  const comparison = comparePricelabsSync(model, sync);
+  const days = comparison?.staleDays ?? 0;
+  const stale = days > 7 ? '<p class="pricelabs-sync-warning">Este snapshot está desactualizado, pedí un nuevo snapshot.</p>' : '';
+  const floorText = comparison?.minBelowFloor
+    ? `<div class="pricelabs-sync-warning">Tu Min Price en PriceLabs (${f$(sync.min)}) está ${f$(Math.abs(comparison.minGapVsFloor))} POR DEBAJO de tu piso real (${f$(model.floor)}) — corrígelo en PriceLabs.</div>`
+    : comparison?.minGapVsFloor !== null
+      ? `<p class="pricelabs-sync-note">El Min Price de PriceLabs cubre tu piso real (${f$(model.floor)}).</p>`
+      : '<p class="pricelabs-sync-note">El piso real está bloqueado; no se puede comparar hasta completar la configuración.</p>';
+  const rows = (sync.prices||[]).slice(0,14).map(p=>`<tr><td>${escapeHtml(p.date)}</td><td>${f$(p.price)}</td><td>${p.minStay}</td></tr>`).join('');
+  const overflow = sync.prices?.length > 14 ? `<p class="pricelabs-sync-note">Se muestran 14 de ${sync.prices.length} precios del snapshot.</p>` : '';
+  box.innerHTML = `<div class="pricelabs-sync-head">Según PriceLabs — sincronizado hace ${days} día${days===1?'':'s'}. Solo lectura: esta app nunca cambia nada en tu cuenta de PriceLabs.</div>
+    <div class="pricelabs-sync-note">Listing ${escapeHtml(sync.listingId)}${sync.pmsName?` · PMS ${escapeHtml(sync.pmsName)}`:''}${sync.currency?` · ${escapeHtml(sync.currency)}`:''}</div>
+    <div class="pricelabs-sync-metrics">
+      <div class="pricelabs-sync-metric"><span class="l">Min Price</span><span class="v">${f$(sync.min)}</span></div>
+      <div class="pricelabs-sync-metric"><span class="l">Base Price</span><span class="v">${f$(sync.base)}</span></div>
+      <div class="pricelabs-sync-metric"><span class="l">Precio máximo</span><span class="v">${sync.max===null?'—':f$(sync.max)}</span></div>
+      <div class="pricelabs-sync-metric"><span class="l">Base recomendado</span><span class="v">${f$(sync.recommendedBasePrice)}</span></div>
+    </div>${floorText}${stale}
+    ${rows ? `<details class="matrix-detail"><summary>Ver precios diarios del snapshot</summary><div class="table-wrap"><table class="pricelabs-sync-table"><thead><tr><th>Fecha</th><th>Precio</th><th>Estadía mínima</th></tr></thead><tbody>${rows}</tbody></table></div></details>${overflow}` : '<p class="pricelabs-sync-note">El snapshot no contiene precios diarios.</p>'}`;
 }
 function discountRowHTML(d){
   /* d.lockN: el nombre está atado a un número específico (Semanal=7, Quincenal=14,
@@ -1020,10 +1062,12 @@ function buildTabbar(){
 }
 function renderAll(){
   const model=compute();
-  renderValidation(model); renderDataProvenance(); renderPromotionLab(model);
+  renderValidation(model); renderDataProvenance(); renderPricelabsSyncCard(model); renderPromotionLab(model);
   renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
   renderLmConfig();
   renderCurrencyReviewBanner(model);
+  const syncBtn = document.getElementById('syncPricelabsBtn');
+  if(syncBtn){ syncBtn.disabled = !state.id; syncBtn.title = state.id ? 'Carga un snapshot JSON de solo lectura entregado por Claude' : 'Guarda o carga una unidad antes de sincronizar'; }
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -1780,6 +1824,36 @@ importUnitsFile.addEventListener('change', async e=>{
     refreshList();
     status(sanitized.length + ' unidad(es) importadas ✓');
   }catch(e){console.error(e); status('Archivo inválido');}
+});
+/* PriceLabs no se consulta desde el navegador: Claude entrega un snapshot JSON
+   y este flujo solo lo valida, normaliza y guarda junto a la unidad actual. */
+syncPricelabsBtn.addEventListener('click', ()=>{
+  if(!state.id){ status('Guarda o carga una unidad antes de sincronizar con PriceLabs.'); return; }
+  syncPricelabsFile.value=''; syncPricelabsFile.click();
+});
+syncPricelabsFile.addEventListener('change', async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  if(!state.id){ status('Guarda o carga una unidad antes de sincronizar con PriceLabs.'); return; }
+  try{
+    const raw=JSON.parse(await file.text());
+    const shape=validatePricelabsSyncFile(raw);
+    if(!shape.valid){ alert('No se pudo sincronizar:\n'+shape.errors.join('\n')); return; }
+    if(state.pricelabsListingId && state.pricelabsListingId!==raw.listingId){
+      if(!confirm(`El snapshot es del listing ${raw.listingId}, pero esta unidad estaba asociada al listing ${state.pricelabsListingId}. ¿Reemplazar la sincronización?`)) return;
+    }
+    const warnings=[];
+    const sync=normalizePricelabsSync(raw,warnings);
+    if(!sync){ alert('El snapshot no contiene datos válidos de PriceLabs.'); return; }
+    const candidate={...state, pricelabsListingId:sync.listingId, pricelabsPmsName:sync.pmsName||'', pricelabsSync:sync, id:state.id};
+    const normalizedResult=normalizeUnit(candidate);
+    if(!normalizedResult.state){ status('No se pudo guardar el snapshot.'); return; }
+    const record=buildV3Record(normalizedResult.state,{id:state.id});
+    const saved=await window.storage.set(v3Key(record.id),JSON.stringify(record),false);
+    if(!saved){ status('No se pudo guardar el snapshot — la unidad no cambió.'); return; }
+    state=normalizedResult.state; state.id=record.id; unitName.value=state.name||''; renderAll();
+    if(warnings.length) console.warn('PriceLabs sync — campos descartados:', warnings);
+    status(`PriceLabs sincronizado ✓${warnings.length?' (revisa avisos en consola)':''}`);
+  }catch(err){ console.error(err); status('Archivo PriceLabs inválido.'); }
 });
 async function refreshList(){
   try{
