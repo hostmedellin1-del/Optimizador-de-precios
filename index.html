@@ -1850,7 +1850,8 @@ syncPricelabsFile.addEventListener('change', async e=>{
     const record=buildV3Record(normalizedResult.state,{id:state.id});
     const saved=await window.storage.set(v3Key(record.id),JSON.stringify(record),false);
     if(!saved){ status('No se pudo guardar el snapshot — la unidad no cambió.'); return; }
-    state=record; unitName.value=state.name||''; renderAll();
+    state=normalizedResult.state; state.id=record.id; unitName.value=state.name||''; renderAll();
+    if(warnings.length) console.warn('PriceLabs sync — campos descartados:', warnings);
     status(`PriceLabs sincronizado ✓${warnings.length?' (revisa avisos en consola)':''}`);
   }catch(err){ console.error(err); status('Archivo PriceLabs inválido.'); }
 });
