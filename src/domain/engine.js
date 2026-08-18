@@ -176,11 +176,16 @@ export function worstNative(discounts, chId, windows){
   return (1-worstFactor)*100;
 }
 
-/* Factor de lo que realmente te queda: comisión OTA + comisión bancaria, AMBAS calculadas
-   sobre el precio que paga el huésped (no se acumulan una sobre la otra, se restan las dos
-   del mismo número — así es como se factura en la práctica, confirmado por Dani). */
+/* Factor de lo que realmente te queda: comisión OTA + programas de visibilidad + comisión
+   bancaria, TODAS calculadas sobre el precio que paga el huésped (no se acumulan una sobre
+   otra, se restan del mismo número — así es como se factura en la práctica, confirmado por
+   Dani). */
 export function payoutFactor(c){
-  return Math.max(0, 1 - pct(c.comm)/100 - pct(c.bankFeePct)/100);
+  return Math.max(0, 1 - pct(c.comm)/100 - extraCommPct(c)/100 - pct(c.bankFeePct)/100);
+}
+
+export function extraCommPct(c){
+  return pct(c.preferredPct||0) + pct(c.acceleratorPct||0);
 }
 
 /* Tarifa de aseo fija por reserva (solo Airbnb), diluida por noche según la estadía dada.
@@ -300,14 +305,14 @@ export function compute(config){
       const p = worstFactor>0
         ? (worstFeePerNight>0 ? Math.max(0, cost/pf-worstFeePerNight)/worstFactor : cost/(worstFactor*pf))
         : Infinity;
-      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(worstFeePerNight>0?' + aseo diluido':'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(worstFeePerNight>0?' + aseo diluido':'')+(extraCommPct(c)>0?' + comisión extra '+fP(extraCommPct(c)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     } else {
       /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
          de siempre, solo nativo OTA — no incluye LM. */
       const wn = worstNative(discounts, c.id, windows)/100;
       const denom = (1+off)*(1-wn)*pf;
       const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */
-      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (nativo '+fP(wn*100)+' + comisión '+fP(pct(c.comm))+(extraCommPct(c)>0?' + comisión extra '+fP(extraCommPct(c)):'')+(pct(c.bankFeePct)>0?' + bancaria '+fP(pct(c.bankFeePct)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     }
   });
   /* base: pushed price that nets target on every channel using its CONSTANT natives

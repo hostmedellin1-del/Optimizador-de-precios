@@ -185,6 +185,17 @@ Implementado en `payoutFactor(c)`. La diferencia entre ambas fórmulas es peque�
 reserva (~1-2%) pero sistemática — sobre volumen es plata real, y el modelo viejo la
 escondía a favor de Dani (le hacía creer que ganaba más de lo real).
 
+### Programas de visibilidad: comisión adicional de Booking y Expedia (ago 2026)
+`booking.preferredPct` representa Alojamientos Preferentes (Preferred Partner Programme)
+y `expedia.acceleratorPct` representa Aceleradores. Ambos son **comisiones adicionales**
+que la OTA cobra al host por un programa de visibilidad; no son descuentos al huésped y
+no modifican `guest` ni las reglas de `combineChannel()`. Se suman a la comisión base y
+a la bancaria dentro de `payoutFactor()`, por lo que también elevan el Piso y aparecen
+como una línea separada en el Simulador. Los dos campos arrancan en `0%`; Dani debe
+confirmar el porcentaje real en su Extranet de Booking o Expedia Partner Central antes
+de activarlos. Un valor inválido se normaliza a 0 con advertencia, igual que el resto de
+los porcentajes financieros por canal.
+
 ### Offset por canal (Pricing Offset de PriceLabs)
 Descubierto y verificado en esta conversación vía soporte de PriceLabs: existe una
 función real en PriceLabs (Dynamic Pricing → Customizations) para ajustar el precio

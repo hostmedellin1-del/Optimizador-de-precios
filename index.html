@@ -385,7 +385,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 import {CHANNELS, defaultDiscounts, WINDOWS, defaultCostBreakdown, defaultLmConfig} from './src/catalog/discounts.js';
 import {pct} from './src/domain/percent.js';
 import {f$ as f$base, fP} from './src/domain/format.js';
-import {compute as computeBase, suggestedOffset as suggestedOffsetBase} from './src/domain/engine.js';
+import {compute as computeBase, suggestedOffset as suggestedOffsetBase, extraCommPct} from './src/domain/engine.js';
 import {buildAlerts as buildAlertsBase} from './src/domain/alerts.js';
 import {simulateReservation} from './src/domain/simulate.js';
 import {quoteScenario} from './src/domain/quote.js';
@@ -714,6 +714,12 @@ function renderChannelPages(model){
         <div class="chpage-head">
           <div class="fld"><span>Comisión ${escapeHtml(c.name)} %</span><input type="number" data-chid="${c.id}" data-chf="comm" value="${escapeHtml(c.comm)}"></div>
           <div class="fld"><span>Comisión bancaria/pasarela %</span><input type="number" data-chid="${c.id}" data-chf="bankFeePct" value="${escapeHtml(c.bankFeePct||0)}"></div>
+          ${c.id==='booking' ? `
+          <div class="fld"><span>Alojamientos preferentes — comisión extra %</span><input type="number" data-chid="${c.id}" data-chf="preferredPct" value="${escapeHtml(c.preferredPct||0)}"></div>
+          <div class="hint">Programa de visibilidad de Booking (Preferred Partner Programme) — es COMISIÓN adicional que te cobra Booking, no un descuento al huésped. Confirma el % real en tu Extranet de Booking antes de activarlo — no lo inventes.</div>` : ''}
+          ${c.id==='expedia' ? `
+          <div class="fld"><span>Aceleradores — comisión extra %</span><input type="number" data-chid="${c.id}" data-chf="acceleratorPct" value="${escapeHtml(c.acceleratorPct||0)}"></div>
+          <div class="hint">Programa de visibilidad de Expedia (Accelerator) — es COMISIÓN adicional que te cobra Expedia, no un descuento al huésped. Confirma el % real en tu Expedia Partner Central antes de activarlo — no lo inventes.</div>` : ''}
           <div class="fld"><span><span class="term" title="Ajuste % sobre el precio de PriceLabs, específico de este canal, aplicado DESPUÉS del precio+LM — así compensas la comisión de este canal sin subirle el precio a los demás.">Offset</span> % sobre PriceLabs (tu markup real)</span><input type="number" data-chid="${c.id}" data-chf="offsetPct" value="${escapeHtml(c.offsetPct||0)}"></div>
           ${c.id==='airbnb' ? `
           <div class="fld"><span>Tarifa de aseo — reservas 1–2 noches</span><input type="number" data-chid="${c.id}" data-chf="cleanFeeShort" value="${escapeHtml(c.cleanFeeShort||0)}"></div>
@@ -737,7 +743,7 @@ function renderChannelPages(model){
                  DESPUES del precio fijo (ver suggestedOffset()/quoteScenario()).
                  Se muestra el numero corregido, con nota explicita de que ya
                  NO se calcula sobre Base. */
-              return `<div class="offset-hint">⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
+              return `<div class="offset-hint">⚠ Base Price no aplica aquí (LM con precio fijo activo en el día de referencia) — el Offset sugerido SÍ se recalculó sobre ese precio fijo real: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA${extraCommPct(c)>0?' + comisión extra':''} + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
             }
             /* BLOQUEANTE 2 (auditoria externa, ronda 4): prioridad MAS BAJA
                (solo se muestra si nada mas arriba ya explico un bloqueo) para
@@ -748,7 +754,7 @@ function renderChannelPages(model){
             if(model.costBlocked){
               return `<div class="offset-hint">⚠ Offset sugerido y neto estimado bloqueados: el costo real de esta unidad todavía no está confirmado (${escapeHtml(model.costBlockedReason||'')}) — confírmalo en Resumen → "Costos por noche".</div>`;
             }
-            return `<div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
+            return `<div class="offset-hint">Sugerido para netear el objetivo con el Base actual: <b>${sugg>=0?'+':''}${sugg.toFixed(1)}%</b><br>Con tu offset actual, neto estimado para una estadía promedio de ${avgN} noche${avgN===1?'':'s'} (ya con comisión OTA${extraCommPct(c)>0?' + comisión extra':''} + bancaria${c.id==='airbnb'?' + aseo diluido':''}): <b>${f$(netHoy)}</b> ${netHoy<model.cost?'⚠ bajo costo':netHoy<model.net?'· cubre costo, bajo objetivo':'· sobre objetivo'}</div>`;
           })()}
         </div>
         <h2>Descuentos activos hoy — ${escapeHtml(c.name)}</h2>
@@ -897,7 +903,7 @@ function renderSim(model){
   const days=Math.max(0,parseFloat(simDays.value)||0);
   const nights=Math.max(1,parseFloat(simNights.value)||1);
   const s = simulateReservation(quoteConfig(), {price, chId, days, nights});
-  const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, afterBank, cost, margin, marginPct, markupPct, totalDisc} = s;
+  const {ch, w, ceil, lm, off, afterOff, guest, feeTotal, guestForFees, afterComm, extraCommAmt, afterExtra, afterBank, cost, margin, marginPct, markupPct, totalDisc} = s;
   /* La simulacion manual permanece disponible, pero se etiqueta si depende de
      LM, moneda o precio fijo sin resolver. */
   const simUnverified = [];
@@ -932,6 +938,10 @@ function renderSim(model){
   const feeNote = feeTotal>0 ? ' + aseo prorrateado' : '';
   html+=`<div class="sim-group">3 · Lo que te queda a ti</div>`;
   html+=`<div class="wf-line"><span>− Comisión ${escapeHtml(ch.name)} ${fP(pct(ch.comm))} (sobre precio del huésped${feeNote})</span><span class="amt">${f$(afterComm)}</span></div>`;
+  if(extraCommAmt>0){
+    const label = ch.id==='booking' ? 'Alojamientos preferentes' : ch.id==='expedia' ? 'Aceleradores' : 'Comisión extra';
+    html+=`<div class="wf-line"><span>− ${label} ${fP(pct(ch.preferredPct||0)+pct(ch.acceleratorPct||0))} (también sobre precio del huésped${feeNote})</span><span class="why">comisión adicional por el programa de visibilidad — no es un descuento al huésped</span><span class="amt">${f$(afterExtra)}</span></div>`;
+  }
   if(pct(ch.bankFeePct)>0){
     html+=`<div class="wf-line"><span>− Comisión bancaria/pasarela ${fP(pct(ch.bankFeePct))} (también sobre precio del huésped${feeNote})</span><span class="why">tarjeta virtual / transferencia / pasarela de pago</span><span class="amt">${f$(afterBank)}</span></div>`;
   }
@@ -1347,6 +1357,8 @@ document.addEventListener('change',e=>{
     const CH_FIELD_OPTS = {
       comm:{min:0,max:99.999,label:`${c.name} — comisión`},
       bankFeePct:{min:0,max:99.999,label:`${c.name} — comisión bancaria`},
+      preferredPct:{min:0,max:99.999,label:`${c.name} — alojamientos preferentes`},
+      acceleratorPct:{min:0,max:99.999,label:`${c.name} — aceleradores`},
       offsetPct:{min:-99.999,max:1000,label:`${c.name} — Offset`},
       cleanFeeShort:{min:0,max:1e6,label:`${c.name} — aseo (1–2 noches)`},
       cleanFeeLong:{min:0,max:1e6,label:`${c.name} — aseo (3+ noches)`}
