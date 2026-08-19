@@ -34,7 +34,7 @@
    config   = {channels, discounts, windows, ceilings, fixedCost, varCost,
                costBreakdown?, lmConfig?} */
 import {pct, pct2} from './percent.js';
-import {combineChannel, payoutFactor, cleanFeePerNight} from './engine.js';
+import {combineChannel, payoutFactor, cleanFeePerNight, extraCommPct} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
 import {priceLabsLm, isLmBlocked, LONG_STAY_NIGHTS} from './pricelabs-lm.js';
 
@@ -117,6 +117,7 @@ export function quoteScenario(scenario, config, opts = {}){
      (incluido el aseo diluido) — se restan del MISMO numero, no se componen
      una sobre la otra (ver payoutFactor()/CLAUDE.md seccion 2). */
   const commAmt = guestWithFees*pct(ch.comm)/100;
+  const extraCommAmt = guestWithFees*extraCommPct(ch)/100;
   const bankAmt = guestWithFees*pct(ch.bankFeePct)/100;
   const payout = guestWithFees*payoutFactor(ch);
 
@@ -154,7 +155,7 @@ export function quoteScenario(scenario, config, opts = {}){
     price, priceAfterLm, off, priceAfterOffset,
     applied: r.applied, ignored: r.ignored, appliedSteps,
     guest, feePerNight, feeTotal, guestWithFees,
-    commAmt, bankAmt, payout,
+    commAmt, extraCommAmt, bankAmt, payout,
     cost, margin, marginPct, markupPct,
     /* Simplificacion a USD unico (revision externa): esta version SOLO opera
        en USD — todo resultado monetario de quoteScenario() esta, por

@@ -30,10 +30,10 @@ export function validateCostInputs({fixedCost, varCost, margin}={}){
 export function validateChannelInputs(channels=[]){
   const errors=[];
   channels.forEach(c=>{
-    const comm=parseFloat(c.comm), bank=parseFloat(c.bankFeePct)||0, off=parseFloat(c.offsetPct)||0;
+    const comm=parseFloat(c.comm), bank=parseFloat(c.bankFeePct)||0, extra=(parseFloat(c.preferredPct)||0)+(parseFloat(c.acceleratorPct)||0), off=parseFloat(c.offsetPct)||0;
     if(Number.isNaN(comm) || comm<0 || comm>=100) errors.push({field:`${c.id}.comm`, level:'error', msg:`Comision de ${c.name} debe estar entre 0% y 100% (excluyente) — hoy: ${c.comm}.`});
     if(bank<0 || bank>=100) errors.push({field:`${c.id}.bankFeePct`, level:'error', msg:`Comision bancaria de ${c.name} debe estar entre 0% y 100% (excluyente) — hoy: ${bank}.`});
-    if(comm+bank>=100) errors.push({field:`${c.id}.comm`, level:'error', msg:`${c.name}: comision (${comm}%) + bancaria (${bank}%) suman ${comm+bank}% o mas — el payout nunca puede ser positivo (ver payoutFactor).`});
+    if(comm+bank+extra>=100) errors.push({field:`${c.id}.comm`, level:'error', msg:`${c.name}: comision (${comm}%) + comision extra (${extra}%) + bancaria (${bank}%) suman ${comm+bank+extra}% o mas — el payout nunca puede ser positivo (ver payoutFactor).`});
     if(off<=-100) errors.push({field:`${c.id}.offsetPct`, level:'error', msg:`Offset de ${c.name} es ${off}% — un offset de -100% o menos hace el precio publicado 0 o negativo.`});
   });
   return errors;

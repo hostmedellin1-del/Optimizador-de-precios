@@ -93,6 +93,12 @@ function normalizeChannel(raw, def, warnings){
     out.cleanFeeShort = nonNegField(raw||{}, 'cleanFeeShort', def.cleanFeeShort||0, warnings, `channels.${def.id}`, {min:0});
     out.cleanFeeLong = nonNegField(raw||{}, 'cleanFeeLong', def.cleanFeeLong||0, warnings, `channels.${def.id}`, {min:0});
   }
+  if(def.id==='booking'){
+    out.preferredPct = pctField(raw||{}, 'preferredPct', def.preferredPct||0, warnings, `channels.${def.id}`, {min:0, max:100});
+  }
+  if(def.id==='expedia'){
+    out.acceleratorPct = pctField(raw||{}, 'acceleratorPct', def.acceleratorPct||0, warnings, `channels.${def.id}`, {min:0, max:100});
+  }
   /* Contrato de moneda (revision externa): null = "misma moneda que la
      unidad" (el default seguro) — solo 'USD'/'COP' son valores validos
      (única whitelist que soporta la app). Cualquier otra

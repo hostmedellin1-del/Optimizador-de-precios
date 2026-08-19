@@ -5,6 +5,30 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.23.0] — Comisión adicional de Booking (Alojamientos preferentes) y Expedia (Aceleradores)
+
+**Agregado** — dos campos nuevos por canal: `booking.preferredPct` (Programa de
+Alojamientos Preferentes / Preferred Partner Programme) y `expedia.acceleratorPct`
+(Aceleradores). Dani confirmó que ambos son **comisión adicional** que la OTA le cobra
+por un programa de visibilidad — no son descuentos que bajan el precio al huésped, así
+que no tocan `combineChannel()` ni el precio que ve el huésped. Se suman a la comisión
+base y a la bancaria dentro de `payoutFactor()` (misma regla de siempre: las tres se
+restan del MISMO número, nunca se componen una sobre otra), así que también elevan el
+Piso cuando el canal afectado es el que fija el peor caso, y aparecen como una línea
+propia y separada en el Simulador ("Alojamientos preferentes" / "Aceleradores").
+
+Ambos campos arrancan en **0% por defecto** — nadie inventó un porcentaje. Dani debe
+confirmar el valor real en su Extranet de Booking o su Expedia Partner Central antes de
+activarlos, mismo criterio que ya rige el resto de comisiones por canal. Caso de
+verificación: con Booking en comisión 18% + bancaria 6%, activar 5% de Alojamientos
+preferentes baja el `payoutFactor` de 0.76 a 0.71 exacto, y sube el Piso en la misma
+proporción (0.76/0.71).
+
+**Sin cambios** — `combineChannel()`, el catálogo de descuentos nativos y el precio que
+ve el huésped no se tocaron. Airbnb y Directo no reciben estos campos (mismo criterio ya
+usado para `cleanFeeShort`/`cleanFeeLong`, exclusivo de Airbnb). Unidades guardadas antes
+de esta versión cargan igual, con ambos campos en 0% y sin warnings.
+
 ## [0.22.0] — Snapshot de solo lectura de PriceLabs
 
 **Agregado** — nuevo botón **"Sincronizar con PriceLabs"**: carga un archivo `.json` con
