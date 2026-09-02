@@ -88,6 +88,8 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>Offset</strong>: ajuste específico por canal que se aplica después del precio de PriceLabs.</li>
     </ul>
     <p>No publica precios, no cambia nada en PriceLabs, Kunas, Airbnb, Booking.com o Expedia, y no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal.</p>
+    <p>En Airbnb, la tarifa de aseo (la que cobras aparte por reserva) ahora entra en el cálculo del Min Price y del Base Price: es un ingreso real, se paga completo por reserva y se diluye entre las noches de la estadía. Antes el modelo la ignoraba por completo.</p>
+    <p>En estadías de 28 noches o más, el Min Price deja de asumir que Last-Minute está activo todo el mes: Dani confirmó que PriceLabs solo baja el precio los últimos días antes del check-in, nunca durante una reserva de un mes completo hecha el mismo día. El Simulador (cotización manual de un caso puntual) no cambia — sigue aplicando el Last-Minute configurado tal cual, sin recortes.</p>
   </section>
 
   <section id="primer-uso">
@@ -100,6 +102,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li>No copies esos valores como recomendaciones hasta completar los tres bloqueos de la sección 4.</li>
     </ol>
     <div class="alert warn"><span class="tag">USD</span><span>Todos los valores se ingresan en <strong>USD</strong>. La aplicación no convierte COP, no consulta PriceLabs ni las OTAs y no inventa ningún dato pendiente.</span></div>
+    <p>Si en cualquier momento ves <code>—</code> en vez de un precio, no significa que algo esté roto: falta terminar de configurar la unidad. Justo debajo de los KPIs aparece una tarjeta con los pasos concretos que faltan (por ejemplo "Escribí los costos reales de este apartamento" o "Decile a la app cómo baja precios PriceLabs cerca del check-in"), cada uno con su propio botón que te lleva directo a la sección donde se resuelve — ya no hace falta adivinar qué falta ni leer un párrafo largo para encontrarlo.</p>
     <p>La app guarda unidades solo en el almacenamiento local de ese navegador. Antes de empezar con datos reales, usa <strong>Exportar todo</strong> y guarda el archivo descargado fuera del navegador.</p>
   </section>
 
@@ -109,7 +112,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <p>Este es el orden recomendado. Aunque hay alrededor de 74 campos configurables entre costos, descuentos y canales, no hace falta llenar todo a la vez: completa primero lo que realmente usa cada unidad.</p>
     <ol>
       <li>En <strong>Resumen → Costos por noche</strong>, ingresa <strong>Fijos</strong> y <strong>Variables</strong>, o abre <strong>Calcular a partir de costos detallados</strong>.</li>
-      <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones.</li>
+      <li>Si usas el desglose, llena los costos reales y marca <strong>Revisé estos costos reales en USD, incluidos los valores en cero.</strong> Sin esa confirmación, el desglose no alimenta las recomendaciones. Una vez confirmado, justo ahí aparece una tabla de <strong>cuánto te cuesta cada noche según cuántas noches se queda el huésped</strong>: limpieza, lavandería e insumos se pagan completos por reserva sin importar la duración, así que una reserva corta sale más cara por noche. Caso real de la 902: una reserva de 1 noche cuesta USD 71.50 por noche, mientras que una de 4 noches cuesta USD 49.00 — casi la mitad, con el mismo apartamento. Si alguna vez ves una alerta <strong>ESTADÍA CORTA</strong>, es justo este problema: netea menos de lo que cuesta esa reserva puntual, no un error de la app.</li>
       <li>Completa <strong>Margen objetivo total %</strong>, <strong>Ventana de reserva del mercado (días, mediana)</strong>, <strong>Estadía promedio (noches)</strong> y <strong>Base que recomienda PriceLabs / mercado</strong>.</li>
       <li>Configura <strong>Last-Minute de PriceLabs</strong> con el modo que realmente usa esa unidad y marca <strong>Confirmé este modo directamente en PriceLabs</strong>.</li>
       <li>Revisa las pestañas <strong>Airbnb</strong>, <strong>Booking.com</strong>, <strong>Expedia</strong> y <strong>Directo</strong>: allí están las comisiones, comisión bancaria/pasarela, Offset y descuentos de cada canal.</li>
@@ -165,22 +168,30 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>Offset % sobre PriceLabs (tu markup real)</strong>.</li>
       <li>Comisiones, comisión bancaria/pasarela, Offset y descuentos que tú hayas comprobado en ese canal.</li>
       <li>En Airbnb, <strong>Tarifa de aseo — reservas 1–2 noches</strong> y <strong>Tarifa de aseo — reservas 3+ noches</strong>.</li>
+      <li>En Booking.com, <strong>Alojamientos preferentes %</strong>, y en Expedia, <strong>Aceleradores %</strong>: son comisión ADICIONAL que la OTA te cobra por un programa de visibilidad, no un descuento al huésped — no bajan el precio que ve el huésped, pero sí bajan lo que te queda a ti. Arrancan en <strong>0%</strong>, nadie inventó un porcentaje: confirma el valor real en tu Extranet de Booking o en Expedia Partner Central antes de activarlos.</li>
       <li><strong>Descuentos activos hoy</strong> y <strong>Ver catálogo completo</strong> para el resto.</li>
     </ul>
     <p>No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está activo para ese listing/canal y usa el porcentaje y la ventana reales.</p>
+    <h3>Mis apartamentos</h3>
+    <p>Pestaña de portafolio: una fila por cada unidad guardada en este navegador, todas juntas en una sola vista (antes solo se podía ver una unidad a la vez). Cada fila muestra el Piso, el costo por noche y un estado (<strong>Lista</strong>, <strong>Faltan costos</strong> o <strong>Falta Last-Minute</strong>) para que sepas de un vistazo cuáles unidades ya puedes usar como recomendación y cuáles no. Si una unidad tiene un snapshot de PriceLabs sincronizado (ver sección 6), la fila también muestra si el Min Price real de PriceLabs cubre o queda por debajo del Piso que calcula esta app. Click en una fila la abre en Resumen.</p>
     <h3>Comparación</h3>
     <p><strong>Panel de decisión por ventana de reserva</strong> resume cada ventana. Lee primero <strong>Veredicto</strong>. Si pide atención, abre <strong>Ver por canal</strong> para ver el detalle. Los veredictos pueden señalar techo excedido, neto bajo costo, neto bajo objetivo o una configuración rentable; revisa siempre que los datos que ingresaste coincidan con la realidad del canal.</p>
   </section>
 
   <section id="gestionar">
     <h2>6. Gestionar y respaldar propiedades</h2>
+    <p>En la barra superior quedan siempre visibles los botones que se usan a diario:</p>
     <ul>
       <li><strong>Guardar</strong>: guarda la unidad actual con su nombre. Si es una unidad nueva y ya hay otra con el mismo nombre, la aplicación pregunta antes de crear una nueva identidad.</li>
+      <li><strong>Duplicar</strong>: crea una unidad nueva desde una configuración existente; revisa la sección 3 para saber qué se copia y qué se reinicia.</li>
       <li><strong>Cargar unidad…</strong>: selecciona una unidad previamente guardada en este navegador.</li>
       <li><strong>Eliminar</strong>: borra la unidad seleccionada después de pedir confirmación. Exporta antes si necesitas conservarla.</li>
-      <li><strong>Duplicar</strong>: crea una unidad nueva desde una configuración existente; revisa la sección 3 para saber qué se copia y qué se reinicia.</li>
+    </ul>
+    <p>El resto — lo que se usa de vez en cuando, no todos los días — vive detrás de <strong>Más opciones</strong> (un desplegable justo al lado de Eliminar):</p>
+    <ul>
       <li><strong>Exportar todo</strong>: descarga un JSON con las unidades guardadas. Úsalo como respaldo periódico, especialmente antes de cambios grandes o de limpiar el navegador.</li>
       <li><strong>Importar</strong>: restaura un JSON exportado. La app valida y normaliza los datos; si ya existe una unidad con la misma clave, se sobrescribe tras confirmación.</li>
+      <li><strong>Sincronizar con PriceLabs</strong>: carga un archivo <code>.json</code> de solo lectura que Claude te prepara con las herramientas de PriceLabs. Sirve para comparar el Min Price real de PriceLabs contra el Piso que calcula esta app — nunca escribe nada de vuelta en PriceLabs, ni hace ninguna llamada automática. Si el Min Price real queda por debajo del Piso calculado, la tarjeta de Resumen lo avisa explícitamente.</li>
       <li><strong>Migrar unidades antiguas</strong>: crea copias en el formato actual de las unidades antiguas (v2) sin borrar las originales.</li>
     </ul>
     <div class="alert warn"><span class="tag">RESPALDO</span><span>Los datos no se sincronizan entre computadores, perfiles de navegador ni modo incógnito. Guarda los respaldos en una ubicación de confianza, por ejemplo tu almacenamiento habitual de archivos.</span></div>
@@ -196,7 +207,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   <section id="preguntas">
     <h2>8. Preguntas frecuentes</h2>
     <h3>¿Por qué Min Price o Base Price muestran <code>—</code>?</h3>
-    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la sección exacta que debes revisar.</p>
+    <p>Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, revisión manual de moneda o, en Base Price, un precio Last-Minute fijo que cubre el día de referencia. Justo debajo de los KPIs aparece una tarjeta con la lista concreta de lo que falta, cada ítem con su propio botón que te lleva directo a la sección exacta que debes revisar — no hace falta buscarlo.</p>
     <h3>¿Por qué una unidad duplicada puede tener otro precio?</h3>
     <p>Porque la copia no hereda hechos confirmados ni costos reales. Aunque conserve descuentos, canales, techos y parámetros LM, debes validar que esos parámetros y los costos sí aplican a la nueva unidad. Hasta hacerlo, la app bloquea Min Price y Base Price.</p>
     <h3>¿Puedo ingresar COP?</h3>
