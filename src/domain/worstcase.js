@@ -28,7 +28,16 @@ import {priceLabsLm, lmCriticalDays, LONG_STAY_NIGHTS} from './pricelabs-lm.js';
 
    lmConfig=null/undefined => modo 'ceiling_auto' implícito (mismo default que
    priceLabsLm()) — usado para no romper compatibilidad con callers que todavía
-   no pasan lmConfig explícito. */
+   no pasan lmConfig explícito.
+
+   `cost` acepta NUMERO (de siempre, costo constante para todas las duraciones —
+   correcto para el modelo simple fixedCost+varCost) o FUNCION `(nights)=>number`
+   (costo real de esa duración específica, ver costForNightFn() en costs.js). Caso
+   real que motivó esto (unidad 902): 1 noche cuesta USD 71.50/noche (aseo+lavandería+
+   insumos fijos por reserva, sin diluir), pero 27 noches cuesta solo USD 42.61/noche
+   — pasar el número fijo de 1 noche a la búsqueda de 27 noches inflaba el Piso a
+   ~138.69 (Airbnb) en vez de los ~108.18 (Expedia, 1 noche) que da con el costo real
+   de cada duración. Ver tests/floor-cost-por-noche.test.js. */
 export function worstScenarioFactor({chId, channels, discounts, windows, ceilings, lmConfig, cost}){
   const ch = channels.find(c=>c.id===chId);
   const off = pct2(ch.offsetPct)/100;
@@ -38,6 +47,7 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
   const days = [...new Set([...otaDays, ...lmDays])].sort((a,b)=>a-b);
   const nights = criticalNights(discounts);
   const needsSharedCeiling = !lmConfig || lmConfig.mode==='ceiling_auto';
+  const hasCost = typeof cost==='number' || typeof cost==='function';
 
   let worstFactor = Infinity;
   let worstFeePerNight = 0;
@@ -50,6 +60,7 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
     const ceil = pct((ceilings||{})[w.id]);
     nights.forEach(n=>{
       const feePerNight = cleanFeePerNight(ch, n);
+      const costAtN = typeof cost==='function' ? cost(n) : cost;
       const nativeFactor = combineChannel(discounts, chId, d, n).factor;
       // ceiling_auto es una politica COMPARTIDA entre canales: el LM depende del
       // peor nativo entre TODOS los canales a este mismo (dia,noche), no solo el propio.
@@ -66,14 +77,14 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
         : priceLabsLm(lmConfig, {day:d, ceilingPct:ceil, nativePct:sharedNative});
       if(lmResult.priceOverride!=null){
         const payoutAtOverride = (lmResult.priceOverride*(1+off)*nativeFactor + feePerNight)*pf;
-        if(typeof cost==='number' && payoutAtOverride < cost - 1e-9){
+        if(hasCost && payoutAtOverride < costAtN - 1e-9){
           infeasible.push({chId, day:d, night:n, overridePrice:lmResult.priceOverride, payoutAtOverride});
         }
         return; // el Piso no puede "arreglar" un precio fijo — no participa en worstFactor
       }
       const combinedFactor = (1-lmResult.lmPct/100)*(1+off)*nativeFactor;
-      if(typeof cost==='number'){
-        const costPerPf = cost/pf;
+      if(hasCost){
+        const costPerPf = costAtN/pf;
         const requiredPrice = combinedFactor>0
           ? Math.max(0, costPerPf-feePerNight)/combinedFactor
           : Infinity;

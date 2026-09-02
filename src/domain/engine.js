@@ -37,7 +37,7 @@
 import {pct, pct2} from './percent.js';
 import {fP} from './format.js';
 import {criticalDays, criticalNights} from './thresholds.js';
-import {reservationCostBreakdown} from './costs.js';
+import {reservationCostBreakdown, costForNightFn} from './costs.js';
 import {validateCostInputs, validateChannelInputs, validateResultFinite, validateLmTiersOverlap} from './validate.js';
 import {worstScenarioFactor} from './worstcase.js';
 import {priceLabsLm, isLmBlocked} from './pricelabs-lm.js';
@@ -278,6 +278,7 @@ export function compute(config){
   const cost = costGate.useDetailed
     ? reservationCostBreakdown(config.costBreakdown, 1).perNight
     : (parseFloat(config.fixedCost)||0)+(parseFloat(config.varCost)||0);
+  const costForNight = costForNightFn(config.costBreakdown, costGate.useDetailed, cost);
   const m = Math.min(parseFloat(config.margin)||0,90);
   const net = cost/(1-m/100);
   /* floor: pushed price such that worst channel still nets >= cost.
@@ -296,7 +297,7 @@ export function compute(config){
          ignoraba podia netear por debajo del costo real aunque el modelo
          dijera valid:true. */
       const {worstFactor, worstFeePerNight, worstDay, worstNight, infeasible} = worstScenarioFactor({
-        chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost
+        chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: costForNight
       });
       lmInfeasible.push(...infeasible);
       /* Conserva la aritmética histórica cuando el aseo es 0: además de ser
@@ -477,7 +478,7 @@ export function compute(config){
   const baseReadinessBlocked = !baseReady;
   const baseReadinessBlockedReason = baseReason;
   return {
-    cost, net, floor, floorCh, floorChId, base, baseCh, baseChId, effBase, errors, valid,
+    cost, net, costForNight, floor, floorCh, floorChId, base, baseCh, baseChId, effBase, errors, valid,
     lmBlocked, lmBlockedReason, baseBlocked, baseBlockedReason,
     currencyBlocked, currencyBlockedReason,
     costBlocked, costBlockedReason, costMode: costGate.mode,
