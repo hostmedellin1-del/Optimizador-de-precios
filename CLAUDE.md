@@ -1959,3 +1959,31 @@ de ESTADÍA CORTA — el resto de `alerts.js`, y el resto de la app entera, sigu
 usando `f$` sin cambios. No modificar `f$`/`fP` para "arreglar" esto en otro
 lado — ambas las usa toda la app y cambiar su redondeo global no es lo que se
 decidió acá.
+
+### Fix (sept 2026) — el Piso usaba el costo de 1 noche para CUALQUIER duración de la búsqueda de peor caso
+
+**Caso real, unidad 902**: `reservationCostBreakdown()` ya calculaba bien que
+1 noche cuesta USD 71.50/noche (aseo+lavandería+insumos fijos por reserva) y
+27 noches solo USD 42.61/noche (se diluyen entre más noches) — pero
+`worstScenarioFactor()` (`worstcase.js`) recibía `cost` como un NÚMERO FIJO
+único (el de 1 noche) y lo aplicaba a TODAS las duraciones probadas, incluida
+27 noches. Eso inflaba el Piso a **USD 138.69** (Airbnb, 27 noches) — muy por
+encima del mercado real (~USD 92 en PriceLabs), la señal de que algo fallaba.
+
+**Causa raíz**: costo fijo de 1 noche aplicado a cualquier duración dentro de
+la enumeración de peor caso, en vez del costo real de cada una.
+
+**Fix**: `cost` en `worstScenarioFactor()` acepta ahora también una FUNCIÓN
+`(nights)=>number` (costo real por duración), vía `costForNightFn()` nueva en
+`costs.js`. `compute()` arma `costForNight` con ella y la usa para el Piso;
+`alerts.js` (REALIDAD) la reusa en vez de `model.cost` fijo. `model.cost`/`net`
+(KPI "Costo total/noche") NO cambian. Pasar `cost` como número sigue dando
+EXACTAMENTE lo mismo (test directo a `worstScenarioFactor()`).
+
+**Resultado corregido**: Piso ≈ **USD 108.18** (Expedia, 1 noche) — por canal:
+Airbnb 91.02 / Booking 90.92 / Expedia 108.18 / Directo 103.93.
+
+**Verificación**: 281/281 tests, salvo UNO — `tests/floor-cleanfee.test.js`
+("caso 902...") pinneaba el valor VIEJO (138.69); ahora da 91.02 (mismo
+mecanismo, escenario aislado). No se tocó ese assert — Dani decide. Lint
+limpio, 62/62 e2e sin regresión. Test nuevo: `tests/floor-cost-por-noche.test.js`.

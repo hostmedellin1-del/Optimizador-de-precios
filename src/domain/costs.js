@@ -44,3 +44,15 @@ export function reservationCostBreakdown(costBreakdown, nights){
 export function reservationCostAtAvgNights(costBreakdown, avgNights){
   return reservationCostBreakdown(costBreakdown, avgNights).perNight;
 }
+
+/* Fuente unica del costo-por-noche que consume worstScenarioFactor() (worstcase.js)
+   al buscar el peor caso real por duracion. Con el desglose detallado confirmado,
+   cada duracion tiene SU costo real (reservationCostBreakdown(...).perNight, nunca
+   el mismo numero fijo aplicado a cualquier duracion — ese fue el bug de la unidad
+   902: 71.50/noche a 1 noche vs 42.61/noche a 27). Sin desglose (modelo simple), el
+   costo es constante y flatCostPerNight se devuelve tal cual para cualquier n. */
+export function costForNightFn(costBreakdown, useDetailed, flatCostPerNight){
+  return useDetailed
+    ? (nights) => reservationCostBreakdown(costBreakdown, nights).perNight
+    : () => flatCostPerNight;
+}

@@ -56,7 +56,7 @@ test('tarifa corta real baja el Piso de forma notoria', () => {
     `el Piso global también debe reflejar el ingreso (${modelWithout.floor} → ${modelWith.floor})`);
 });
 
-test('caso 902: el Piso baja de USD 140.22 a USD 138.69 y el peor caso pasa de 21 a 27 noches', () => {
+test('caso 902: worstScenarioFactor(cost:numero) SIGUE dando 140.22/21→27/138.69 (comportamiento legado, sin cambios); compute() ya usa el costo real por noche y da el Piso corregido', () => {
   const channels=[airbnb({feeShort:20, feeLong:25, offsetPct:16})];
   const discounts=freshDiscounts().filter(d=>d.ch==='airbnb').map(d=>({...d, on:false}));
   const duration=findDiscount(discounts, 'ab_los6');
@@ -68,13 +68,29 @@ test('caso 902: el Piso baja de USD 140.22 a USD 138.69 y el peor caso pasa de 2
     costBreakdown:{rent:700,admin:140,utilities:108,insurance:5,tech:22,occNights:26,
       cleaning:20,laundry:5,supplies:5,consumables:4}, fixedCost:0, varCost:0});
   const legacy=worstScenarioFactor({...cfg, chId:'airbnb'});
+  /* `current` llama worstScenarioFactor() DIRECTO con cost:71.5 como NUMERO —
+     ese camino queda sin cambios a propósito (ver
+     tests/floor-cost-por-noche.test.js, guarda de no-regresión): sigue
+     aplicando el costo de 1 noche a CUALQUIER duración, incluida la de 27
+     noches que "gana" ahí por el mismo mecanismo de siempre. Estas tres
+     líneas documentan ese comportamiento legado, no lo que ve Dani en la app. */
   const current=worstScenarioFactor({...cfg, chId:'airbnb', cost:71.5});
   const oldFloor=71.5/(legacy.worstFactor*legacy.pf);
-  const model=compute(cfg);
   assert.equal(legacy.worstNight, 21);
   assert.equal(current.worstNight, 27);
   assert.equal(oldFloor.toFixed(2), '140.22');
-  assert.equal(model.floor.toFixed(2), '138.69');
+
+  /* compute() SÍ cambia (sept 2026, fix real del Piso — ver CLAUDE.md "el
+     Piso usaba el costo de 1 noche para CUALQUIER duración de la búsqueda de
+     peor caso"): ahora pasa costForNight (el costo REAL de cada duración,
+     via costForNightFn()) a worstScenarioFactor(), no el número fijo de 1
+     noche. El peor caso real de este escenario aislado pasa de "27 noches,
+     Piso 138.69" a "1 noche, Piso 91.02" — la reserva de 1 noche es la que
+     de verdad cuesta más por noche (71.50 vs ~42.61 a 27 noches), así que es
+     la que exige más protección, no la de 27. */
+  const model=compute(cfg);
+  assert.equal(model.floorCh.includes('1 noche'), true, `el Piso corregido debe citar 1 noche, no una estadia larga — dio "${model.floorCh}"`);
+  assert.equal(model.floor.toFixed(2), '91.02');
 });
 
 test('worstFeePerNight coincide con cleanFeePerNight del escenario devuelto', () => {

@@ -164,7 +164,7 @@ export function buildAlerts(config, model){
          para cotizarlo — cero formula financiera propia. */
       let peorNeto=Infinity, peorCh='';
       channels.forEach(c=>{
-        const {worstDay, worstNight} = worstScenarioFactor({chId:c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: model.cost});
+        const {worstDay, worstNight} = worstScenarioFactor({chId:c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: model.costForNight});
         const q = quoteScenario({chId:c.id, days:worstDay, nights:worstNight, price:mb}, config);
         if(q.payout<peorNeto){peorNeto=q.payout;peorCh=c.name;}
       });
