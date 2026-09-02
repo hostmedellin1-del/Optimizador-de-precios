@@ -31,11 +31,25 @@ import {comparePricelabsSync} from './pricelabs-sync.js';
    unidad en COP (lmBlocked:true por defecto) mostraba el chip "Falta
    Last-Minute" en la MISMA fila donde el motivo decía "requiere revisión
    manual (moneda)", que era el motivo real. Un bloqueo de moneda ahora tiene
-   su propio chip ('revisar_moneda'), no cae en 'faltan_costos'. */
+   su propio chip ('revisar_moneda'), no cae en 'faltan_costos'.
+
+   Residuo del mismo bug, cerrado acá: `floorReadinessBlocked` también puede
+   quedar en `true` por un canal con datos financieros sin confirmar
+   (`unreadyChannels` no vacío, ver src/domain/readiness.js) SIN que
+   currencyBlocked/costBlocked/lmBlocked sean true — ej. costos confirmados,
+   LM verificado, moneda USD, pero un canal activo con algo pendiente. Antes
+   ese caso caía al mismo fallback que "sin bloqueo real" (`'faltan_costos'`)
+   con motivo `'sin resolver'` — el chip mentía (los costos SÍ están bien) y
+   el motivo no coincidía con lo que el chip decía. Esta cuarta entrada le da
+   identidad propia ('faltan_datos'), saliendo de la MISMA tabla que las
+   otras tres — nunca un fallback aparte, para que chip y motivo no puedan
+   volver a divergir. Va AL FINAL: currencyBlocked/costBlocked/lmBlocked
+   siguen siendo más específicos y ganan primero si también aplican. */
 const BLOCKS = [
   {test: m => m.currencyBlocked, status: 'revisar_moneda', reason: 'requiere revisión manual (moneda)'},
   {test: m => m.costBlocked, status: 'faltan_costos', reason: 'faltan costos por confirmar'},
-  {test: m => m.lmBlocked, status: 'falta_lm', reason: 'falta verificar Last-Minute'}
+  {test: m => m.lmBlocked, status: 'falta_lm', reason: 'falta verificar Last-Minute'},
+  {test: m => m.floorReadinessBlocked, status: 'faltan_datos', reason: 'faltan datos de un canal'}
 ];
 
 function resolveBlock(model){
@@ -44,11 +58,7 @@ function resolveBlock(model){
 
 export function portfolioStatus(model){
   const block = resolveBlock(model);
-  if(block) return block.status;
-  // floorReadinessBlocked puede quedar en true por un dato de negocio
-  // pendiente (unreadyChannels) sin que ninguna de las tres condiciones de
-  // arriba coincida — mismo fallback que ya existía, ver 'sin resolver' abajo.
-  return model.floorReadinessBlocked ? 'faltan_costos' : 'lista';
+  return block ? block.status : 'lista';
 }
 
 function computeModelForUnit(state){
@@ -61,10 +71,16 @@ function computeModelForUnit(state){
 export function buildPortfolioRow(state){
   const model = computeModelForUnit(state);
   const status = portfolioStatus(model);
+  // currencyBlocked/costBlocked/lmBlocked en true SIEMPRE implican
+  // floorReadinessBlocked:true (por construcción de
+  // evaluateGlobalRecommendationReadiness() en engine.js), y la cuarta
+  // entrada de BLOCKS coincide con floorReadinessBlocked directamente — asi
+  // que `block` no-nulo y `floorReadinessBlocked:true` son la misma
+  // condición: el motivo sale de la MISMA tabla que ya decidió el chip,
+  // nunca de un texto aparte. La guarda `block ? ... : null` es defensiva
+  // nomás (modelo real siempre tiene el uno si tiene el otro).
   const block = resolveBlock(model);
-  const floorBlockedReason = !model.floorReadinessBlocked ? null
-    : block ? block.reason
-    : 'sin resolver';
+  const floorBlockedReason = block ? block.reason : null;
 
   const sync = state.pricelabsSync || null;
   const comparison = sync ? comparePricelabsSync(model, sync) : null;
@@ -77,7 +93,7 @@ export function buildPortfolioRow(state){
     floor: model.floorReadinessBlocked ? null : model.floor,
     floorBlockedReason,
     costPerNight: model.cost,
-    status, // 'lista' | 'faltan_costos' | 'falta_lm' | 'revisar_moneda'
+    status, // 'lista' | 'faltan_costos' | 'falta_lm' | 'revisar_moneda' | 'faltan_datos'
     pricelabsSync: sync ? {
       min: sync.min,
       minGapVsFloor: comparison ? comparison.minGapVsFloor : null,

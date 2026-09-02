@@ -118,3 +118,46 @@ test('unidad realmente bloqueada por moneda (currency:"COP") -> chip Y motivo CO
   assert.equal(row.floorBlockedReason, 'requiere revisión manual (moneda)');
   assert.equal(row.floor, null);
 });
+
+/* Residuo del mismo bug (BLOQUEANTE arriba), cerrado con una cuarta entrada
+   en la tabla BLOCKS de portfolio.js: floorReadinessBlocked tambien puede
+   quedar en true por un canal con datos financieros sin confirmar
+   (unreadyChannels no vacio en src/domain/readiness.js) SIN que
+   currencyBlocked/costBlocked/lmBlocked sean true — ej. costos confirmados,
+   LM verificado, moneda USD, pero igual falta algo de un canal. Antes ese
+   caso caia al mismo fallback que "sin bloqueo real" (chip 'faltan_costos',
+   motivo 'sin resolver') — el chip mentia (los costos SI estan bien).
+
+   Nota tecnica sobre el test que sigue: hoy `evaluateRecommendationReadiness()`
+   (src/domain/readiness.js) marca TODOS los canales como listos siempre —
+   es codigo de compatibilidad estructural de una fase de verificacion por
+   canal que ya se retiro (ver CLAUDE.md, "Simplificacion jul 2026") — y
+   ademas `config.verification` nunca se puebla desde ningun caller real
+   (compute-config.js/index.html/portfolio.js). Confirmado con Node: pasarle
+   `verification` a compute() no cambia nada, `unreadyChannels` siempre sale
+   vacio. Por eso HOY no existe ningun `state` real que, pasando por
+   buildPortfolioRow() -> compute(), produzca floorReadinessBlocked:true con
+   los otros tres flags en false — ese branch de compute()/readiness.js esta
+   momentaneamente inactivo (no es un bug de portfolio.js, es una fase que
+   engine.js todavia no reactivo). El arreglo de portfolio.js es correcto y
+   defensivo igual: si ese gate se reactiva mas adelante, el chip nuevo ya
+   esta listo y sale de la misma tabla que el resto, no de un fallback
+   aparte. Se prueba con un model sintetico (mismo patron ya usado arriba
+   para moneda) — permitido explicitamente para este caso. */
+test('portfolioStatus(): floorReadinessBlocked SIN costos/LM/moneda bloqueados tiene su propio chip "faltan_datos"', () => {
+  const model = {costBlocked:false, lmBlocked:false, currencyBlocked:false, floorReadinessBlocked:true};
+  assert.equal(portfolioStatus(model), 'faltan_datos');
+});
+
+test('portfolioStatus(): faltan_datos es el ultimo en prioridad — moneda/costos/LM ganan si tambien aplican', () => {
+  assert.equal(portfolioStatus({currencyBlocked:true, costBlocked:false, lmBlocked:false, floorReadinessBlocked:true}), 'revisar_moneda');
+  assert.equal(portfolioStatus({currencyBlocked:false, costBlocked:true, lmBlocked:false, floorReadinessBlocked:true}), 'faltan_costos');
+  assert.equal(portfolioStatus({currencyBlocked:false, costBlocked:false, lmBlocked:true, floorReadinessBlocked:true}), 'falta_lm');
+});
+
+test('los cuatro casos anteriores (lista/faltan_costos/falta_lm/revisar_moneda) no cambiaron con la cuarta entrada de BLOCKS', () => {
+  assert.equal(portfolioStatus({costBlocked:false, lmBlocked:false, currencyBlocked:false, floorReadinessBlocked:false}), 'lista');
+  assert.equal(portfolioStatus({costBlocked:true, lmBlocked:false, currencyBlocked:false, floorReadinessBlocked:true}), 'faltan_costos');
+  assert.equal(portfolioStatus({costBlocked:false, lmBlocked:true, currencyBlocked:false, floorReadinessBlocked:true}), 'falta_lm');
+  assert.equal(portfolioStatus({costBlocked:false, lmBlocked:false, currencyBlocked:true, floorReadinessBlocked:true}), 'revisar_moneda');
+});
