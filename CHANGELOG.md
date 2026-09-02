@@ -5,6 +5,79 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.24.0] — Usabilidad: pasos de arranque, vista de portafolio y costo por duración
+
+Ronda motivada por una frase textual de Dani: *"casi no la uso porque no la entiendo"*. El
+problema no eran funciones faltantes sino que la herramienta no entraba en su rutina. Alcance
+elegido por él: **arreglos primero, rediseño visual después**. El motor financiero
+(`engine.js`, `quote.js`, `worstcase.js`, `costs.js`, `catalog/discounts.js`) quedó
+**byte-idéntico a la versión anterior** — ninguna fórmula cambió.
+
+**Agregado — pasos de arranque accionables.** Una unidad nueva queda bloqueada por dos gates
+a la vez (Last-Minute sin verificar + costos todavía en el ejemplo de fábrica 32/22), y la
+única explicación era un párrafo de 695 caracteres con lenguaje como "número GLOBAL" y
+"matemáticamente confiable" que nunca decía qué hacer. Ahora se muestra una lista corta de
+pasos concretos, cada uno con su botón a la sección exacta. La lógica vive en
+`pendingSetupSteps()` (`src/domain/readiness.js`), función pura y testeada — no se inventó
+ningún gate nuevo, solo se presenta distinto lo que el motor ya sabía.
+
+**Agregado — pestaña "Mis apartamentos" (vista de portafolio).** Dani opera ~36 unidades y la
+app trabajaba de a una por vez; pidió explícitamente "una lista de todas". Una fila por unidad
+guardada con nombre, Piso (o el motivo que lo bloquea), costo/noche, chip de estado y la
+columna **Min Price real vs Piso** cuando la unidad tiene un snapshot de PriceLabs guardado —
+el hallazgo de la 902 (Min Price por debajo del Piso calculado) aplicado a todo el portafolio.
+Click o Enter en una fila abre esa unidad. Lógica pura en `src/domain/portfolio.js`, que reusa
+`compute()` y `comparePricelabsSync()` sin reimplementar ninguna regla de negocio.
+
+**Agregado — costo real por duración de estadía.** Tabla de solo lectura dentro de "Costos por
+noche" con el costo real para 1, 2, 3, 4, 7, 14 y 28 noches, usando la ya existente
+`reservationCostBreakdown()`. Es el dato que explicó una pérdida real: una reserva de 1 noche
+que dejó USD 67 netos contra un costo real de **USD 71.50 para esa noche** (el aseo, la
+lavandería y los insumos se pagan enteros aunque el huésped se quede una sola noche). Ese
+número existía en el motor desde siempre pero nunca estuvo en pantalla.
+
+**Agregado — alerta de ESTADÍA CORTA.** La alerta DURACIÓN solo miraba estadías largas. Ahora
+también cotiza 1 y 2 noches por canal y avisa cuando el neto queda por debajo del costo real de
+esa duración — exactamente donde se perdió plata. Los importes de esta alerta se muestran con
+dos decimales (`f$c`, `src/domain/format.js`) porque el redondeo a enteros podía imprimir el
+mismo número dos veces en la misma frase ("netea USD 72, pero el costo es USD 72") y borrar la
+diferencia que la alerta existe para mostrar.
+
+**Cambiado — barra superior.** Quedan visibles solo las cuatro acciones diarias (Guardar,
+Cargar, Duplicar, Eliminar); Exportar, Importar, Sincronizar con PriceLabs y Migrar unidades
+antiguas pasaron a un `<details>` "Más opciones". Solo se movieron nodos: ningún handler
+cambió.
+
+**Corregido — el chip de estado del portafolio podía mentir.** `portfolioStatus()` y el motivo
+mostrado en la columna Piso evaluaban el bloqueo con dos órdenes de prioridad distintos: una
+unidad en COP (que tiene `lmBlocked:true` por defecto) mostraba el chip "Falta Last-Minute" en
+la misma fila donde el motivo decía "requiere revisión manual (moneda)", que era el motivo
+real. Ahora ambos salen de una **única tabla ordenada** (`BLOCKS`), con chip propio para moneda
+(`revisar_moneda`) y para datos de canal sin confirmar (`faltan_datos`) — este último es
+defensivo: hoy `unreadyChannels()` nunca sale no-vacío porque
+`evaluateRecommendationReadiness()` marca todos los canales como listos (compatibilidad de una
+fase de verificación por canal ya retirada), pero si ese gate se reactiva el chip ya sale de la
+misma tabla y no de un fallback aparte.
+
+**Corregido — dos armados paralelos de la config de `compute()`.** `index.html` armaba el
+objeto de configuración dentro de su wrapper `compute()` y `src/domain/portfolio.js` armaba una
+copia campo por campo en `computeModelForUnit()`. Eran idénticos y el resultado era correcto,
+pero un campo de gate agregado a futuro en un solo lado habría hecho que el portafolio calculara
+con reglas más permisivas y mostrara unidades como "Lista" sin estarlo. Se extrajo a
+`computeConfigForState()` (`src/domain/compute-config.js`), fuente única que ahora llaman los
+dos. Hay un test que verifica que `buildPortfolioRow().floor` coincide exacto con el Piso de la
+vista principal.
+
+**Actualizado** — `guia.html` y `GUIA_DE_USO.md` (ambos sincronizados, según CLAUDE.md §4)
+documentan lo agregado desde julio: aseo dentro de Piso/Base, regla de Last-Minute en estadías
+de 28+ noches, Sincronizar con PriceLabs, comisiones de visibilidad de Booking/Expedia, la
+tabla de costo por duración y la pestaña de portafolio.
+
+**Verificación** — 275/275 unitarios, lint limpio, 62/62 e2e. `git diff` vacío contra la
+versión anterior en `engine.js`, `quote.js`, `worstcase.js`, `costs.js` y
+`catalog/discounts.js`. Cero llamadas de red: la app sigue siendo de solo lectura frente a
+PriceLabs, nunca escribe de vuelta.
+
 ## [0.23.0] — Comisión adicional de Booking (Alojamientos preferentes) y Expedia (Aceleradores)
 
 **Agregado** — dos campos nuevos por canal: `booking.preferredPct` (Programa de
