@@ -1837,3 +1837,97 @@ piso calculado por la app. La tarjeta siempre aclara que es solo lectura y que n
 cambia nada en PriceLabs. El motivo es contrastar el dato real observado (por
 ejemplo, un Min Price de PriceLabs de USD 60 frente a un piso calculado de USD
 138.69) sin convertir esa diferencia en una modificación automática.
+
+### Fases 1-4 de usabilidad (ago 2026): pasos de arranque, portafolio, costo por
+### duración y alerta de estadía corta
+
+**`pendingSetupSteps()` (`src/domain/readiness.js`) — por qué existe.** Antes de
+esto, una unidad nueva quedaba bloqueada por LM sin verificar Y por costos de
+ejemplo al mismo tiempo, y la única explicación visible era el párrafo largo de
+`floorReadinessBlockedReason`/`baseReadinessBlockedReason` (correcto, pero nunca
+dice "hacé estas dos cosas, en este orden, acá" — el motivo largo describe POR QUÉ
+está bloqueado, no da un paso accionable). `pendingSetupSteps({lmBlocked,
+costBlocked, currencyBlocked})` es pura, sin DOM, y traduce esos mismos tres
+booleanos que ya expone `compute()` a una lista de pasos concretos con `label`,
+`why` y `done`. Devuelve SIEMPRE la lista completa (nunca solo lo pendiente) para
+que la UI pueda marcar ✓ en lo ya resuelto — progreso visible, no solo lo que
+falta. El paso `moneda` es la excepción: solo se agrega si `currencyBlocked===true`
+(flujo raro de recuperación de una unidad "requiere revisión manual"); en una
+unidad normal nunca aparece un tercer paso. Guarda de lenguaje con test dedicado
+(`tests/setup-steps.test.js`): ningún `label`/`why` puede usar jerga técnica
+("GLOBAL", "proyección", "readiness", "gate", "bloqueante") — Dani no es
+programador. `index.html` renderiza estos pasos en `#setupStepsCard`, cada uno con
+un botón que reusa `data-goto`/`goToTab()` (nunca un mecanismo de navegación
+paralelo) para llevar directo a la sección exacta a completar.
+
+**Vista de portafolio — pestaña "Mis apartamentos" (`src/domain/portfolio.js`,
+`renderPortfolioTab()` en `index.html`).** Dani pidió explícitamente "una lista de
+todas [sus unidades]" — la app trabaja de a una unidad por vez y él opera ~36.
+`buildPortfolioRows(states)` es pura, sin DOM, y construye una fila por unidad
+guardada reusando SIEMPRE lo que ya existe, sin reimplementar ningún criterio:
+`compute()` para el Piso/costo real de cada unidad, `costGateForState()` (ver
+abajo) para saber si esa unidad sigue en el ejemplo de fábrica, y
+`comparePricelabsSync()` (`src/domain/pricelabs-sync.js`) para comparar el
+snapshot de PriceLabs guardado (si lo tiene) contra el Piso. `index.html` solo
+enumera las claves `v2:`/`v3:` de `window.storage` (mismo patrón que
+`refreshList()`), pasa cada registro por `normalizeUnit()` — igual que el resto de
+la app — y renderiza lo que devuelve `buildPortfolioRows()`. Cada fila muestra
+Piso, costo/noche, un estado (`lista`/`faltan_costos`/`falta_lm`, prioridad en ese
+orden porque sin costos reales cualquier precio sería inventado) y, si hay
+snapshot, si el Min Price real de PriceLabs cubre o queda por debajo del Piso
+calculado. Click en una fila carga esa unidad en Resumen. Rendimiento medido:
+`compute()` toma ~1.62ms por unidad, ~58ms para 36 unidades — se calcula en vivo,
+sin caché.
+
+**`costGateForState(state)` (`src/domain/cost-mode.js`) — fuente única del gate de
+costos por unidad.** Extrae a función pura reutilizable el mismo criterio que ya
+usaba `costGateNow()` en `index.html` para la unidad abierta en pantalla
+(`evaluateCostReadiness()` con `usingExampleCosts` calculado igual: `fixedCost`/
+`varCost` exactos al ejemplo de fábrica Y desglose detallado sin tocar). Antes de
+esta función, la vista de portafolio habría tenido que reimplementar esa misma
+pregunta ("¿esta unidad sigue en el ejemplo de fábrica?") una segunda vez para
+CADA unidad guardada, con el riesgo de que las dos copias se desalinearan.
+`costGateNow()` en `index.html` ahora es un wrapper de una línea sobre
+`costGateForState(state)`; `buildPortfolioRow()` la llama con el `state` de cada
+unidad leída de storage, nunca solo con la que está abierta.
+
+**Tabla de costo por duración (`renderCostByNights()`, mount
+`#costByNightsMount`, dentro de Resumen → "Costos por noche").** Solo lectura: no
+alimenta ningún cálculo, solo muestra lo que ya calcula
+`reservationCostBreakdown()` (`src/domain/costs.js`, sin tocar) para un puñado de
+duraciones de referencia (1, 2, 3, 4, 7, 14, 28 noches). Solo tiene sentido con el
+desglose detallado confirmado (`costGateNow().mode==='detailed_confirmed'`) — con
+el modelo simple (`fixedCost`/`varCost` fijo por noche) no hay nada que desglosar
+por duración, así que el mount muestra una explicación en vez de la tabla. Motivo
+real: limpieza, lavandería e insumos se cargan completos por reserva sin importar
+las noches, así que 1 noche sale más caro por noche que 4 — y ese dato nunca
+estuvo visible antes de esto.
+
+**Alerta ESTADÍA CORTA (`buildAlerts()`, `src/domain/alerts.js`) — caso real que
+la motivó.** Una reserva de 1 noche dejó un neto de USD 67 contra un costo real de
+USD 71.50 PARA ESA NOCHE — el aseo, la lavandería y los insumos se pagan enteros
+aunque sea una sola noche, y ese dato nunca estuvo en pantalla. El bloque DURACIÓN
+existente solo evalúa el caso opuesto (estadías LARGAS, descuentos `kind:'los'`
+activos); esta alerta nueva cubre el caso donde de verdad se perdió plata. Se
+cotizan 1 y 2 noches (día 45, `price:model.effBase`, mismo punto de referencia que
+el bloque DURACIÓN) vía `quoteScenario()` — cero fórmula financiera propia — y se
+compara el neto contra `q.cost` (el costo de ESE escenario concreto, nunca contra
+`model.cost`, que es genérico y no refleja que el costo por noche cambia con la
+duración). Si 1 noche ya da "bad", no se agrega también la de 2 noches del mismo
+canal — se reporta solo el peor caso, para no llenar la pantalla de avisos
+repetidos.
+
+**`f$c` (`src/domain/format.js`) — por qué existe.** `f$()` redondea a 0
+decimales para toda la app (correcto para casi todo: KPIs, tablas, el resto de las
+alertas). Pero en ESTADÍA CORTA la comparación entre lo que netea y lo que cuesta
+ES el punto del mensaje, y el hueco puede ser chico — con `f$()`, netear 67.00
+contra un costo de 71.50 se mostraba como "USD 67 ... USD 72" (parece una pérdida
+de 5, cuando son 4.50), y en el peor caso (netear 71.50 contra un costo de 72.01,
+hueco real de apenas 0.51) los dos redondeaban al MISMO "USD 72" — un aviso
+correcto pasaba por un error del programa ("netea 72 pero cuesta 72"). `f$c` es
+igual que `f$` pero con centavos (`minimumFractionDigits`/`maximumFractionDigits:
+2`); se usa ÚNICAMENTE en los importes de neto y de costo de los cuatro mensajes
+de ESTADÍA CORTA — el resto de `alerts.js`, y el resto de la app entera, sigue
+usando `f$` sin cambios. No modificar `f$`/`fP` para "arreglar" esto en otro
+lado — ambas las usa toda la app y cambiar su redondeo global no es lo que se
+decidió acá.

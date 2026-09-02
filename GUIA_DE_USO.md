@@ -24,6 +24,16 @@ Offset por canal. Con esa configuración calcula:
 No publica precios, no cambia nada en PriceLabs, Kunas, Airbnb, Booking.com o Expedia, y
 no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal.
 
+En Airbnb, la tarifa de aseo (la que cobras aparte por reserva) ahora entra en el cálculo
+del Min Price y del Base Price: es un ingreso real, se paga completo por reserva y se
+diluye entre las noches de la estadía. Antes el modelo la ignoraba por completo.
+
+En estadías de 28 noches o más, el Min Price deja de asumir que Last-Minute está activo
+todo el mes: Dani confirmó que PriceLabs solo baja el precio los últimos días antes del
+check-in, nunca durante una reserva de un mes completo hecha el mismo día. El Simulador
+(cotización manual de un caso puntual) no cambia — sigue aplicando el Last-Minute
+configurado tal cual, sin recortes.
+
 ## 2. Primer uso en el sitio publicado
 
 1. Abre la URL publicada.
@@ -33,6 +43,13 @@ no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal
    normal y seguro: una unidad nueva trae costos de ejemplo y Last-Minute sin confirmar.
 5. No copies esos valores como recomendaciones hasta completar los tres bloqueos de la
    sección 4.
+
+Si en cualquier momento ves `—` en vez de un precio, no significa que algo esté roto:
+falta terminar de configurar la unidad. Justo debajo aparece una tarjeta con los pasos
+concretos que faltan (por ejemplo "Escribí los costos reales de este apartamento" o
+"Decile a la app cómo baja precios PriceLabs cerca del check-in"), cada uno con su propio
+botón que te lleva directo a la sección donde se resuelve — ya no hace falta adivinar qué
+falta ni leer un párrafo largo para encontrarlo.
 
 La app guarda unidades solo en el almacenamiento local de ese navegador. Antes de empezar
 con datos reales, usa **Exportar todo** y guarda el archivo descargado fuera del navegador.
@@ -49,7 +66,13 @@ realmente usa cada unidad.
    **Calcular a partir de costos detallados**.
 2. Si usas el desglose, llena los costos reales y marca **Revisé estos costos reales en
    USD, incluidos los valores en cero.** Sin esa confirmación, el desglose no alimenta las
-   recomendaciones.
+   recomendaciones. Una vez confirmado, justo ahí aparece una tabla de **cuánto te cuesta
+   cada noche según cuántas noches se queda el huésped**: limpieza, lavandería e insumos se
+   pagan completos por reserva sin importar la duración, así que una reserva corta sale más
+   cara por noche. Caso real de la 902: una reserva de 1 noche cuesta USD 71.50 por noche,
+   mientras que una de 4 noches cuesta USD 49.00 — casi la mitad, con el mismo apartamento.
+   Si alguna vez ves una alerta **ESTADÍA CORTA**, es justo este problema: netea menos de lo
+   que cuesta esa reserva puntual, no un error de la app.
 3. Completa **Margen objetivo total %**, **Ventana de reserva del mercado (días, mediana)**,
    **Estadía promedio (noches)** y **Base que recomienda PriceLabs / mercado**.
 4. Configura **Last-Minute de PriceLabs** con el modo que realmente usa esa unidad y marca
@@ -149,10 +172,25 @@ Cada pestaña contiene la configuración de ese canal:
 - Los porcentajes y reglas que usa ese canal; la aplicación los toma tal como los ingresas.
 - En Airbnb, **Tarifa de aseo — reservas 1–2 noches** y **Tarifa de aseo — reservas 3+
   noches**.
+- En Booking.com, **Alojamientos preferentes %**, y en Expedia, **Aceleradores %**: son
+  comisión ADICIONAL que la OTA te cobra por un programa de visibilidad, no un descuento al
+  huésped — no bajan el precio que ve el huésped, pero sí bajan lo que te queda a ti.
+  Arrancan en **0%**, nadie inventó un porcentaje: confirma el valor real en tu Extranet de
+  Booking o en Expedia Partner Central antes de activarlos.
 - **Descuentos activos hoy** y **Ver catálogo completo** para el resto.
 
 No actives un descuento solo porque existe en el catálogo: actívalo únicamente si está
 activo para ese listing/canal y usa el porcentaje y la ventana reales.
+
+### Mis apartamentos
+
+Pestaña de portafolio: una fila por cada unidad guardada en este navegador, todas juntas en
+una sola vista (antes solo se podía ver una unidad a la vez). Cada fila muestra el Piso, el
+costo por noche y un estado (**Lista**, **Faltan costos** o **Falta Last-Minute**) para que
+sepas de un vistazo cuáles unidades ya puedes usar como recomendación y cuáles no. Si una
+unidad tiene un snapshot de PriceLabs sincronizado (ver sección 6), la fila también muestra
+si el Min Price real de PriceLabs cubre o queda por debajo del Piso que calcula esta app.
+Click en una fila la abre en Resumen.
 
 ### Comparación
 
@@ -164,17 +202,28 @@ como recomendación.
 
 ## 6. Gestionar y respaldar propiedades
 
+En la barra superior quedan siempre visibles los botones que se usan a diario:
+
 - **Guardar**: guarda la unidad actual con su nombre. Si es una unidad nueva y ya hay otra
   con el mismo nombre, la aplicación pregunta antes de crear una nueva identidad.
+- **Duplicar**: crea una unidad nueva desde una configuración existente; revisa la sección
+  3 para saber qué se copia y qué se reinicia.
 - **Cargar unidad…**: selecciona una unidad previamente guardada en este navegador.
 - **Eliminar**: borra la unidad seleccionada después de pedir confirmación. Exporta antes
   si necesitas conservarla.
-- **Duplicar**: crea una unidad nueva desde una configuración existente; revisa la sección
-  3 para saber qué se copia y qué se reinicia.
+
+El resto — lo que se usa de vez en cuando, no todos los días — vive detrás de **Más
+opciones** (un desplegable justo al lado de Eliminar):
+
 - **Exportar todo**: descarga un JSON con las unidades guardadas. Úsalo como respaldo
   periódico, especialmente antes de cambios grandes o de limpiar el navegador.
 - **Importar**: restaura un JSON exportado. La app valida y normaliza los datos; si ya
   existe una unidad con la misma clave, se sobrescribe tras confirmación.
+- **Sincronizar con PriceLabs**: carga un archivo `.json` de solo lectura que Claude te
+  prepara con las herramientas de PriceLabs. Sirve para comparar el Min Price real de
+  PriceLabs contra el Piso que calcula esta app — nunca escribe nada de vuelta en
+  PriceLabs, ni hace ninguna llamada automática. Si el Min Price real queda por debajo del
+  Piso calculado, la tarjeta de Resumen lo avisa explícitamente.
 - **Migrar unidades antiguas**: crea copias en el formato actual de las unidades antiguas
   (v2) sin borrar las originales.
 
@@ -204,8 +253,9 @@ quieres revisar qué se modificó en una fecha puntual.
 
 Porque falta resolver un bloqueo: costos de ejemplo/sin confirmar, LM sin verificar, revisión
 manual de moneda o, en Base Price, un precio
-Last-Minute fijo que cubre el día de referencia. Pulsa el enlace del aviso: te lleva a la
-sección exacta que debes revisar.
+Last-Minute fijo que cubre el día de referencia. Justo debajo de los KPIs aparece una
+tarjeta con la lista concreta de lo que falta, cada ítem con su propio botón que te lleva
+directo a la sección exacta que debes revisar — no hace falta buscarlo.
 
 ### ¿Por qué una unidad duplicada puede tener otro precio?
 

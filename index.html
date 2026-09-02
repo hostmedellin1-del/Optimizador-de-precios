@@ -43,7 +43,6 @@ button:hover{background:rgba(214,65,44,.24);}
 .ghost:hover{color:var(--text);border-color:var(--faint);}
 .unit-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:12px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);}
 #unitName{flex:1;min-width:170px;}
-.unit-bar-sep{width:1px;align-self:stretch;background:var(--border);}
 #saveStatus{font-size:12px;color:var(--safe);font-family:'JetBrains Mono',monospace;}
 .row{display:flex;flex-wrap:wrap;gap:14px;}
 .row>.card{flex:1;min-width:280px;margin-bottom:0;}
@@ -183,6 +182,14 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .discounts-more summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
 .discounts-more summary:hover{color:var(--text);}
 .discounts-more[open] summary{margin-bottom:4px;}
+/* Fase 4 (ago 2026): la barra de unidad deja solo lo diario (nombre/Guardar/
+   Duplicar/lista/Eliminar) visible; lo excepcional (Exportar/Importar/
+   Sincronizar/Migrar) vive detrás de este <details>, mismo patrón que
+   .discounts-more arriba. */
+.unit-bar-more{margin:0;}
+.unit-bar-more summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 10px;}
+.unit-bar-more summary:hover{color:var(--text);}
+.unit-bar-more-body{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px;}
 /* cost breakdown calculator */
 .cost-calc{margin:4px 0 10px;padding-top:4px;border-top:1px dashed var(--border);}
 .cost-calc summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
@@ -211,13 +218,17 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button class="ghost" id="duplicateUnit" title="Crea una nueva unidad con la misma configuración; tendrás que confirmar sus propios datos y costos.">Duplicar</button>
   <select id="unitList"><option value="">Cargar unidad…</option></select>
   <button class="ghost" id="deleteUnit">Eliminar</button>
-  <span class="unit-bar-sep"></span>
-  <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
-  <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
-  <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
-  <button class="ghost" id="syncPricelabsBtn" title="Carga un snapshot JSON de solo lectura entregado por Claude">Sincronizar con PriceLabs</button>
-  <input type="file" id="syncPricelabsFile" accept="application/json" style="display:none">
-  <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
+  <details class="unit-bar-more">
+    <summary>Más opciones</summary>
+    <div class="unit-bar-more-body">
+      <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
+      <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
+      <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
+      <button class="ghost" id="syncPricelabsBtn" title="Carga un snapshot JSON de solo lectura entregado por Claude">Sincronizar con PriceLabs</button>
+      <input type="file" id="syncPricelabsFile" accept="application/json" style="display:none">
+      <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
+    </div>
+  </details>
   <span id="saveStatus"></span>
 </div>
 
@@ -227,6 +238,14 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 </details>
 
 <div class="row stack" id="tabbarMount"></div>
+
+<div class="tab-panel" data-tab="portafolio">
+<section class="card">
+  <h2>Mis apartamentos <span class="hint">todas tus unidades guardadas, de una sola vista</span></h2>
+  <p class="hint">Una fila por apartamento guardado. Click en una fila para abrirlo en Resumen. Si tiene un snapshot de PriceLabs sincronizado, se compara su Min Price real contra el Piso que calcula esta app.</p>
+  <div id="portfolioMount"></div>
+</section>
+</div>
 
 <div class="tab-panel active" data-tab="resumen">
 <section class="card intro-card">
@@ -244,6 +263,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <p class="hint" id="usdReviewTrail" style="display:none;"></p>
     <div class="field"><label for="f-fixedCost">Fijos (arriendo, admin, servicios, seguros, tech)</label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
     <div class="field"><label for="f-varCost">Variables (limpieza, lavandería, consumos, insumos)</label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
+    <div id="costByNightsMount"></div>
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
@@ -393,9 +413,13 @@ import {worstScenariosInWindow, buildMatrixVerdict} from './src/domain/matrix.js
 import {gradualCurve} from './src/domain/pricelabs-lm.js';
 import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildDuplicateUnit, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
+import {pendingSetupSteps} from './src/domain/readiness.js';
+import {buildPortfolioRows} from './src/domain/portfolio.js';
+import {reservationCostBreakdown} from './src/domain/costs.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
-import {costBreakdownIsFilled, EXAMPLE_COST_DEFAULTS, evaluateCostReadiness} from './src/domain/cost-mode.js';
+import {EXAMPLE_COST_DEFAULTS, costGateForState} from './src/domain/cost-mode.js';
+import {computeConfigForState} from './src/domain/compute-config.js';
 import {analyzePromotionProposal, maximumDiscountScenario, compensationOffsetPct} from './src/domain/promotion-lab.js';
 import {normalizePricelabsSync, comparePricelabsSync, validatePricelabsSyncFile} from './src/domain/pricelabs-sync.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
@@ -471,40 +495,15 @@ const f$ = x => f$base(x, state.currency);
    `state` — compute()/quoteConfig() lo consumen, nunca
    reimplementan el calculo. */
 function costGateNow(){
-  return evaluateCostReadiness({
-    costBreakdown: state.costBreakdown,
-    costBreakdownConfirmed: state.costBreakdownConfirmed,
-    usingExampleCosts: parseFloat(state.fixedCost)===EXAMPLE_COST_DEFAULTS.fixedCost
-      && parseFloat(state.varCost)===EXAMPLE_COST_DEFAULTS.varCost
-      && !costBreakdownIsFilled(state.costBreakdown)
-  });
+  return costGateForState(state);
 }
 function compute(){
-  /* BLOQUEANTE CRITICO corregido: el Piso/Base ahora SI reciben `ceilings` y
-     `lmConfig` — antes esta llamada nunca los pasaba, asi que compute() jamas
-     podia proteger contra un Last-Minute configurado, sin importar que
-     src/domain/engine.js ya supiera hacerlo. */
-  return computeBase({
-    fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
-    channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
-    lmConfig: state.lmConfig,
-    /* Se pasa el desglose SIEMPRE (aunque este vacio o sin confirmar) —
-       engine.js decide internamente si es usable (`costBreakdownConfirmed`),
-       nunca index.html: fuente unica de verdad, ver cost-mode.js. */
-    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
-    usingExampleCosts: costGateNow().usingExampleCosts,
-    /* Simplificacion a USD unico (revision externa): `currency` es la moneda
-       GUARDADA de la unidad (normalmente 'USD') — engine.js deriva el gate
-       real (unidad + canales) el mismo con evaluateUsdOnlyReadiness(), ver
-       src/domain/usd-only.js.
-       BLOQUEANTE 3 (auditoria externa, ronda 5): `usdManualReviewPending`
-       bloquea igual aunque `state.currency` ya sea 'USD' — ver el docblock
-       de evaluateUsdOnlyReadiness() para el hallazgo (copia USD de una
-       unidad COP, sin convertir ningun valor). */
-    currency: state.currency,
-    usdManualReviewPending: state.usdManualReviewPending,
-    usdManualReviewLog: state.usdManualReviewLog
-  });
+  /* El armado de la config completa vive en computeConfigForState()
+     (src/domain/compute-config.js) — fuente unica que tambien usa
+     src/domain/portfolio.js, para que la vista principal y el portafolio
+     nunca calculen con una config distinta. Ver ese archivo para los
+     comentarios de cada campo (ceilings/lmConfig, costBreakdown, moneda). */
+  return computeBase(computeConfigForState(state));
 }
 function suggestedOffset(chId, effBase, netObjetivo){
   return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo, lmConfig: state.lmConfig, windows: WINDOWS, ceilings: state.ceilings});
@@ -535,7 +534,16 @@ function buildAlerts(model){
     discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
     marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
     chTab: CH_TAB, currency: state.currency, margin: state.margin,
-    lmConfig: state.lmConfig, floor: model.floor
+    lmConfig: state.lmConfig, floor: model.floor,
+    /* Fase 3 de usabilidad (ago 2026): la alerta ESTADÍA CORTA nueva necesita
+       el costo REAL de cada escenario concreto (`q.cost`, que quoteScenario()
+       ya devuelve) — sin esto, q.cost caía siempre en 0 (ningún consumidor
+       anterior de buildAlerts() leía q.cost; DURACIÓN compara contra
+       model.cost, no q.cost). Se agrega aquí, no en alerts.js, porque es
+       simplemente completar el config que ya se le pasa — mismo costBreakdown
+       que ya usa compute()/quoteConfig() en el resto de la app. */
+    fixedCost: state.fixedCost, varCost: state.varCost,
+    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed
   }, model);
 }
 
@@ -586,6 +594,23 @@ function renderKpis(model){
     kBase.textContent=f$(model.base); kBaseWhy.textContent='para netear objetivo también en '+model.baseCh;
   }
 }
+/* Fase 1 de usabilidad (ago 2026) — Dani dijo "casi no la uso porque no la
+   entiendo". Causa concreta verificada: una unidad nueva queda bloqueada por
+   dos gates a la vez (LM sin verificar + costos de ejemplo 32/22), Piso/Base
+   muestran "—" y la UNICA explicacion era este parrafo largo
+   (`model.floorReadinessBlockedReason`), sin decir nunca "hace estas dos
+   cosas". Ese parrafo NO se borra — sigue existiendo intacto, solo se movio
+   adentro de un <details> colapsado ("Ver el detalle tecnico"). Arriba de
+   todo se agrega una tarjeta con la lista concreta y accionable que devuelve
+   `pendingSetupSteps()` (src/domain/readiness.js, funcion pura sin DOM) —
+   los pasos pendientes con su boton (reusan `data-goto`/`goToSection()`, que
+   YA EXISTian, cero plomeria nueva), los ya resueltos con ✓ y sin boton, para
+   que se vea el progreso. El aviso "LM SIN VERIFICAR" (lmBlock) ya no se
+   repite aparte: si el paso "lm" aparece en la lista de arriba, su parrafo
+   tecnico se movio adentro del mismo <details> en vez de decir lo mismo dos
+   veces. "PRECIO FIJO ACTIVO — BASE NO APLICA" (baseBlock) es un problema
+   DISTINTO (solo afecta a Base, no a los pasos de arranque del Piso) y sigue
+   exactamente igual que antes, sin tocar. */
 function renderValidation(model){
   const box = document.getElementById('validationBanner');
   if(!box) return;
@@ -598,10 +623,54 @@ function renderValidation(model){
      nada en el dia de referencia"). Mismo componente visual (#validationBanner),
      tag distinto para no confundir los dos motivos. */
   const baseBlock = model.baseBlocked ? [model.baseBlockedReason] : [];
-  if(!errs.length && !warns.length && !lmBlock.length && !baseBlock.length){ box.innerHTML=''; return; }
+  let setupCard = '';
+  if(model.floorReadinessBlocked){
+    const steps = pendingSetupSteps({lmBlocked: model.lmBlocked, costBlocked: model.costBlocked, currencyBlocked: model.currencyBlocked});
+    const missing = steps.filter(s=>!s.done).length;
+    const heading = missing===1 ? 'Falta 1 cosa para que pueda darte un precio' : `Faltan ${missing} cosas para que pueda darte un precio`;
+    const rows = steps.map(s=>{
+      if(s.done){
+        return `<div class="alert ok"><span class="tag">✓</span><span>${escapeHtml(s.label)}</span></div>`;
+      }
+      const goToBtn = s.anchor
+        ? `<button type="button" class="goto" data-goto="${escapeHtml(s.tab)}:${escapeHtml(s.anchor)}">${s.id==='lm'?'Ir a Last-Minute de PriceLabs →':'Ir a Costos por noche →'}</button>`
+        : '';
+      return `<div class="alert bad" style="flex-direction:column;align-items:stretch;gap:4px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+          <span>${escapeHtml(s.label)}</span>${goToBtn}
+        </div>
+        <span class="hint" style="margin:0;">${escapeHtml(s.why)}</span>
+      </div>`;
+    }).join('');
+    /* El parrafo tecnico largo (model.floorReadinessBlockedReason) nunca se
+       borra — vive aca adentro. Si el paso "lm" ya aparece arriba, el aviso
+       "LM SIN VERIFICAR" (tag + motivo) se agrega UNA sola vez, aca — nunca
+       aparte (mismo tag/texto de siempre, sin el boton, que ya esta arriba
+       en la fila pendiente) — para no repetir el mismo parrafo dos veces en
+       la misma pantalla. */
+    const lmDetail = lmBlock.length
+      ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span></div>`
+      : '';
+    const detailParagraphs = `<p class="hint">${escapeHtml(model.floorReadinessBlockedReason||'')}</p>${lmDetail}`;
+    setupCard = `<div class="card" id="setupStepsCard" style="border-color:rgba(214,65,44,.4);">
+      <strong>${heading}</strong>
+      <div class="alerts" style="margin-top:10px;">${rows}</div>
+      <details style="margin-top:10px;"><summary>Ver el detalle técnico</summary>${detailParagraphs}</details>
+    </div>`;
+  }
+  /* El aviso "LM SIN VERIFICAR" solo se muestra suelto (fuera de la tarjeta
+     de arriba) en el caso raro en que model.lmBlocked sea true SIN que el
+     Piso este bloqueado globalmente — no deberia ocurrir en la practica
+     (lmBlocked siempre implica floorReadinessBlocked), pero se deja como
+     respaldo explicito en vez de asumirlo silenciosamente. */
+  const lmBlockAlone = (lmBlock.length && !model.floorReadinessBlocked)
+    ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>`
+    : '';
+  if(!setupCard && !errs.length && !warns.length && !lmBlockAlone.length && !baseBlock.length){ box.innerHTML=''; return; }
   box.innerHTML = `
+    ${setupCard}
     ${errs.length ? `<div class="alert bad"><span class="tag">BLOQUEADO</span><span>${errs.length} error${errs.length===1?'':'es'} impide${errs.length===1?'':'n'} calcular un resultado confiable: ${errs.map(e=>e.msg).join(' · ')}</span></div>` : ''}
-    ${lmBlock.length ? `<div class="alert bad"><span class="tag">LM SIN VERIFICAR</span><span>${escapeHtml(lmBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
+    ${lmBlockAlone}
     ${baseBlock.length ? `<div class="alert bad"><span class="tag">PRECIO FIJO ACTIVO — BASE NO APLICA</span><span>${escapeHtml(baseBlock[0])}</span> <button type="button" class="goto" data-goto="resumen:lm">Ir a Last-Minute de PriceLabs →</button></div>` : ''}
     ${warns.length ? `<div class="alert warn"><span class="tag">AVISO</span><span>${warns.map(e=>e.msg).join(' · ')}</span></div>` : ''}
   `;
@@ -1013,6 +1082,7 @@ function renderPromotionLab(model){
   mount.innerHTML=`<div class="promo-result"><h3>Resultado por OTA</h3><div class="alert warn"><span class="tag">SIMULACIÓN NO CONFIABLE</span><span>Este laboratorio es una simulación: no cambia la unidad ni desbloquea Min Price/Base Price hasta que pulses Aplicar y confirmes.</span></div><p class="promo-summary">El <strong>Min Price</strong> es común en PriceLabs. Aquí ves el descuento máximo real por OTA y el Offset de compensación para conservar tu neto después de la comisión.</p><div class="max-discount-grid">${maximumRows}</div><p class="hint">Airbnb aplica una sola promoción principal por noche; Booking evalúa grupos de huéspedes compatibles y no suma grupos alternativos.</p></div><details class="promo-editor"${editorOpen?' open':''}><summary>Cambiar promociones u Offsets <span class="hint">opcional</span></summary><div class="promo-editor-body"><p class="hint">Prueba una idea antes de aplicarla. PriceLabs mantiene un precio final común y Kunas puede llevar un Offset distinto por OTA.</p><div class="promo-grid"><div class="fld"><label>Canal del detalle</label><select id="promoLabDetailChannel" data-promo-lab="detailChannelId">${channelOptions}</select></div><div class="fld"><label>Días antes del check-in</label><input id="promoLabDays" type="number" min="0" data-promo-lab="days" value="${escapeHtml(promotionDraft.days)}"></div><div class="fld"><label>Noches de reserva</label><input id="promoLabNights" type="number" min="1" data-promo-lab="nights" value="${escapeHtml(promotionDraft.nights)}"></div><div class="fld"><label>Precio FINAL de PriceLabs</label><input id="promoLabPrice" type="number" min="0.01" step="1" data-promo-lab="finalPrice" value="${escapeHtml(promotionDraft.finalPrice)}"></div></div>${rows}<div class="promo-actions"><button type="button" class="ghost" id="promoAddBtn">+ Agregar otra promoción</button></div>${result}</div></details>`;
 }
 const TABS = [
+  {id:'portafolio', label:'Mis apartamentos'},
   {id:'resumen', label:'Resumen'},
   {id:'simulador', label:'¿Cómo se calcula?'},
   {id:'ch-airbnb', label:'Airbnb'},
@@ -1065,7 +1135,11 @@ function goToSection(tabId, anchorKey){
   });
 }
 function buildTabbar(){
-  tabbarMount.innerHTML = `<div class="tabbar">${TABS.map((t,i)=>`<button class="tabbtn ${i===0?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div>`;
+  /* "Mis apartamentos" es PRIMERA en TABS (mas prominente, es lo que Dani mas
+     pidio) pero Resumen sigue siendo la pestaña activa por defecto al cargar
+     (coincide con el `.tab-panel.active` que ya trae el HTML estatico) — el
+     boton activo se elige por id, no por posicion en el arreglo. */
+  tabbarMount.innerHTML = `<div class="tabbar">${TABS.map((t)=>`<button class="tabbtn ${t.id==='resumen'?'active':''}" data-tabbtn="${t.id}">${t.label}</button>`).join('')}</div>`;
   document.querySelectorAll('[data-tabbtn]').forEach(btn=>{
     btn.addEventListener('click',()=>goToTab(btn.dataset.tabbtn));
   });
@@ -1073,11 +1147,81 @@ function buildTabbar(){
 function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance(); renderPricelabsSyncCard(model); renderPromotionLab(model);
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc(); renderCostByNights();
   renderLmConfig();
   renderCurrencyReviewBanner(model);
   const syncBtn = document.getElementById('syncPricelabsBtn');
   if(syncBtn){ syncBtn.disabled = !state.id; syncBtn.title = state.id ? 'Carga un snapshot JSON de solo lectura entregado por Claude' : 'Guarda o carga una unidad antes de sincronizar'; }
+}
+/* Fase 2 de usabilidad (ago 2026) — pestaña "Mis apartamentos". Dani pidió
+   explícitamente "una lista de todas [sus unidades]" — hoy la app trabaja de
+   a una a la vez y él opera ~36. Esta función SOLO enumera claves de storage
+   y renderiza lo que devuelve `buildPortfolioRows()` (src/domain/portfolio.js,
+   función pura sin DOM) — ningún criterio de "está lista"/Piso/comparación
+   contra PriceLabs se decide acá, todo sale de ese módulo.
+
+   Enumeración: mismo patrón EXACTO que `refreshList()` (listar v2:/v3: con
+   window.storage.list(), window.storage.get()+JSON.parse por clave) — cada
+   registro pasa por normalizeUnit() antes de compute(), igual que el resto
+   de la app. Rendimiento ya medido (ver CLAUDE.md): compute() toma ~1.62ms
+   por unidad, 58ms para 36 — se calcula en vivo, sin caché. */
+async function renderPortfolioTab(){
+  const mount = document.getElementById('portfolioMount');
+  if(!mount) return;
+  try{
+    const [r2, r3] = await Promise.all([window.storage.list('v2:', false), window.storage.list('v3:', false)]);
+    const keys = [...((r2&&r2.keys)||[]), ...((r3&&r3.keys)||[])];
+    if(!keys.length){
+      mount.innerHTML = '<p class="hint">Todavía no guardaste ningún apartamento acá. Escribí un nombre arriba y tocá <strong>Guardar</strong> — el primero que guardes va a aparecer en esta lista.</p>';
+      return;
+    }
+    const states = [];
+    for(const k of keys){
+      try{
+        const v = await window.storage.get(k, false);
+        if(!v || !v.value) continue;
+        const raw = JSON.parse(v.value);
+        const {state: normalized} = normalizeUnit(raw);
+        if(!normalized) continue;
+        normalized.storageKey = k;
+        states.push(normalized);
+      }catch(err){ /* registro dañado — se omite de la lista, no rompe el resto */ }
+    }
+    if(!states.length){
+      mount.innerHTML = '<p class="hint">Todavía no guardaste ningún apartamento acá. Escribí un nombre arriba y tocá <strong>Guardar</strong> — el primero que guardes va a aparecer en esta lista.</p>';
+      return;
+    }
+    const rows = buildPortfolioRows(states);
+    const STATUS = {
+      lista:{label:'Lista', cls:'ok'},
+      faltan_costos:{label:'Faltan costos', cls:'bad'},
+      falta_lm:{label:'Falta Last-Minute', cls:'warn'},
+      revisar_moneda:{label:'Revisar moneda', cls:'bad'},
+      faltan_datos:{label:'Faltan datos de un canal', cls:'warn'}
+    };
+    mount.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Apartamento</th><th>Piso</th><th>Costo/noche</th><th>Estado</th><th>Min Price real vs Piso</th></tr></thead>
+      <tbody>${rows.map(r=>{
+        const st = STATUS[r.status] || STATUS.faltan_costos;
+        const floorCell = r.floor!=null ? f$base(r.floor, r.currency) : `— <span class="hint">(${escapeHtml(r.floorBlockedReason||'sin resolver')})</span>`;
+        const syncCell = !r.pricelabsSync ? '<span class="hint">sin sincronizar</span>'
+          : r.pricelabsSync.minBelowFloor
+            ? `<span class="cell-ch"><span class="bad">${f$base(r.pricelabsSync.min, r.currency)} — por debajo del Piso</span></span>`
+            : `<span class="cell-ch"><span class="ok">${f$base(r.pricelabsSync.min, r.currency)} — cubre el Piso</span></span>`;
+        return `<tr class="portfolio-row" data-portfolio-key="${escapeHtml(r.key||'')}" style="cursor:pointer;" tabindex="0">
+          <td>${escapeHtml(r.name)}</td>
+          <td class="out">${floorCell}</td>
+          <td class="out">${f$base(r.costPerNight, r.currency)}</td>
+          <td><span class="v-tag ${st.cls==='ok'?'':''}" style="background:${st.cls==='ok'?'var(--safe-chip)':st.cls==='bad'?'var(--accent)':'var(--warn-chip)'};color:${st.cls==='bad'?'#fff':'#14151A'};">${st.label}</span></td>
+          <td>${syncCell}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <p class="hint" style="margin-top:10px;">Click en una fila para abrir ese apartamento en Resumen.</p>`;
+  }catch(e){
+    console.error(e);
+    mount.innerHTML = '<p class="hint">No se pudo cargar la lista de apartamentos — revisa la consola.</p>';
+  }
 }
 /* Suma de las líneas de la calculadora de costos, ya llevadas a $/noche.
    Limpieza/lavandería/insumos son ~fijos por turno (no importa si la estadía es de 1
@@ -1093,6 +1237,41 @@ function costCalcTotals(){
   const turnoPerNight=turnoSum/avgN;
   const consumptionPerNight=parseFloat(cb.consumables)||0;
   return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
+}
+/* Fase 3 de usabilidad (ago 2026) — costo real por duración de estadía.
+   Motivo real: Dani perdió plata con una reserva de 1 noche que le dejó USD
+   67 neto contra un costo real de USD 71.50 PARA ESA NOCHE (el aseo, la
+   lavandería y los insumos se pagan enteros aunque sea una sola noche) —
+   ese dato nunca estuvo en pantalla. Solo lectura: no alimenta ningún
+   cálculo ni modifica `state`, solo muestra lo que YA calcula
+   `reservationCostBreakdown()` (src/domain/costs.js, sin tocar) para un
+   puñado de duraciones de referencia. Solo tiene sentido si el desglose
+   detallado está confirmado (mismo gate que ya usa todo lo demás,
+   `costGateNow().mode==='detailed_confirmed'`) — con el modelo simple
+   (fixedCost+varCost por noche fijo) no hay nada que desglosar por duración. */
+const COST_BY_NIGHTS_OPTIONS = [1,2,3,4,7,14,28];
+function renderCostByNights(){
+  const mount = document.getElementById('costByNightsMount');
+  if(!mount) return;
+  const cg = costGateNow();
+  if(cg.mode!=='detailed_confirmed'){
+    mount.innerHTML = `<p class="hint">Para ver cuánto te cuesta cada noche según la duración de la reserva, completá y confirmá el desglose detallado más abajo ("Calcular a partir de costos detallados").</p>`;
+    return;
+  }
+  const rows = COST_BY_NIGHTS_OPTIONS.map(n=>{
+    const perNight = reservationCostBreakdown(state.costBreakdown, n).perNight;
+    const highlight = n===1;
+    return `<tr${highlight?' style="background:var(--accent-soft);font-weight:600;"':''}>
+      <td>${n} noche${n===1?'':'s'}${highlight?' <span class="hint">(la más cara por noche)</span>':''}</td>
+      <td class="out">${f$(perNight)}</td>
+    </tr>`;
+  }).join('');
+  mount.innerHTML = `
+    <p class="hint" style="margin-top:10px;">Lo que te cuesta cada noche según cuántas noches se queda el huésped. Las reservas cortas cuestan más por noche porque el aseo, la lavandería y los insumos se pagan igual sea 1 noche o 30.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Duración de la reserva</th><th>Costo real por noche</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
 }
 function renderCostCalc(){
   const t=costCalcTotals();
@@ -1762,8 +1941,12 @@ migrateV2Btn.addEventListener('click', async()=>{
    completo y seguro basado en defaults, y reporta en `warnings` que se
    descarto. Si el archivo no se puede normalizar en absoluto (no es un
    objeto), se avisa y no se toca `state`. */
-unitList.addEventListener('change',async e=>{
-  const k=e.target.value; if(!k)return;
+/* Fase 2 de usabilidad (ago 2026): extraida de adentro del listener de
+   `unitList` (unico punto de carga, sin cambios de comportamiento) para que
+   el click en una fila de "Mis apartamentos" pueda reusarla tal cual, en vez
+   de duplicar esta misma logica de carga+normalizacion+render. */
+async function loadUnitByKey(k){
+  if(!k) return;
   try{
     const r=await window.storage.get(k,false);
     if(!r||!r.value){ status('No encontrado'); return; }
@@ -1777,6 +1960,27 @@ unitList.addEventListener('change',async e=>{
     if(warnings.length){ console.warn('normalizeUnit — campos descartados al cargar:', warnings); status(`Cargado ✓ (${warnings.length} campo(s) invalido(s) ignorados, ver consola)`); }
     else status('Cargado ✓');
   }catch(e){console.error(e);status('Error al cargar');}
+}
+unitList.addEventListener('change',e=>{ loadUnitByKey(e.target.value); });
+/* Click en una fila de "Mis apartamentos" carga esa unidad — reusa
+   loadUnitByKey() (arriba), sin duplicar la logica de carga. Ademas
+   sincroniza el select de arriba y lleva a Resumen, para que se vea de
+   inmediato lo que se acaba de abrir. */
+document.addEventListener('click', async e=>{
+  const row = e.target.closest('[data-portfolio-key]');
+  if(!row) return;
+  const key = row.dataset.portfolioKey;
+  if(!key) return;
+  await loadUnitByKey(key);
+  unitList.value = key;
+  goToTab('resumen');
+});
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Enter' && e.key!==' ') return;
+  const row = e.target.closest && e.target.closest('[data-portfolio-key]');
+  if(!row) return;
+  e.preventDefault();
+  row.click();
 });
 /* Respaldo real: localStorage vive solo en este navegador/computador — no hay nube,
    no hay sync entre dispositivos, se pierde si se borra caché o se reinstala el
@@ -1882,6 +2086,11 @@ async function refreshList(){
     }
     unitList.innerHTML='<option value="">Cargar unidad…</option>'+opts.join('');
   }catch(e){unitList.innerHTML='<option value="">Cargar unidad…</option>';}
+  /* La pestaña "Mis apartamentos" refleja el mismo storage que este select —
+     se refresca junto con él para no quedar desactualizada tras
+     guardar/eliminar/duplicar/importar/migrar/sincronizar (todo lo que ya
+     llama a refreshList()). */
+  renderPortfolioTab();
 }
 hydrate(); renderAll(); refreshList();
 </script>

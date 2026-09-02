@@ -8,3 +8,10 @@ export const f$ = (x, currency = 'USD') =>
   !isFinite(x) ? '—' : (currency || 'USD') + ' ' + new Intl.NumberFormat('es-CO', {maximumFractionDigits: 0}).format(Math.round(x));
 
 export const fP = x => x.toFixed(x < 10 && x > 0 ? 1 : 0) + '%';
+
+/* Igual que f$ pero con centavos. Solo para textos donde la comparación entre dos
+   importes cercanos es el sentido del mensaje (ej. alerta ESTADÍA CORTA: "netea X
+   pero cuesta Y") — ahí redondear a enteros puede mostrar dos veces el mismo número
+   y hacer que un aviso correcto parezca un error. El resto de la app sigue con f$. */
+export const f$c = (x, currency = 'USD') =>
+  !isFinite(x) ? '—' : (currency || 'USD') + ' ' + new Intl.NumberFormat('es-CO', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(x);
