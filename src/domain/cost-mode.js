@@ -81,3 +81,22 @@ export function evaluateCostReadiness({costBreakdown, costBreakdownConfirmed, us
   }
   return {mode: 'simple', blocked: false, useDetailed: false, reason: null, usingExampleCosts: false};
 }
+
+/* costGateForState() — Fase 2 (portafolio, ago 2026). `index.html` ya tenia
+   `costGateNow()`, que arma el mismo objeto {costBreakdown, costBreakdownConfirmed,
+   usingExampleCosts} a partir de `state` para pasarselo a evaluateCostReadiness().
+   La vista de portafolio necesita hacer EXACTAMENTE esa misma pregunta para cada
+   unidad guardada (no solo la que esta abierta en pantalla) — en vez de reimplementar
+   el criterio de "sigue en el ejemplo de fabrica" una segunda vez, se extrae aca como
+   funcion pura reutilizable que recibe cualquier `state` (el de la unidad actual, o el
+   de una unidad recien leida de storage) y devuelve el mismo resultado que
+   `costGateNow()`. `index.html` se reduce a un wrapper de una linea sobre esta funcion. */
+export function costGateForState(state){
+  return evaluateCostReadiness({
+    costBreakdown: state.costBreakdown,
+    costBreakdownConfirmed: state.costBreakdownConfirmed,
+    usingExampleCosts: parseFloat(state.fixedCost)===EXAMPLE_COST_DEFAULTS.fixedCost
+      && parseFloat(state.varCost)===EXAMPLE_COST_DEFAULTS.varCost
+      && !costBreakdownIsFilled(state.costBreakdown)
+  });
+}

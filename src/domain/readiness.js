@@ -71,6 +71,45 @@ export function unreadyChannels(readiness, channels){
    Matriz/Alertas usan `unreadyChannels()` (arriba) para sus propios veredictos
    por VENTANA/alerta puntual — una pregunta legitimamente distinta a "¿el
    numero GLOBAL es confiable?" — no llaman a esta funcion. */
+/* pendingSetupSteps() — Fase 1 de usabilidad (ago 2026).
+
+   Encontrado auditando con Dani: una unidad nueva queda bloqueada por LM sin
+   verificar Y por costos de ejemplo (32/22) AL MISMO TIEMPO. Piso/Base
+   mostraban "—" y la única explicación visible era el párrafo largo de
+   `floorReadinessBlockedReason` (arriba) — correcto pero nunca dice "hacé
+   estas dos cosas, en este orden, acá". Esta función no reemplaza ese
+   párrafo (sigue existiendo, solo se movió a un detalle colapsado en la UI)
+   — es una capa de traducción a una lista concreta de acciones.
+
+   Pura, sin DOM: recibe los MISMOS tres booleanos que ya expone compute()
+   (`lmBlocked`, `costBlocked`, `currencyBlocked`) y devuelve SIEMPRE la
+   lista completa de pasos con su estado `done` — nunca solo los pendientes,
+   para que la UI pueda mostrar ✓ en lo ya resuelto (progreso visible, no
+   solo lo que falta). El paso `moneda` es la excepción: solo se agrega
+   cuando `currencyBlocked===true` (flujo raro de recuperación de una unidad
+   marcada "requiere revisión manual" por moneda) — en una unidad normal
+   (la inmensa mayoría) nunca aparece un tercer paso.
+
+   Guarda de lenguaje (ver tests/setup-steps.test.js): ningún `label`/`why`
+   puede usar jerga técnica ("GLOBAL", "proyección", "matemáticamente
+   confiable", "readiness", "gate", "bloqueante") — Dani no es programador. */
+export function pendingSetupSteps({lmBlocked, costBlocked, currencyBlocked} = {}){
+  const steps = [
+    {id:'costos', done:!costBlocked, tab:'resumen', anchor:'costos',
+     label:'Escribí los costos reales de este apartamento',
+     why:'Sin tus costos reales, cualquier precio que te sugiera sería inventado.'},
+    {id:'lm', done:!lmBlocked, tab:'resumen', anchor:'lm',
+     label:'Decile a la app cómo baja precios PriceLabs cerca del check-in',
+     why:'Si no, no puedo saber cuál es el precio más bajo al que realmente vas a vender.'}
+  ];
+  if(currencyBlocked===true){
+    steps.push({id:'moneda', done:false, tab:'resumen', anchor:null,
+      label:'Revisá la moneda de esta unidad',
+      why:'Esta unidad quedó marcada para revisión manual — hasta que la corrijas, no puedo mostrarte ningún precio.'});
+  }
+  return steps;
+}
+
 export function evaluateGlobalRecommendationReadiness({readiness, channels, lmBlocked, baseBlocked, currencyBlocked, costBlocked}){
   const unready = unreadyChannels(readiness, channels);
   const dataReason = unready.length
