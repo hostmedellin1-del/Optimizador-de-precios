@@ -252,6 +252,7 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <p class="hint" id="usdReviewTrail" style="display:none;"></p>
     <div class="field"><label for="f-fixedCost">Fijos (arriendo, admin, servicios, seguros, tech)</label><input id="f-fixedCost" type="number" data-k="fixedCost" step="1"></div>
     <div class="field"><label for="f-varCost">Variables (limpieza, lavandería, consumos, insumos)</label><input id="f-varCost" type="number" data-k="varCost" step="1"></div>
+    <div id="costByNightsMount"></div>
     <details class="cost-calc">
       <summary>Calcular a partir de costos detallados</summary>
       <div class="cost-calc-body">
@@ -403,6 +404,7 @@ import {escapeHtml} from './src/domain/sanitize.js';
 import {newUnitId, buildDuplicateUnit, buildV3Record, v3Key, validateImportFile, normalizeUnit, SCHEMA_VERSION} from './src/domain/persistence.js';
 import {pendingSetupSteps} from './src/domain/readiness.js';
 import {buildPortfolioRows} from './src/domain/portfolio.js';
+import {reservationCostBreakdown} from './src/domain/costs.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {EXAMPLE_COST_DEFAULTS, costGateForState} from './src/domain/cost-mode.js';
@@ -539,7 +541,16 @@ function buildAlerts(model){
     discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
     marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
     chTab: CH_TAB, currency: state.currency, margin: state.margin,
-    lmConfig: state.lmConfig, floor: model.floor
+    lmConfig: state.lmConfig, floor: model.floor,
+    /* Fase 3 de usabilidad (ago 2026): la alerta ESTADÍA CORTA nueva necesita
+       el costo REAL de cada escenario concreto (`q.cost`, que quoteScenario()
+       ya devuelve) — sin esto, q.cost caía siempre en 0 (ningún consumidor
+       anterior de buildAlerts() leía q.cost; DURACIÓN compara contra
+       model.cost, no q.cost). Se agrega aquí, no en alerts.js, porque es
+       simplemente completar el config que ya se le pasa — mismo costBreakdown
+       que ya usa compute()/quoteConfig() en el resto de la app. */
+    fixedCost: state.fixedCost, varCost: state.varCost,
+    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed
   }, model);
 }
 
@@ -1143,7 +1154,7 @@ function buildTabbar(){
 function renderAll(){
   const model=compute();
   renderValidation(model); renderDataProvenance(); renderPricelabsSyncCard(model); renderPromotionLab(model);
-  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc();
+  renderKpis(model); renderAlerts(model); renderChannelPages(model); renderCeilingsEditor(); renderMatrix(model); renderSim(model); renderCostCalc(); renderCostByNights();
   renderLmConfig();
   renderCurrencyReviewBanner(model);
   const syncBtn = document.getElementById('syncPricelabsBtn');
@@ -1231,6 +1242,41 @@ function costCalcTotals(){
   const turnoPerNight=turnoSum/avgN;
   const consumptionPerNight=parseFloat(cb.consumables)||0;
   return {fixedPerNight:fixedSum/occ, turnoPerNight, consumptionPerNight, varPerNight:turnoPerNight+consumptionPerNight};
+}
+/* Fase 3 de usabilidad (ago 2026) — costo real por duración de estadía.
+   Motivo real: Dani perdió plata con una reserva de 1 noche que le dejó USD
+   67 neto contra un costo real de USD 71.50 PARA ESA NOCHE (el aseo, la
+   lavandería y los insumos se pagan enteros aunque sea una sola noche) —
+   ese dato nunca estuvo en pantalla. Solo lectura: no alimenta ningún
+   cálculo ni modifica `state`, solo muestra lo que YA calcula
+   `reservationCostBreakdown()` (src/domain/costs.js, sin tocar) para un
+   puñado de duraciones de referencia. Solo tiene sentido si el desglose
+   detallado está confirmado (mismo gate que ya usa todo lo demás,
+   `costGateNow().mode==='detailed_confirmed'`) — con el modelo simple
+   (fixedCost+varCost por noche fijo) no hay nada que desglosar por duración. */
+const COST_BY_NIGHTS_OPTIONS = [1,2,3,4,7,14,28];
+function renderCostByNights(){
+  const mount = document.getElementById('costByNightsMount');
+  if(!mount) return;
+  const cg = costGateNow();
+  if(cg.mode!=='detailed_confirmed'){
+    mount.innerHTML = `<p class="hint">Para ver cuánto te cuesta cada noche según la duración de la reserva, completá y confirmá el desglose detallado más abajo ("Calcular a partir de costos detallados").</p>`;
+    return;
+  }
+  const rows = COST_BY_NIGHTS_OPTIONS.map(n=>{
+    const perNight = reservationCostBreakdown(state.costBreakdown, n).perNight;
+    const highlight = n===1;
+    return `<tr${highlight?' style="background:var(--accent-soft);font-weight:600;"':''}>
+      <td>${n} noche${n===1?'':'s'}${highlight?' <span class="hint">(la más cara por noche)</span>':''}</td>
+      <td class="out">${f$(perNight)}</td>
+    </tr>`;
+  }).join('');
+  mount.innerHTML = `
+    <p class="hint" style="margin-top:10px;">Lo que te cuesta cada noche según cuántas noches se queda el huésped. Las reservas cortas cuestan más por noche porque el aseo, la lavandería y los insumos se pagan igual sea 1 noche o 30.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Duración de la reserva</th><th>Costo real por noche</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
 }
 function renderCostCalc(){
   const t=costCalcTotals();

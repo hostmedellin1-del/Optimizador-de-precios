@@ -27,7 +27,7 @@
    config = {discounts, channels, ceilings, marketWindow, marketBase, windows, chTab,
    lmConfig?} */
 import {pct} from './percent.js';
-import {fP, f$} from './format.js';
+import {fP, f$, f$c} from './format.js';
 import {combineChannel} from './engine.js';
 import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
@@ -112,6 +112,40 @@ export function buildAlerts(config, model){
       else if(netLos < model.net)
         A.push({lvl:'warn',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos, config.currency)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net, config.currency)}. Válido si priorizas ocupación larga; revísalo si no.`});
     });
+  });
+  /* Fase 3 de usabilidad (ago 2026) — alerta ESTADÍA CORTA. Caso real que la
+     motivó: una reserva de 1 noche dejó un neto de USD 67 contra un costo
+     real de USD 71.50 PARA ESA NOCHE (el aseo, la lavandería y los insumos
+     se pagan enteros aunque sea una sola noche) — ese dato nunca estuvo en
+     pantalla. El bloque DURACIÓN de arriba solo evalúa el caso opuesto
+     (estadías LARGAS, descuentos `kind:'los'` activos); acá se cubre el
+     caso donde Dani de verdad perdió plata.
+
+     Se cotiza 1 y 2 noches (día 45, price:model.effBase — mismo punto de
+     referencia que el bloque de al lado) y se compara el neto contra
+     `q.cost` — el costo de ESE escenario concreto que quoteScenario() ya
+     devuelve — nunca contra `model.cost` (que es el costo "genérico", no el
+     de una reserva de 1/2 noches en particular; el punto de esta alerta es
+     justamente que el costo por noche CAMBIA con la duración). */
+  channels.forEach(c=>{
+    const q1 = quoteScenario({chId:c.id, days:45, nights:1, price:model.effBase}, config);
+    let oneNightBad = false;
+    if(q1.payout < q1.cost-0.5){
+      A.push({lvl:'bad', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 1 noche netea ${f$c(q1.payout, config.currency)}, pero el costo real de esa noche es ${f$c(q1.cost, config.currency)} — el aseo, la lavandería y los insumos se pagan completos aunque el huésped se quede una sola noche. Estás perdiendo plata en reservas cortas de este canal.`});
+      oneNightBad = true;
+    } else if(q1.payout < model.net){
+      A.push({lvl:'warn', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 1 noche netea ${f$c(q1.payout, config.currency)} — cubre el costo de esa noche (${f$c(q1.cost, config.currency)}) pero queda bajo tu objetivo de ${f$(model.net, config.currency)}.`});
+    }
+    /* Si 1 noche ya dio "bad", no se agrega también la de 2 noches para el
+       mismo canal — se reporta solo el peor caso, para no llenar la
+       pantalla de avisos repetidos. */
+    if(oneNightBad) return;
+    const q2 = quoteScenario({chId:c.id, days:45, nights:2, price:model.effBase}, config);
+    if(q2.payout < q2.cost-0.5){
+      A.push({lvl:'bad', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 2 noches netea ${f$c(q2.payout, config.currency)}, pero el costo real de esas 2 noches es ${f$c(q2.cost, config.currency)} — el aseo, la lavandería y los insumos se pagan completos sin importar que sean pocas noches. Estás perdiendo plata en reservas cortas de este canal.`});
+    } else if(q2.payout < model.net){
+      A.push({lvl:'warn', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 2 noches netea ${f$c(q2.payout, config.currency)} — cubre el costo de esas 2 noches (${f$c(q2.cost, config.currency)}) pero queda bajo tu objetivo de ${f$(model.net, config.currency)}.`});
+    }
   });
   if(model.floor>model.base&&model.base>0)
     A.push({lvl:'bad',tag:'MODELO',tab:'resumen',msg:`Tu piso (${f$(model.floor, config.currency)}) quedó por ENCIMA del Base (${f$(model.base, config.currency)}): con estos descuentos y margen, el modelo no cierra. Baja descuentos, baja margen objetivo o revisa costos.`});
