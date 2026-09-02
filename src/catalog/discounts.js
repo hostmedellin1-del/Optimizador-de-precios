@@ -11,8 +11,8 @@
    asume ni se detecta solo. */
 export const CHANNELS = [
   {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0, settlementCurrency:null},
-  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6, preferredPct:0, settlementCurrency:null},
-  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0, acceleratorPct:0, settlementCurrency:null},
+  {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6, preferredPct:0, cleanFee:0, settlementCurrency:null},
+  {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0, acceleratorPct:0, cleanFee:0, settlementCurrency:null},
   {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6, settlementCurrency:null}
 ];
 

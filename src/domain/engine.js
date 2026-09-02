@@ -188,13 +188,29 @@ export function extraCommPct(c){
   return pct(c.preferredPct||0) + pct(c.acceleratorPct||0);
 }
 
-/* Tarifa de aseo fija por reserva (solo Airbnb), diluida por noche según la estadía dada.
-   Devuelve 0 para canales sin aseo. Reusa la regla 1-2 noches / 3+ del catálogo. */
+/* Tarifa de aseo fija por reserva, diluida por noche según la estadía dada.
+   Devuelve 0 para canales sin aseo (Directo no tiene este concepto).
+   Airbnb: reusa la regla 1-2 noches / 3+ del catálogo (`cleanFeeShort`/`cleanFeeLong`).
+   Booking/Expedia (ago 2026, confirmado por Dani revisando sus propias Extranets):
+   ambos cobran un aseo fijo "por estancia"/"per stay" — una sola vez por reserva,
+   SIN el split corto/larga de Airbnb — así que usan un único campo `cleanFee`. Caso
+   real: Expedia (Partner Central → Facility and service fees → Cleaning fee, "Per
+   accommodation"+"Per stay") USD 35; Booking (Extranet → Additional fees & charges →
+   suplemento de limpieza "por estancia") 120.000 COP ≈ USD 37,50 a 3.200 COP/USD.
+   Igual que Airbnb, ninguno de los dos lo descuenta con sus promociones nativas, pero
+   sí paga comisión sobre él — eso sale solo del resto del pipeline (quote.js suma el
+   aseo DESPUÉS de los descuentos nativos y ANTES de la comisión), sin tocar ninguna
+   otra fórmula. */
 export function cleanFeePerNight(c, nights){
-  if(c.id!=='airbnb') return 0;
   const n = Math.max(1, nights||1);
-  const feeTotal = n<=2 ? (parseFloat(c.cleanFeeShort)||0) : (parseFloat(c.cleanFeeLong)||0);
-  return feeTotal/n;
+  if(c.id==='airbnb'){
+    const feeTotal = n<=2 ? (parseFloat(c.cleanFeeShort)||0) : (parseFloat(c.cleanFeeLong)||0);
+    return feeTotal/n;
+  }
+  if(c.id==='booking' || c.id==='expedia'){
+    return (parseFloat(c.cleanFee)||0)/n;
+  }
+  return 0;
 }
 
 /* LM en el escenario de referencia (dia 45, "fuera de ventanas tacticas cortas")

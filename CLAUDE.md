@@ -1987,3 +1987,28 @@ Airbnb 91.02 / Booking 90.92 / Expedia 108.18 / Directo 103.93.
 ("caso 902...") pinneaba el valor VIEJO (138.69); ahora da 91.02 (mismo
 mecanismo, escenario aislado). No se tocó ese assert — Dani decide. Lint
 limpio, 62/62 e2e sin regresión. Test nuevo: `tests/floor-cost-por-noche.test.js`.
+
+### Aseo fijo por reserva en Booking y Expedia (sept 2026)
+
+Dani revisó sus propias Extranets (no una suposición) y confirmó que Booking.com y
+Expedia soportan el mismo mecanismo que ya tenía Airbnb: un cargo de aseo fijo, cobrado
+una sola vez por reserva (no por noche), que sus promociones nativas NO descuentan.
+Montos reales: **Expedia USD 35** (Partner Central → Facility and service fees →
+Cleaning fee, "Per stay") y **Booking 120.000 COP ≈ USD 37,50** a 3.200 COP/USD
+(Extranet → Additional fees & charges → suplemento "por estancia"). A diferencia de
+Airbnb, ninguno de los dos tiene split corto/largo — un solo campo `cleanFee`, monto
+único sin importar la duración. Si la OTA cobra comisión sobre ese monto no está
+confirmado por Dani; se asumió que sí (el supuesto más protector del Piso), igual que
+ya hacía Airbnb — se corrige si una reserva real dice lo contrario.
+
+Cambios: `cleanFee:0` en el catálogo de `booking`/`expedia` (`src/catalog/discounts.js`);
+`cleanFeePerNight()` (`src/domain/engine.js`) ahora resuelve tres ramas (Airbnb con su
+split, Booking/Expedia con `cleanFee` único, el resto 0); `normalizeChannel()`
+(`persistence.js`) normaliza `cleanFee` con el mismo `nonNegField` que ya usaba Airbnb;
+UI nueva en la pestaña de cada canal e input de validación (`index.html`). El resto del
+pipeline (`quote.js`, `worstcase.js`, `suggestedOffset`) no se tocó — ya suma el aseo
+después de los descuentos nativos y antes de la comisión, así que el comportamiento
+sale solo. Verificado con los números reales: a 1 noche, `cleanFeePerNight` da exacto
+35 (Expedia) y 37,5 (Booking); a 4 noches, 8,75 y 9,375. Tests nuevos:
+`tests/cleanfee-booking-expedia.test.js` (15). **290/290 unitarios, lint limpio, 62/62
+e2e, sin regresión** (Airbnb no cambió ni un centavo).

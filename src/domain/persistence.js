@@ -95,9 +95,11 @@ function normalizeChannel(raw, def, warnings){
   }
   if(def.id==='booking'){
     out.preferredPct = pctField(raw||{}, 'preferredPct', def.preferredPct||0, warnings, `channels.${def.id}`, {min:0, max:100});
+    out.cleanFee = nonNegField(raw||{}, 'cleanFee', def.cleanFee||0, warnings, `channels.${def.id}`, {min:0});
   }
   if(def.id==='expedia'){
     out.acceleratorPct = pctField(raw||{}, 'acceleratorPct', def.acceleratorPct||0, warnings, `channels.${def.id}`, {min:0, max:100});
+    out.cleanFee = nonNegField(raw||{}, 'cleanFee', def.cleanFee||0, warnings, `channels.${def.id}`, {min:0});
   }
   /* Contrato de moneda (revision externa): null = "misma moneda que la
      unidad" (el default seguro) — solo 'USD'/'COP' son valores validos
