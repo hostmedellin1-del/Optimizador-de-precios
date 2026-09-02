@@ -419,6 +419,7 @@ import {reservationCostBreakdown} from './src/domain/costs.js';
 import {parseValue, validateRange} from './src/domain/input-parse.js';
 import {evaluateUsdOnlyReadiness} from './src/domain/usd-only.js';
 import {EXAMPLE_COST_DEFAULTS, costGateForState} from './src/domain/cost-mode.js';
+import {computeConfigForState} from './src/domain/compute-config.js';
 import {analyzePromotionProposal, maximumDiscountScenario, compensationOffsetPct} from './src/domain/promotion-lab.js';
 import {normalizePricelabsSync, comparePricelabsSync, validatePricelabsSyncFile} from './src/domain/pricelabs-sync.js';
 /* Fuera de Claude.ai (página hospedada o abierta localmente) window.storage no existe.
@@ -497,31 +498,12 @@ function costGateNow(){
   return costGateForState(state);
 }
 function compute(){
-  /* BLOQUEANTE CRITICO corregido: el Piso/Base ahora SI reciben `ceilings` y
-     `lmConfig` — antes esta llamada nunca los pasaba, asi que compute() jamas
-     podia proteger contra un Last-Minute configurado, sin importar que
-     src/domain/engine.js ya supiera hacerlo. */
-  return computeBase({
-    fixedCost: state.fixedCost, varCost: state.varCost, margin: state.margin, marketBase: state.marketBase,
-    channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
-    lmConfig: state.lmConfig,
-    /* Se pasa el desglose SIEMPRE (aunque este vacio o sin confirmar) —
-       engine.js decide internamente si es usable (`costBreakdownConfirmed`),
-       nunca index.html: fuente unica de verdad, ver cost-mode.js. */
-    costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
-    usingExampleCosts: costGateNow().usingExampleCosts,
-    /* Simplificacion a USD unico (revision externa): `currency` es la moneda
-       GUARDADA de la unidad (normalmente 'USD') — engine.js deriva el gate
-       real (unidad + canales) el mismo con evaluateUsdOnlyReadiness(), ver
-       src/domain/usd-only.js.
-       BLOQUEANTE 3 (auditoria externa, ronda 5): `usdManualReviewPending`
-       bloquea igual aunque `state.currency` ya sea 'USD' — ver el docblock
-       de evaluateUsdOnlyReadiness() para el hallazgo (copia USD de una
-       unidad COP, sin convertir ningun valor). */
-    currency: state.currency,
-    usdManualReviewPending: state.usdManualReviewPending,
-    usdManualReviewLog: state.usdManualReviewLog
-  });
+  /* El armado de la config completa vive en computeConfigForState()
+     (src/domain/compute-config.js) — fuente unica que tambien usa
+     src/domain/portfolio.js, para que la vista principal y el portafolio
+     nunca calculen con una config distinta. Ver ese archivo para los
+     comentarios de cada campo (ceilings/lmConfig, costBreakdown, moneda). */
+  return computeBase(computeConfigForState(state));
 }
 function suggestedOffset(chId, effBase, netObjetivo){
   return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo, lmConfig: state.lmConfig, windows: WINDOWS, ceilings: state.ceilings});
@@ -1213,7 +1195,8 @@ async function renderPortfolioTab(){
     const STATUS = {
       lista:{label:'Lista', cls:'ok'},
       faltan_costos:{label:'Faltan costos', cls:'bad'},
-      falta_lm:{label:'Falta Last-Minute', cls:'warn'}
+      falta_lm:{label:'Falta Last-Minute', cls:'warn'},
+      revisar_moneda:{label:'Revisar moneda', cls:'bad'}
     };
     mount.innerHTML = `<div class="table-wrap"><table>
       <thead><tr><th>Apartamento</th><th>Piso</th><th>Costo/noche</th><th>Estado</th><th>Min Price real vs Piso</th></tr></thead>

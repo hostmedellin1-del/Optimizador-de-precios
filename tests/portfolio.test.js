@@ -96,9 +96,25 @@ test('lista vacia devuelve un resultado vacio manejable, sin excepcion', () => {
   assert.deepEqual(buildPortfolioRows(null), []);
 });
 
-test('portfolioStatus(): un bloqueo de moneda (caso raro) cae en "faltan_costos", nunca en "lista"', () => {
+test('portfolioStatus(): un bloqueo de moneda tiene su propio chip "revisar_moneda", nunca cae en "faltan_costos" ni en "lista"', () => {
   // No hace falta reconstruir el gate completo de moneda: alcanza con un
   // model minimo que reproduzca el contrato real de compute() para este caso.
   const status = portfolioStatus({costBlocked:false, lmBlocked:false, floorReadinessBlocked:true, currencyBlocked:true});
-  assert.equal(status, 'faltan_costos');
+  assert.equal(status, 'revisar_moneda');
+});
+
+test('portfolioStatus(): moneda tiene prioridad sobre costos y Last-Minute cuando los tres coinciden', () => {
+  const status = portfolioStatus({costBlocked:true, lmBlocked:true, floorReadinessBlocked:true, currencyBlocked:true});
+  assert.equal(status, 'revisar_moneda');
+});
+
+test('unidad realmente bloqueada por moneda (currency:"COP") -> chip Y motivo CONCUERDAN', () => {
+  // Este es el punto del arreglo: antes el chip decia "Falta Last-Minute"
+  // (lmBlocked es true por defecto en unitState()) mientras que el motivo de
+  // la MISMA fila decia "requiere revision manual (moneda)" — dos criterios
+  // paralelos contradiciendose. Ahora los dos deben salir de la misma tabla.
+  const row = buildPortfolioRow(unitState({name:'Copia COP sin revisar', currency:'COP'}));
+  assert.equal(row.status, 'revisar_moneda');
+  assert.equal(row.floorBlockedReason, 'requiere revisión manual (moneda)');
+  assert.equal(row.floor, null);
 });
