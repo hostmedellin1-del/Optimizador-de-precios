@@ -1865,17 +1865,32 @@ paralelo) para llevar directo a la sección exacta a completar.
 todas [sus unidades]" — la app trabaja de a una unidad por vez y él opera ~36.
 `buildPortfolioRows(states)` es pura, sin DOM, y construye una fila por unidad
 guardada reusando SIEMPRE lo que ya existe, sin reimplementar ningún criterio:
-`compute()` para el Piso/costo real de cada unidad, `costGateForState()` (ver
-abajo) para saber si esa unidad sigue en el ejemplo de fábrica, y
+`compute()` para el Piso/costo real de cada unidad, `computeConfigForState()`
+(`src/domain/compute-config.js`, ver abajo) para armar la config de ese
+`compute()` — que a su vez incluye el gate de costos vía `costGateForState()` — y
 `comparePricelabsSync()` (`src/domain/pricelabs-sync.js`) para comparar el
 snapshot de PriceLabs guardado (si lo tiene) contra el Piso. `index.html` solo
 enumera las claves `v2:`/`v3:` de `window.storage` (mismo patrón que
 `refreshList()`), pasa cada registro por `normalizeUnit()` — igual que el resto de
 la app — y renderiza lo que devuelve `buildPortfolioRows()`. Cada fila muestra
-Piso, costo/noche, un estado (`lista`/`faltan_costos`/`falta_lm`, prioridad en ese
-orden porque sin costos reales cualquier precio sería inventado) y, si hay
-snapshot, si el Min Price real de PriceLabs cubre o queda por debajo del Piso
-calculado. Click en una fila carga esa unidad en Resumen. Rendimiento medido:
+Piso, costo/noche, un estado y, si hay snapshot, si el Min Price real de
+PriceLabs cubre o queda por debajo del Piso calculado.
+
+El estado y el motivo que se muestra en la columna Piso salen los DOS de la MISMA
+tabla ordenada (`BLOCKS`, en `portfolio.js`) — nunca de dos criterios paralelos.
+Orden de prioridad: `revisar_moneda` (`currencyBlocked`) > `faltan_costos`
+(`costBlocked`, porque sin costos reales cualquier precio sería inventado) >
+`falta_lm` (`lmBlocked`) > `faltan_datos` (`floorReadinessBlocked` residual);
+sin ningún bloqueo, `lista`. Bug real que esto corrige: `portfolioStatus()`
+evaluaba costos/LM ANTES que moneda mientras el motivo los evaluaba al revés, así
+que una unidad en COP (que tiene `lmBlocked:true` por defecto, y Dani tiene 9)
+mostraba el chip "Falta Last-Minute" en la misma fila donde el motivo decía
+"requiere revisión manual (moneda)". Cualquier estado nuevo va en esa tabla, nunca
+en un fallback aparte — un fallback fue exactamente el bug. `faltan_datos` es
+defensivo: hoy `unreadyChannels()` nunca sale no-vacío porque
+`evaluateRecommendationReadiness()` marca todos los canales como listos
+(compatibilidad de la fase de verificación por canal ya retirada), pero si ese
+gate se reactiva el chip ya sale del mismo lugar. Click en una fila carga esa unidad en Resumen. Rendimiento medido:
 `compute()` toma ~1.62ms por unidad, ~58ms para 36 unidades — se calcula en vivo,
 sin caché.
 
@@ -1888,8 +1903,21 @@ esta función, la vista de portafolio habría tenido que reimplementar esa misma
 pregunta ("¿esta unidad sigue en el ejemplo de fábrica?") una segunda vez para
 CADA unidad guardada, con el riesgo de que las dos copias se desalinearan.
 `costGateNow()` en `index.html` ahora es un wrapper de una línea sobre
-`costGateForState(state)`; `buildPortfolioRow()` la llama con el `state` de cada
-unidad leída de storage, nunca solo con la que está abierta.
+`costGateForState(state)`; `buildPortfolioRow()` la alcanza a través de
+`computeConfigForState()`, con el `state` de cada unidad leída de storage, nunca
+solo con la que está abierta.
+
+**`computeConfigForState(state)` (`src/domain/compute-config.js`) — fuente única
+de la config de `compute()`.** `index.html` armaba ese objeto campo por campo
+dentro de su wrapper `compute()`, y `portfolio.js` armaba una copia PARALELA en
+`computeModelForUnit()`. Eran idénticas y el resultado era correcto, pero un campo
+de gate agregado a futuro en un solo lado habría hecho que el portafolio calculara
+con reglas más permisivas que la vista principal — mostrando unidades como "Lista"
+sin estarlo. Ahora los dos solo LLAMAN a esta función (que también importa
+`WINDOWS` por su cuenta, para que ni eso pueda divergir); ninguno vuelve a armar el
+objeto. Un test compara `buildPortfolioRow().floor` contra
+`compute(computeConfigForState(state)).floor` y exige igualdad exacta. Cualquier
+campo nuevo que `compute()` necesite se agrega ACÁ, en un solo lugar.
 
 **Tabla de costo por duración (`renderCostByNights()`, mount
 `#costByNightsMount`, dentro de Resumen → "Costos por noche").** Solo lectura: no
