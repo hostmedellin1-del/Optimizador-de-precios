@@ -43,7 +43,6 @@ button:hover{background:rgba(214,65,44,.24);}
 .ghost:hover{color:var(--text);border-color:var(--faint);}
 .unit-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;padding:12px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);}
 #unitName{flex:1;min-width:170px;}
-.unit-bar-sep{width:1px;align-self:stretch;background:var(--border);}
 #saveStatus{font-size:12px;color:var(--safe);font-family:'JetBrains Mono',monospace;}
 .row{display:flex;flex-wrap:wrap;gap:14px;}
 .row>.card{flex:1;min-width:280px;margin-bottom:0;}
@@ -183,6 +182,14 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
 .discounts-more summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
 .discounts-more summary:hover{color:var(--text);}
 .discounts-more[open] summary{margin-bottom:4px;}
+/* Fase 4 (ago 2026): la barra de unidad deja solo lo diario (nombre/Guardar/
+   Duplicar/lista/Eliminar) visible; lo excepcional (Exportar/Importar/
+   Sincronizar/Migrar) vive detrás de este <details>, mismo patrón que
+   .discounts-more arriba. */
+.unit-bar-more{margin:0;}
+.unit-bar-more summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 10px;}
+.unit-bar-more summary:hover{color:var(--text);}
+.unit-bar-more-body{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px;}
 /* cost breakdown calculator */
 .cost-calc{margin:4px 0 10px;padding-top:4px;border-top:1px dashed var(--border);}
 .cost-calc summary{cursor:pointer;font-size:12.5px;color:var(--dim);font-weight:600;padding:6px 0;}
@@ -211,13 +218,17 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
   <button class="ghost" id="duplicateUnit" title="Crea una nueva unidad con la misma configuración; tendrás que confirmar sus propios datos y costos.">Duplicar</button>
   <select id="unitList"><option value="">Cargar unidad…</option></select>
   <button class="ghost" id="deleteUnit">Eliminar</button>
-  <span class="unit-bar-sep"></span>
-  <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
-  <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
-  <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
-  <button class="ghost" id="syncPricelabsBtn" title="Carga un snapshot JSON de solo lectura entregado por Claude">Sincronizar con PriceLabs</button>
-  <input type="file" id="syncPricelabsFile" accept="application/json" style="display:none">
-  <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
+  <details class="unit-bar-more">
+    <summary>Más opciones</summary>
+    <div class="unit-bar-more-body">
+      <button class="ghost" id="exportUnits" title="Descarga todas tus unidades guardadas como respaldo">Exportar todo</button>
+      <button class="ghost" id="importUnitsBtn" title="Restaura unidades desde un archivo exportado">Importar</button>
+      <input type="file" id="importUnitsFile" accept="application/json" style="display:none">
+      <button class="ghost" id="syncPricelabsBtn" title="Carga un snapshot JSON de solo lectura entregado por Claude">Sincronizar con PriceLabs</button>
+      <input type="file" id="syncPricelabsFile" accept="application/json" style="display:none">
+      <button class="ghost" id="migrateV2Btn" title="Copia las unidades del formato antiguo (v2) a identificadores unicos (v3). No borra ni toca nada del formato antiguo.">Migrar unidades antiguas</button>
+    </div>
+  </details>
   <span id="saveStatus"></span>
 </div>
 

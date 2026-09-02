@@ -10,12 +10,20 @@ async function saveUnit(page){
   const variable=page.locator('[data-k="varCost"]'); await variable.fill('25'); await variable.dispatchEvent('change');
 }
 
+/* Fase 4 (ago 2026): Exportar/Importar/Sincronizar/Migrar viven ahora detrás
+   del <details class="unit-bar-more"> ("Más opciones") — hay que abrirlo
+   antes de poder clickear un botón oculto adentro. */
+async function openMoreOptions(page){
+  await page.locator('.unit-bar-more summary').click();
+}
+
 test('importa snapshot PriceLabs, muestra valores y no hace requests de red', async ({page})=>{
   await page.goto('/index.html');
   await saveUnit(page);
   await page.selectOption('[data-lm="mode"]','flat');
   await page.locator('[data-lm="verified"]').check();
   const requests=[]; page.on('request', req=>requests.push(req.url()));
+  await openMoreOptions(page);
   await page.locator('#syncPricelabsBtn').click();
   await page.locator('#syncPricelabsFile').setInputFiles({name:'pricelabs.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(snapshot))});
   await expect(page.locator('#pricelabsSyncCard')).toContainText('Según PriceLabs');
@@ -29,6 +37,7 @@ test('importa snapshot PriceLabs, muestra valores y no hace requests de red', as
 test('listingId distinto pide confirmación y permite reemplazar', async ({page})=>{
   await page.goto('/index.html'); await saveUnit(page);
   const first={...snapshot,listingId:'one'};
+  await openMoreOptions(page);
   await page.locator('#syncPricelabsBtn').click();
   await page.locator('#syncPricelabsFile').setInputFiles({name:'one.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(first))});
   await expect(page.locator('#pricelabsSyncCard')).toContainText('Listing one');
