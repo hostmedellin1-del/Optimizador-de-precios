@@ -5,6 +5,48 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.25.0] — Corrección crítica del Piso + aseo fijo en Booking y Expedia
+
+**Corregido — el Piso usaba el costo de 1 noche para CUALQUIER duración de la búsqueda
+de peor caso.** Encontrado por Dani con datos reales de la 902: el Piso protege
+enumerando el peor combo real (canal × día × noche), pero le pasaba a esa búsqueda un
+costo FIJO — el de 1 noche (USD 71,50, el más caro porque el aseo se paga completo) — y
+lo aplicaba a TODAS las duraciones probadas, incluida una de 27 noches (costo real de
+esa duración: solo USD 42,61/noche, porque el aseo se diluye entre más noches). Esto
+inflaba el Piso a **USD 138,69** (Airbnb, 27 noches), muy por encima del mercado real
+(~USD 92 en PriceLabs) — la contradicción que Dani notó fue justo la señal de que algo
+estaba mal.
+
+`worstScenarioFactor()` (`src/domain/worstcase.js`) ahora acepta el costo como una
+FUNCIÓN `(noches)=>número` (el costo real de cada duración, vía `costForNightFn()`
+nueva en `src/domain/costs.js`), además del número fijo de siempre (comportamiento
+legado sin cambios para cualquier caller que siga pasando un número). El Piso corregido
+da **USD 108,18** (Expedia, 1 noche) — reproducido y confirmado dos veces con los datos
+reales de la 902, no solo con el catálogo sintético de los tests. `model.cost`/`net`
+(el KPI "Costo total/noche" que ya se ve en pantalla) no cambian — siguen siendo el
+costo conservador de 1 noche, por diseño.
+
+**Agregado — aseo fijo por reserva en Booking.com y Expedia.** Dani revisó sus propias
+Extranets (Partner Central de Expedia, Extranet de Booking) y confirmó que ambos
+canales soportan el mismo mecanismo que ya tenía Airbnb: un cargo de aseo fijo, cobrado
+una sola vez por reserva y no por noche, que las promociones nativas del canal no
+descuentan. Montos reales confirmados: **Expedia USD 35** ("Facility and service fees"
+→ Cleaning fee, "Per stay"), **Booking 120.000 COP ≈ USD 37,50** a 3.200 COP/USD
+("Additional fees & charges" → suplemento "por estancia"). A diferencia de Airbnb,
+ninguno de los dos tiene el split de 1-2 noches vs 3+ noches — un solo campo
+`cleanFee`, monto único sin importar la duración de la reserva.
+
+Este aseo protege exactamente el mismo escenario que motivó el fix del Piso: una
+reserva de 1 noche en Expedia o Booking, donde antes el aseo/insumos no tenían ninguna
+protección propia, ahora suman un ingreso fijo que no se diluye entre pocas noches. Si
+la OTA cobra su comisión sobre este monto no está confirmado por Dani todavía — se
+asumió que sí (el supuesto más protector para el Piso), igual que ya se asumía para el
+aseo de Airbnb; se corrige apenas una reserva real confirme lo contrario.
+
+**Verificación**: 296/296 unitarios, lint limpio, 62/62 e2e. Verificado independientemente
+(no solo reportado por quien implementó) con los datos reales de la 902 tras el merge
+combinado — el Piso sigue dando exacto USD 108,18.
+
 ## [0.24.0] — Usabilidad: pasos de arranque, vista de portafolio y costo por duración
 
 Ronda motivada por una frase textual de Dani: *"casi no la uso porque no la entiendo"*. El
