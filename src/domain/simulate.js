@@ -24,6 +24,10 @@ export function simulateReservation(config, scenario){
     price: q.price, chId: q.chId, ch: q.ch, days: q.days, nights: q.nights, w: q.w, ceil: q.ceil,
     maxN: q.maxNAtScenario, lm: q.lm,
     afterLm: q.priceAfterLm, off: q.off, afterOff: q.priceAfterOffset,
+    /* Fix sep 2026: el tope del Min Price es un PASO propio del waterfall, no un
+       ajuste silencioso — si el LM habria bajado el precio por debajo del Min,
+       renderSim() tiene que poder mostrar de donde salio el numero. */
+    beforeMin: q.priceBeforeMin, minPrice: q.minPrice, minPriceApplied: q.minPriceApplied,
     applied: q.applied, ignored: q.ignored, appliedSteps: q.appliedSteps,
     guest: q.guest, feeTotal: q.feeTotal, feePerNight: q.feePerNight, guestForFees: q.guestWithFees,
     commAmt: q.commAmt, afterComm: q.guestWithFees - q.commAmt,

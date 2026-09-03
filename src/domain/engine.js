@@ -297,21 +297,26 @@ export function compute(config){
   const costForNight = costForNightFn(config.costBreakdown, costGate.useDetailed, cost);
   const m = Math.min(parseFloat(config.margin)||0,90);
   const net = cost/(1-m/100);
-  /* floor: pushed price such that worst channel still nets >= cost.
-     Incluye el offset del canal: en producción PriceLabs publica precio×(1+offset), así que
+  /* floor = el Min Price de PriceLabs: el precio MÁS BAJO que PriceLabs puede llegar
+     a publicar para esa noche — ya con su descuento porcentual de última hora
+     adentro — sin que el peor canal netee bajo costo.
+     Incluye el offset del canal: en producción Kunas publica precio×(1+offset), así que
      el piso DEBE reflejarlo — si no, un offset negativo (bajar precio para competir) rompe
      la garantía de no vender bajo costo. Con offset positivo el piso baja para ese canal
      (el offset ya lo protege), pero el piso final es el máximo entre canales, así que solo
-     baja de verdad si TODOS tienen offset positivo. */
+     baja de verdad si TODOS tienen offset positivo.
+     NO incluye el factor del LM porcentual (fix sep 2026, ver src/domain/worstcase.js):
+     el Min de PriceLabs topa el precio DESPUÉS del LM porcentual, no antes. */
   let floor=0, floorCh='', floorChId=null;
   const lmInfeasible = [];
   channels.forEach(c=>{
     const pf = payoutFactor(c), off = pct2(c.offsetPct)/100;
     if(config.lmConfig){
-      /* CRITICO corregido (ver worstcase.js): el peor caso ahora incluye LM,
-         no solo el descuento nativo OTA — un LM verificado que el Piso
-         ignoraba podia netear por debajo del costo real aunque el modelo
-         dijera valid:true. */
+      /* Con lmConfig, el peor caso enumera además las fronteras de día que
+         introduce el LM y detecta los `fixed_price` inviables (los únicos que
+         se saltan el Min). El % de LM en sí NO entra en el denominador — ver
+         worstcase.js, fix sep 2026: el resultado ES el Min Price, y el Min
+         topa el precio ya descontado. */
       const {worstFactor, worstFeePerNight, worstDay, worstNight, infeasible} = worstScenarioFactor({
         chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: costForNight
       });
@@ -322,10 +327,13 @@ export function compute(config){
       const p = worstFactor>0
         ? (worstFeePerNight>0 ? Math.max(0, cost/pf-worstFeePerNight)/worstFactor : cost/(worstFactor*pf))
         : Infinity;
-      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+', incluye LM'+(worstFeePerNight>0?' + aseo diluido':'')+(extraCommPct(c)>0?' + comisión extra '+fP(extraCommPct(c)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
+      if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+(worstFeePerNight>0?', aseo diluido':'')+(extraCommPct(c)>0?' + comisión extra '+fP(extraCommPct(c)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     } else {
-      /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): formula
-         de siempre, solo nativo OTA — no incluye LM. */
+      /* Sin lmConfig (compatibilidad con callers que aun no lo pasan): misma
+         formula, con worstNative() en vez de la busqueda con costo por noche.
+         Desde el fix de sep 2026 las dos ramas coinciden en el trato del LM
+         (ninguna lo mete en el denominador) — la diferencia que queda es solo
+         el costo por duracion y el aseo diluido. */
       const wn = worstNative(discounts, c.id, windows)/100;
       const denom = (1+off)*(1-wn)*pf;
       const p = denom>0 ? cost/denom : Infinity; /* offset ≤ −100% = imposible proteger */

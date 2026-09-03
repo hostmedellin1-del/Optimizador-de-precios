@@ -56,7 +56,7 @@ test('tarifa corta real baja el Piso de forma notoria', () => {
     `el Piso global también debe reflejar el ingreso (${modelWithout.floor} → ${modelWith.floor})`);
 });
 
-test('caso 902: worstScenarioFactor(cost:numero) SIGUE dando 140.22/21→27/138.69 (comportamiento legado, sin cambios); compute() ya usa el costo real por noche y da el Piso corregido', () => {
+test('caso 902: worstScenarioFactor(cost:numero) conserva su criterio legado (costo fijo para toda duración); compute() usa el costo real por noche', () => {
   const channels=[airbnb({feeShort:20, feeLong:25, offsetPct:16})];
   const discounts=freshDiscounts().filter(d=>d.ch==='airbnb').map(d=>({...d, on:false}));
   const duration=findDiscount(discounts, 'ab_los6');
@@ -77,20 +77,45 @@ test('caso 902: worstScenarioFactor(cost:numero) SIGUE dando 140.22/21→27/138.
   const current=worstScenarioFactor({...cfg, chId:'airbnb', cost:71.5});
   const oldFloor=71.5/(legacy.worstFactor*legacy.pf);
   assert.equal(legacy.worstNight, 21);
-  assert.equal(current.worstNight, 27);
-  assert.equal(oldFloor.toFixed(2), '140.22');
+  /* CAMBIOS sep 2026 (fix Piso vs Min Price) — recalculados, no ajustados a ojo:
+
+     1) `oldFloor` pasa de 140.22 a 85.82. Es EXACTAMENTE el mismo número
+        dividido por (1 - LM): 85.8168 / (1 - 0.3879844523125162) = 140.22. Ese
+        factor de LM salía del denominador del Piso y ya no está — el Piso es el
+        Min Price, y el Min topa el precio DESPUÉS del LM porcentual (ver
+        src/domain/worstcase.js). Verificado además rehaciendo la búsqueda a
+        mano, fuera de worstScenarioFactor(): 71.5/0.845 = 84.6154 de ingreso
+        requerido, factor del peor caso 1.16 x 0.85 = 0.986 → 85.8168.
+     2) `current.worstNight` pasa de 27 a 400 (FAR_NIGHTS, thresholds.js). Antes,
+        el LM se excluía a partir de 28 noches (LONG_STAY_NIGHTS), así que el
+        peor caso quedaba atrapado en el último día CON LM (27). Sin LM en el
+        denominador, ese escalón desaparece y lo único que sigue variando con la
+        duración es la dilución del aseo (25 fijos ÷ n noches): a más noches,
+        menos ingreso por noche, más precio requerido → gana la duración máxima
+        que se enumera. Es el criterio legado siendo coherente consigo mismo, no
+        un resultado nuevo del Piso real (compute(), abajo, sí usa el costo real
+        por noche y por eso elige 1 noche). */
+  assert.equal(current.worstNight, 400);
+  assert.equal(oldFloor.toFixed(2), '85.82');
 
   /* compute() SÍ cambia (sept 2026, fix real del Piso — ver CLAUDE.md "el
      Piso usaba el costo de 1 noche para CUALQUIER duración de la búsqueda de
      peor caso"): ahora pasa costForNight (el costo REAL de cada duración,
      via costForNightFn()) a worstScenarioFactor(), no el número fijo de 1
-     noche. El peor caso real de este escenario aislado pasa de "27 noches,
-     Piso 138.69" a "1 noche, Piso 91.02" — la reserva de 1 noche es la que
-     de verdad cuesta más por noche (71.50 vs ~42.61 a 27 noches), así que es
-     la que exige más protección, no la de 27. */
+     noche. El peor caso real de este escenario aislado sigue siendo 1 noche
+     — la reserva de 1 noche es la que de verdad cuesta más por noche (71.50
+     vs ~42.61 a 27 noches), así que es la que exige más protección.
+
+     El VALOR pasa de 91.02 a 55.70 por el fix de sep 2026 (Piso vs Min Price):
+     91.0178 x (1 - 0.3879844523125162) = 55.7029, exactamente el mismo número
+     sin el factor de LM en el denominador. Recalculado también a mano:
+     (71.50/0.845 − 20 de aseo) / 1.16 de offset = 64.6154/1.16 = 55.7029.
+     Que quede por debajo del costo/noche (71.50) es correcto y esperado: en
+     este escenario aislado Airbnb aporta 20 USD de aseo por esa noche, así que
+     el precio de la noche no tiene que cubrir el costo completo por sí solo. */
   const model=compute(cfg);
   assert.equal(model.floorCh.includes('1 noche'), true, `el Piso corregido debe citar 1 noche, no una estadia larga — dio "${model.floorCh}"`);
-  assert.equal(model.floor.toFixed(2), '91.02');
+  assert.equal(model.floor.toFixed(2), '55.70');
 });
 
 test('worstFeePerNight coincide con cleanFeePerNight del escenario devuelto', () => {

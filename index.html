@@ -309,10 +309,11 @@ td.out{font-family:'JetBrains Mono',monospace;white-space:nowrap;}
     <div class="kpis">
       <div class="kpi"><span class="l">Costo total/noche</span><span class="v" id="kCost">—</span></div>
       <div class="kpi"><span class="l">Neto objetivo</span><span class="v" id="kNet">—</span></div>
-      <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que puedes aceptar. Ni un peso menos, en ningún canal, ni con el peor descuento activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
+      <div class="kpi accent"><span class="l"><span class="term" title="El precio más bajo que PriceLabs puede llegar a PUBLICAR para una noche. Es un tope sobre el precio que ya trae el Last-Minute aplicado: un descuento de última hora en % nunca baja del Min. Ni un peso menos, en ningún canal, ni con el peor descuento nativo activo.">Min Price</span> → PriceLabs</span><span class="v" id="kFloor">—</span><span class="s" id="kFloorWhy"></span></div>
       <div class="kpi accent"><span class="l"><span class="term" title="El precio que le cargas a PriceLabs para que, con tus descuentos, Offset y Last-Minute configurados HOY en cada canal, te dé el margen que quieres.">Base Price</span> → PriceLabs</span><span class="v" id="kBase">—</span><span class="s" id="kBaseWhy"></span></div>
     </div>
     <p class="hint" style="margin-top:10px;">Este Base es el precio que PriceLabs empuja IGUAL a todos los canales — YA incorpora el <span class="term" title="Ajuste % que le subes o bajas a un canal específico DESPUÉS de que PriceLabs calcula el precio, para compensar su comisión sin tocar el precio de los demás canales.">Offset</span> y el Last-Minute que tengas configurados hoy en cada canal, así que este número se recalcula solo si cambias cualquiera de los dos. Si un canal necesita más ajuste por su comisión, seguís tocando el Offset % de esa pestaña — Base reacciona automáticamente al valor que pongas ahí.</p>
+    <p class="hint">Base y Min Price miden momentos distintos de la misma noche, y por eso el Min siempre debe quedar POR DEBAJO del Base: el <strong>Base</strong> es el precio ANTES del Last-Minute (PriceLabs parte de ahí y le aplica su descuento de última hora), mientras que el <strong>Min Price</strong> es el tope de abajo DESPUÉS de ese descuento. Un Last-Minute en % nunca publica por debajo del Min; el único que sí puede saltárselo es el modo "Precio fijo".</p>
     <button class="ghost" id="goSimBtn" style="margin-top:12px;">Ver el paso a paso de una reserva →</button>
   </div>
 </div>
@@ -509,13 +510,26 @@ function suggestedOffset(chId, effBase, netObjetivo){
   return suggestedOffsetBase({chId, channels: state.channels, discounts: state.discounts, avgNights: state.avgNights, effBase, netObjetivo, lmConfig: state.lmConfig, windows: WINDOWS, ceilings: state.ceilings});
 }
 /* config compartido para quoteScenario() — Fase 2.1: unico punto de armado, lo usan
-   renderMatrix()/renderChannelPages()/renderSim() para no duplicar sus campos. */
+   renderMatrix()/renderChannelPages()/renderSim() para no duplicar sus campos.
+
+   `floor` y `minPrice` son el MISMO numero pero NO el mismo concepto (fix sep
+   2026, ver src/domain/quote.js):
+   - `floor` = umbral de ADVERTENCIA (un LM de precio fijo por debajo del Piso).
+   - `minPrice` = el Min Price que PriceLabs tiene configurado y que topa el
+     precio ya descontado por el LM porcentual.
+   Se pasa `model.floor` como `minPrice` porque es exactamente el numero que la
+   app le dice a Dani que ponga en PriceLabs ("Min Price a poner en PriceLabs").
+   Si el Min REAL de la cuenta es otro, quien lo detecta y lo grita es el panel
+   de sincronizacion con PriceLabs (src/domain/pricelabs-sync.js,
+   `minBelowFloor`) — no se importa ese numero externo (posiblemente viejo) al
+   motor de cotizacion. */
 function quoteConfig(){
+  const floor = compute().floor;
   return {
     channels: state.channels, discounts: state.discounts, windows: WINDOWS, ceilings: state.ceilings,
     fixedCost: state.fixedCost, varCost: state.varCost,
     costBreakdown: state.costBreakdown, costBreakdownConfirmed: state.costBreakdownConfirmed,
-    lmConfig: state.lmConfig, floor: compute().floor
+    lmConfig: state.lmConfig, floor, minPrice: floor
   };
 }
 function promotionLabConfig(){
@@ -534,7 +548,11 @@ function buildAlerts(model){
     discounts: state.discounts, channels: state.channels, ceilings: state.ceilings,
     marketWindow: state.marketWindow, marketBase: state.marketBase, windows: WINDOWS,
     chTab: CH_TAB, currency: state.currency, margin: state.margin,
-    lmConfig: state.lmConfig, floor: model.floor,
+    /* `minPrice` junto a `floor`: las alertas cotizan con quoteScenario(), así
+       que tienen que asumir el MISMO tope de Min Price que el Simulador y la
+       Matriz — si no, una alerta podría gritar "vendes bajo costo" en un
+       escenario que el Min ya protege. Ver quoteConfig() arriba. */
+    lmConfig: state.lmConfig, floor: model.floor, minPrice: model.floor,
     /* Fase 3 de usabilidad (ago 2026): la alerta ESTADÍA CORTA nueva necesita
        el costo REAL de cada escenario concreto (`q.cost`, que quoteScenario()
        ya devuelve) — sin esto, q.cost caía siempre en 0 (ningún consumidor
@@ -991,7 +1009,14 @@ function renderSim(model){
     : '';
   let html=`<div class="sim-group">1 · Lo que pone PriceLabs</div>`;
   html+=`<div class="wf-line"><span>Precio calculado por PriceLabs (antes de LM/offset)</span><span class="amt">${f$(price)}</span></div>`;
-  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.afterLm)}</span></div>`;
+  html+=`<div class="wf-line"><span>− LM PriceLabs ${fP(lm)}</span><span class="why">PriceLabs baja el precio solo hasta donde el techo de la ventana ${w.label} (${fP(ceil)}) lo permite, sin pasarse</span><span class="amt">${f$(s.minPriceApplied ? s.beforeMin : s.afterLm)}</span></div>`;
+  /* Fix sep 2026 (Piso vs Min Price): el Min de PriceLabs topa el precio DESPUÉS
+     del LM porcentual, así que cuando ese tope actúa tiene que verse como un paso
+     propio — si no, el Simulador mostraría un precio más bajo del que PriceLabs
+     publicaría de verdad, y contradiría al KPI "Min Price". */
+  if(s.minPriceApplied){
+    html+=`<div class="wf-line"><span>↑ Min Price de PriceLabs ${f$(s.minPrice)}</span><span class="why">PriceLabs no publica por debajo de tu Min Price: el descuento de última hora en % lo respeta como piso (solo un Last-Minute de precio FIJO puede saltárselo)</span><span class="amt">${f$(s.afterLm)}</span></div>`;
+  }
   if(off!==0){
     html+=`<div class="wf-line"><span>${off>0?'+':'−'} Offset ${escapeHtml(ch.name)} ${fP(Math.abs(off))}</span><span class="why">el ajuste que le pusiste a este canal en PriceLabs (Pricing Offset), para que su comisión no te deje corto — verifica en Kunas que solo aplique a este canal</span><span class="amt">${f$(afterOff)}</span></div>`;
   }

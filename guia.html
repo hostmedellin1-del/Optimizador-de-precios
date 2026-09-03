@@ -83,8 +83,8 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
     <h2>1. Qué es y qué no es</h2>
     <p>La herramienta toma el precio por noche que pondrías en PriceLabs y estima cuánto queda después de descuentos nativos, comisión OTA, comisión bancaria/pasarela, Last-Minute y Offset por canal. Con esa configuración calcula:</p>
     <ul>
-      <li><strong>Min Price → PriceLabs</strong>: el mínimo que debería cubrir el costo incluso en el escenario más exigente que encuentre entre los canales.</li>
-      <li><strong>Base Price → PriceLabs</strong>: una referencia para que el precio base alcance el neto objetivo con la configuración real cargada.</li>
+      <li><strong>Min Price → PriceLabs</strong>: el precio más bajo que PriceLabs puede llegar a <strong>publicar</strong> para una noche sin que ningún canal quede bajo costo, incluso en el escenario más exigente que encuentre. Es un tope sobre el precio que <strong>ya trae el Last-Minute aplicado</strong>: un descuento de última hora en porcentaje nunca publica por debajo del Min (el único que sí puede saltárselo es el modo "Precio Last-Minute fijo").</li>
+      <li><strong>Base Price → PriceLabs</strong>: una referencia para que el precio base alcance el neto objetivo con la configuración real cargada. Es el precio <strong>antes</strong> del Last-Minute: PriceLabs parte de ahí y le aplica su descuento de última hora. Por eso el Min Price siempre debe quedar <strong>por debajo</strong> del Base Price; si lo ves por encima, hay algo mal configurado.</li>
       <li><strong>Offset</strong>: ajuste específico por canal que se aplica después del precio de PriceLabs.</li>
     </ul>
     <p>No publica precios, no cambia nada en PriceLabs, Kunas, Airbnb, Booking.com o Expedia, y no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal.</p>

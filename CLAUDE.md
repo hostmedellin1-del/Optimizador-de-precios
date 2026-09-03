@@ -218,14 +218,70 @@ califica, y la tarifa de aseo de Airbnb (fija por reserva) se diluye correctamen
 noche vía `cleanFeePerNight(c, nights)`. Sin `avgNights`, el offset sugerido para Airbnb
 salía más alto de lo necesario (ignoraba que el aseo ya aporta ingreso).
 
-### El Piso Y el Base incluyen el Offset y el LM por canal (jul 2026; Base corregido en ronda 2 de revisión externa)
-`compute()` calcula el `floor` (Min Price) con el offset de cada canal en el denominador:
-`cost / ((1+offset)*(1-nativoPeor)*payoutFactor)`. Antes NO lo incluía — con offset
-positivo eso solo sobre-protegía (inofensivo), pero con offset **negativo** (bajar precio
-en un canal para competir) el piso dejaba de proteger de verdad: un canal podía vender
-bajo costo estando "sobre el piso" en apariencia. Verificado: Booking con offset −15%
-neteaba 46 contra costo 54 antes del fix; después, el piso sube a 103 y netea exacto 54.
-Offset ≤ −100% da `Infinity` (se muestra "—", no rompe).
+### El Piso NO lleva el LM porcentual; el Base SÍ (sep 2026 — corrige la ronda de jul 2026)
+**Contrato vigente.** El `floor` de `compute()` **es** el Min Price de PriceLabs, y el Min
+Price de PriceLabs es un piso sobre el precio **DESPUÉS** del descuento porcentual de
+última hora. El `base` es lo contrario: es el precio **ANTES** de ese descuento (PriceLabs
+parte del Base y le aplica el LM). Por eso el Base sí lleva el LM en su denominador y el
+Piso no — y por eso el Min siempre debe quedar por debajo del Base.
+
+Cadena real, confirmada por el dueño con la arquitectura de su cuenta:
+```
+precio_publicado = max(Min, precio_con_LM) → × (1+offset) → × nativoOTA → + aseo → × payoutFactor
+```
+PriceLabs entrega a Kunas (el PMS) el precio de la noche ya topado contra el Min; Kunas
+le suma después el % (Offset) de cada OTA; recién ahí la OTA aplica sus descuentos
+nativos y su comisión.
+
+**Fuentes (no reinventar ni volver a asumir):**
+1. Base de conocimiento oficial de PriceLabs, textual: *"only a Fixed Last-Minute Price
+   can override the Minimum Price and push the final price below it. Percentage-based
+   last-minute discounts will still respect the Minimum Price as a floor."* Y también:
+   *"The Minimum Price is enforced before applying any percentage markups or uplifts
+   like Pricing Offsets... first ensure the price doesn't go below $55, then apply your
+   percentage increase on top."*
+2. Precios diarios reales del listing 15195 (Base 92): del día 7 en adelante publica
+   86-90; en los días 0-6 publica 65-83. El precio publicado ya trae el LM adentro.
+3. Sanidad estructural: con el LM dentro del denominador, la 902 daba un Min de 108,18
+   contra un Base real de 92. Un Min mayor que el Base es imposible — esa fue la señal.
+
+**Único caso en que el Min NO protege**: `lmConfig.mode==='fixed_price'` (Fixed
+Last-Minute Price). Ese sí publica por debajo del Min, y por eso `worstScenarioFactor()`
+lo saca del cálculo del Piso y lo reporta aparte en `infeasible` — ningún Min lo arregla.
+Esa rama (`priceOverride`) no cambió y no debe cambiarse.
+
+Fórmula vigente del Piso, por canal: `cost / ((1+offset)*(1-nativoPeor)*payoutFactor)`
+(con el aseo diluido restado del ingreso requerido cuando aplica). El offset SÍ está en el
+denominador desde jul 2026: antes NO lo incluía — con offset positivo eso solo
+sobre-protegía (inofensivo), pero con offset **negativo** (bajar precio en un canal para
+competir) el piso dejaba de proteger de verdad: un canal podía vender bajo costo estando
+"sobre el piso" en apariencia. Verificado: Booking con offset −15% neteaba 46 contra costo
+54 antes del fix; después, el piso sube a 103 y netea exacto 54. Offset ≤ −100% da
+`Infinity` (se muestra "—", no rompe).
+
+**Historia que esto corrige, no borra (jul 2026).** El docblock de `worstcase.js`
+describía un "fix CRÍTICO" que AGREGÓ el factor de LM al denominador del Piso, con este
+caso: Directo, costo 100, margen 0, sin descuentos OTA, LM plano 50% verificado en días
+0-3 — el Piso daba 109,89 y cotizar a ese precio en el día 0 neteaba 50. La premisa era
+equivocada: asumía que el LM podía empujar por debajo del Min. Lo que ese caso demostraba
+de verdad no era que el Piso tuviera que subir, sino que **el pipeline de cotización no
+modelaba el tope del Min**. Consecuencia del error: el `floor` sobreestimaba el Min por
+exactamente `1/(1-LM_del_peor_día)`. En la 902 daba 108,18 donde el número correcto es
+**77,89** (= 108,18 × 0,72; el 28 % es el LM del día 0).
+
+**Tope del Min en `quoteScenario()` (`config.minPrice`).** Para que Piso, Simulador,
+Matriz y alertas digan lo mismo, `quote.js` modela el tope explícitamente:
+`priceAfterLm = max(minPrice, price*(1-lm/100))` para los modos porcentuales, y
+`fixed_price` queda SIN topar. Decisión de diseño: se agregó un campo propio
+`config.minPrice` en vez de reusar `config.floor`, porque `floor` ya tiene otro rol único
+(el umbral de la advertencia "tu precio LM fijo está bajo el Piso", en `pricelabs-lm.js`)
+y mezclar un umbral de texto con un tope matemático hace imposible saber, leyendo un
+caller, cuál de los dos pretendía. `minPrice` ausente/0 ⇒ sin tope (cero regresión para
+callers viejos). `index.html` (`quoteConfig()` y el config de `buildAlerts()`) pasa
+`model.floor` como `minPrice`: es exactamente el número que la app le dice a Dani que
+configure. Si el Min REAL de la cuenta es otro, quien lo detecta es el panel de
+sincronización (`pricelabs-sync.js`, `minBelowFloor`) — ese número externo, posiblemente
+viejo, NO se importa al motor de cotización.
 
 **Decisión revertida en ronda 2 (revisión externa) — el `base` (Base Price) SÍ incluye
 ahora el Offset y el LM REALES de cada canal.** La decisión original ("Base es el precio
@@ -423,8 +479,11 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   por LOS activo, para encontrar el peor caso real. (Bug corregido: antes solo probaba 1
   noche y los descuentos por duración quedaban invisibles para el piso.)
 - `compute()` — costo total, neto objetivo, piso (Min Price PriceLabs — incluye el offset
-  de cada canal, ver sección 2), base (Base Price PriceLabs — incluye Offset/LM reales
-  de cada canal en su referencia de día 45 y sus nativos constantes).
+  de cada canal y NO el LM porcentual, porque el Min topa el precio ya descontado; ver
+  sección 2), base (Base Price PriceLabs — incluye Offset/LM reales de cada canal en su
+  referencia de día 45 y sus nativos constantes, porque el Base es el precio ANTES del LM).
+  Esa asimetría Piso-sin-LM / Base-con-LM es deliberada y es lo que hace que el Min quede
+  por debajo del Base; no "unificarlas" sin releer la sección 2.
 - `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2. Usa `state.avgNights`.
 - `cleanFeePerNight(c, nights)` — tarifa de aseo de Airbnb (fija por reserva) diluida por
   noche según la duración dada; devuelve 0 para canales sin aseo. La usan `suggestedOffset`,
@@ -565,6 +624,18 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
   siempre da `false` para `kind:'los'` — cualquier descuento de Expedia por duración de
   estadía quedaba matemáticamente inactivo aunque se configurara y activara bien. Fix:
   `windowApplies(d,daysOut)||losApplies(d,nights)`, ver sección 2 (`ex_los1`).
+- **El `floor` incluía el factor del Last-Minute porcentual en su denominador** (sep 2026,
+  el fix de jul 2026 partía de una premisa equivocada sobre PriceLabs). El `floor` ES el
+  Min Price, y el Min Price topa el precio DESPUÉS del LM porcentual — nunca antes. El
+  Piso sobreestimaba el Min por `1/(1-LM_del_peor_día)` (902: 108,18 en vez de 77,89) y
+  producía un Min POR ENCIMA del Base de PriceLabs, que es imposible. No volver a meter
+  `(1-lmPct/100)` en `combinedFactor` (`src/domain/worstcase.js`) — la rama de
+  `priceOverride`/`infeasible` de `fixed_price` es otra cosa y esa sí es correcta. Ver
+  sección 2 para las tres fuentes que lo confirman.
+- **`quoteScenario()` bajaba el precio con el LM sin topar contra ningún Min.** Ese era el
+  hueco real que el caso de jul 2026 destapaba. Fix: `config.minPrice` (`src/domain/quote.js`),
+  `priceAfterLm = max(minPrice, price*(1-lm/100))` para modos porcentuales; `fixed_price`
+  sin topar. No reusar `config.floor` para esto: son dos roles distintos, ver sección 2.
 
 ---
 
@@ -618,8 +689,13 @@ en cada push/PR — no toca el despliegue de Pages.
 Cualquier vista que necesite cotizar UN escenario concreto (canal + días + noches +
 precio) pasa por aquí — Piso (indirectamente, vía `worstNative()`/`payoutFactor()`
 compartidos), alertas (TECHO/PISO/DURACIÓN), Simulador, matriz y "neto estimado" por
-canal. Ninguna vista debe reimplementar el pipeline LM→Offset→nativos→aseo→comisiones.
+canal. Ninguna vista debe reimplementar el pipeline
+LM→**tope del Min**→Offset→nativos→aseo→comisiones (el tope del Min entró en sep 2026,
+ver sección 2; `config.minPrice`).
 Devuelve, entre otros: `factor`/`nativoFactor` (exacto, para matemática financiera),
+`priceBeforeMin`/`minPrice`/`minPriceApplied` (para que el Simulador muestre el tope del
+Min como un paso propio del waterfall, y para que las alertas/la Matriz no le echen la
+culpa a un LM que no llegó a aplicarse),
 `nativoPct`/`totalPct` (redondeado, SOLO para texto/UI — nunca para calcular),
 `marginPct` (ganancia sobre venta) vs `markupPct` (ganancia sobre costo, número
 distinto), y `assumptions[]` (lo que el resultado da por sentado y aún no está

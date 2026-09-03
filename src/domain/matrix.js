@@ -65,6 +65,13 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
   const lm = worstPayoutRow.q.lm;
   const worst = perChannel.reduce((a,b)=>b.q.payout<a.q.payout ? b : a, perChannel[0]);
   const worstAsNet = {c: worst.c, netV: worst.q.payout};
+  /* Fix sep 2026 (Piso vs Min Price): si el Min Price topó el precio en el peor
+     escenario, decir a secas "con X% de LM te dejaría Y" es engañoso — ese X% no
+     llegó a aplicarse sobre el precio publicado. El número (Y) ya es correcto
+     porque quoteScenario() aplica el tope; lo que falta es nombrarlo. */
+  const minCapNote = worst.q.minPriceApplied
+    ? ` (el Min Price de ${f$(worst.q.minPrice,currency)} topó el precio: ese LM no llega a aplicarse al publicado)`
+    : '';
   const lmCaveat = worst.q.lmBlocked
     ? ` (asume LM ${worst.q.lmMode==='ceiling_auto'?'automático':'"'+worst.q.lmMode+'"'} sin verificar — el número real podría variar, confírmalo en Resumen → "Last-Minute de PriceLabs")`
     : '';
@@ -74,7 +81,7 @@ export function buildMatrixVerdict({model, ceil, worstTecho, worstPayoutRow, per
     vMsg=`${maxCh?maxCh.name:'un canal'} ya suma ${fP(maxN)} de descuento propio — más que tu techo de ${fP(ceil)}. PriceLabs se queda en 0% de LM aquí y aun así se pasa: baja el descuento nativo de ${maxCh?maxCh.name:'ese canal'} o sube el techo.`;
   } else if(worstAsNet.netV<model.cost){
     vLvl='bad'; vTag='BAJO COSTO';
-    vMsg=`Con ${fP(lm)} de LM, ${worstAsNet.c.name} te dejaría ${f$(worstAsNet.netV,currency)} — menos que tu costo de ${f$(model.cost,currency)}. Súbele el Offset a ${worstAsNet.c.name} en su pestaña, o baja su descuento nativo.${lmCaveat}`;
+    vMsg=`Con ${fP(lm)} de LM${minCapNote}, ${worstAsNet.c.name} te dejaría ${f$(worstAsNet.netV,currency)} — menos que tu costo de ${f$(model.cost,currency)}. Súbele el Offset a ${worstAsNet.c.name} en su pestaña, o baja su descuento nativo.${lmCaveat}`;
   } else if(worstAsNet.netV<model.net){
     vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
     vMsg=`Todos los canales quedan sobre tu costo, pero ${worstAsNet.c.name} solo te deja ${f$(worstAsNet.netV,currency)} — por debajo de tu margen objetivo (${f$(model.net,currency)}). Revisa su Offset si quieres acercarlo.${lmCaveat}`;

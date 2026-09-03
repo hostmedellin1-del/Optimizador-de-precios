@@ -25,6 +25,15 @@
    apilable post-promo — no necesita codigo aparte aqui, ya viene incluido en
    `r.applied`/`r.factor`.
 
+   Fix sep 2026 (Piso vs Min Price): el pipeline ahora modela EXPLICITAMENTE el
+   tope del Min Price de PriceLabs. La cadena real es
+     precio_publicado = max(Min, precio_con_LM) -> x(1+offset) -> xnativoOTA
+     -> +aseo -> xpayoutFactor
+   y `config.minPrice` es ese Min. Antes el LM porcentual bajaba el precio sin
+   ningun tope, lo que contradecia al Piso (que ES el Min): cotizar exactamente
+   al Piso en el dia 0 daba perdida. Ver el comentario junto a `priceAfterLm` y
+   el docblock de src/domain/worstcase.js (fuentes y verificacion).
+
    Deliberadamente NO toca en esta fase (fuera de alcance, ver reglas del
    encargo):
    - Reglas de negocio OTA base (combineChannel: prioridades Airbnb, stacking
@@ -32,7 +41,11 @@
 
    scenario = {chId, days, nights, price}
    config   = {channels, discounts, windows, ceilings, fixedCost, varCost,
-               costBreakdown?, lmConfig?} */
+               costBreakdown?, lmConfig?, minPrice?, floor?}
+     - minPrice: el Min Price configurado en PriceLabs (tope duro sobre el
+       precio ya descontado por LM porcentual). Ausente/0 => sin tope.
+     - floor: SOLO el umbral de advertencia para un LM de precio fijo bajo el
+       Piso (pricelabs-lm.js). No es un tope; no confundir con minPrice. */
 import {pct, pct2} from './percent.js';
 import {combineChannel, payoutFactor, cleanFeePerNight, extraCommPct} from './engine.js';
 import {reservationCostBreakdown} from './costs.js';
@@ -77,7 +90,31 @@ export function quoteScenario(scenario, config, opts = {}){
   if(lmResult.note) assumptions.push(lmResult.note);
   if(lmResult.mode!=='ceiling_auto' && !lmResult.verified)
     assumptions.push(`LM en modo "${lmResult.mode}" configurado pero NO VERIFICADO — Dani debe confirmar que este es el modo real que usa PriceLabs para esta unidad antes de confiar en este numero para una recomendacion categorica.`);
-  const priceAfterLm = lmResult.priceOverride!=null ? lmResult.priceOverride : price*(1-lm/100);
+  /* Fix sep 2026 — el Min Price de PriceLabs topa el precio DESPUES del LM
+     porcentual (ver src/domain/worstcase.js para las tres fuentes que lo
+     confirman). Sin este tope, cotizar exactamente al Piso en el dia 0 daria
+     perdida y la app se contradiria: el Piso prometeria proteger un precio que
+     el Simulador simula por debajo de si mismo.
+
+     DECISION DE DISENO (canal por el que entra el Min): NO se reusa
+     `config.floor`. Ese campo ya tiene un rol distinto y unico — es el umbral de
+     ADVERTENCIA que fixedPrice() usa para avisar "tu precio LM fijo esta bajo el
+     Piso" (pricelabs-lm.js) — y mezclar un umbral de texto con un tope
+     matematico duro hace imposible saber, leyendo un caller, cual de los dos
+     roles pretendia. Se agrega `config.minPrice` explicito: "el Min Price que
+     PriceLabs tiene configurado para esta unidad". Ausente/0/no numerico => no
+     hay tope (cero regresion para todo caller que no participe de este
+     contrato, incluidos los tests previos a este cambio).
+
+     `fixed_price` queda FUERA del tope a proposito: un Fixed Last-Minute Price
+     es el unico caso en que PriceLabs publica por debajo del Min Price. */
+  const minPrice = Math.max(0, parseFloat(config.minPrice)||0);
+  const priceBeforeMin = lmResult.priceOverride!=null ? lmResult.priceOverride : price*(1-lm/100);
+  const minPriceApplies = lmResult.priceOverride==null && minPrice>0;
+  const minPriceApplied = minPriceApplies && minPrice>priceBeforeMin;
+  const priceAfterLm = minPriceApplied ? minPrice : priceBeforeMin;
+  if(minPriceApplied)
+    assumptions.push(`El Min Price de PriceLabs (${minPrice.toFixed(2)}) topa este escenario: el precio con el LM aplicado habria sido ${priceBeforeMin.toFixed(2)}, pero PriceLabs no publica por debajo del Min (solo un Last-Minute de PRECIO FIJO puede saltarselo). Se cotiza sobre ${priceAfterLm.toFixed(2)}.`);
   /* Bloqueante 3 (revision externa): antes `blocked`/`verified`/`mode` se calculaban
      dentro de priceLabsLm() pero NUNCA salian de quoteScenario() — ninguna vista
      podia condicionar nada sobre "esto no es verificable". Ahora son campos de
@@ -152,7 +189,7 @@ export function quoteScenario(scenario, config, opts = {}){
     lmMode, lmVerified: lmVerifiedFlag, lmBlocked, lmPriceOverrideActive: lmResult.priceOverride!=null,
     nativoPct: r.totalPct, // SOLO presentacion (redondeado) — para matematica financiera usar nativoFactor
     nativoFactor: r.factor, // exacto — 1-nativoFactor es la fraccion real que aplica el canal
-    price, priceAfterLm, off, priceAfterOffset,
+    price, priceAfterLm, priceBeforeMin, minPrice, minPriceApplied, off, priceAfterOffset,
     applied: r.applied, ignored: r.ignored, appliedSteps,
     guest, feePerNight, feeTotal, guestWithFees,
     commAmt, extraCommAmt, bankAmt, payout,

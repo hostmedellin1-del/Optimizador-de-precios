@@ -55,8 +55,13 @@ test('worstScenarioFactor: 28+ noches excluye el LM combinado del peor factor', 
     chId:'airbnb', channels, discounts, windows, ceilings,
     lmConfig:gradualConfig(), cost:1
   });
-  /* A 28 noches el nativo deja 20%; si se multiplicara además el LM de 28%
-     del día 0, el factor sería 0.144. La regla correcta conserva 0.20. */
+  /* A 28 noches el nativo deja 20%; el factor debe quedar en 0.20.
+     Desde sep 2026 esto se cumple por DOS razones acumuladas, no una: (a) la
+     regla de estancia larga excluye el LM del peor caso, y (b) el LM porcentual
+     ya no entra en el factor del Piso en NINGUNA duración (es el Min Price, que
+     topa el precio ya descontado — ver src/domain/worstcase.js). La regla (a)
+     sigue viva y con efecto propio: es la que impide que un LM de PRECIO FIJO se
+     reporte como `infeasible` en una reserva de 28+ noches. */
   assert.ok(Math.abs(result.worstFactor-0.2)<1e-12,
     `factor=${result.worstFactor}, no debe combinar LM 28% con la estadía larga`);
   assert.equal(result.worstNight, LONG_STAY_NIGHTS);
@@ -73,9 +78,19 @@ test('caso numérico de referencia: quitar el combo LM+larga estadía reduce el 
   const lmConfig = gradualConfig();
   const base = {fixedCost:64, varCost:0, margin:0, marketBase:0, channels, discounts, windows, ceilings, lmConfig};
   const model = compute(base);
-  /* En este equivalente aislado el caso viejo (LM×larga) queda en
-     ~117.80 USD; con la regla nueva el Piso es ~103.94 USD. */
-  assert.ok(Math.abs(model.floor-103.94)<0.02, `Piso nuevo inesperado: ${model.floor}`);
+  /* Histórico de este número, en orden:
+       ~117.80  — cuando el peor caso combinaba LM x larga estadía.
+       ~103.94  — al excluir el LM de las estancias largas (jul 2026): el peor
+                  caso pasaba a ser día 0 / 1 noche, donde el LM de 28% SÍ
+                  entraba en el denominador: 64 / (0.72 x 1.012 x 0.845).
+        84.81   — sep 2026, fix Piso vs Min Price: el LM porcentual sale del
+                  denominador. Con día 0 / 1 noche el precio requerido baja a
+                  74.83 (= 103.9305 x 0.72), así que el peor caso REAL pasa a ser
+                  la estancia larga: 28 noches con el 11.75% de `ab_los4`
+                  → 64 / (1.012 x 0.8825 x 0.845) = 84.8063. Recalculado a mano
+                  fuera del motor, no ajustado al valor que salió. */
+  assert.ok(Math.abs(model.floor-84.81)<0.01, `Piso nuevo inesperado: ${model.floor}`);
+  assert.ok(model.floorCh.includes('28 noches'), `el peor caso ahora es la estancia larga — dio "${model.floorCh}"`);
   const q = quoteScenario({chId:'airbnb', days:0, nights:34, price:200}, base);
   assert.equal(q.lm, 28, 'el simulador conserva el LM aun en 34 noches');
 });

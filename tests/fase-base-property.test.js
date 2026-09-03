@@ -72,7 +72,19 @@ test('Base SI cambia con lmConfig activo a día 45 (antes lo excluía por comple
 
   assert.notEqual(sinLm.base, conLm.base, 'Base debe reaccionar al LM real configurado a día 45 (antes lo ignoraba por completo, sin importar el modo)');
   assert.ok(conLm.base > sinLm.base, 'un LM que resta 50% en día 45 obliga a un Base más alto para seguir neteando el mismo objetivo');
-  assert.notEqual(sinLm.floor, conLm.floor, 'el Piso también sigue cambiando con lmConfig (búsqueda exhaustiva, sin cambios en este bloqueante)');
+  /* CAMBIO sep 2026 (fix Piso vs Min Price): esta línea afirmaba lo contrario
+     (`notEqual`). El Base SÍ reacciona al LM porque Base es el precio ANTES del
+     descuento de última hora — PriceLabs parte de Base y le aplica el LM. El
+     Piso NO: el Piso es el Min Price, y PriceLabs topa contra el Min el precio
+     que YA trae el LM porcentual adentro ("Percentage-based last-minute
+     discounts will still respect the Minimum Price as a floor"). Con un solo
+     canal, sin descuentos OTA y sin offset, el factor del peor caso es idéntico
+     con o sin lmConfig, así que el Piso es el MISMO número.
+     Esa asimetría Base-sí / Piso-no es justamente el contrato corregido, y es
+     la que hace que el Min pueda quedar por debajo del Base (antes salía por
+     encima, que es imposible). Ver src/domain/worstcase.js. */
+  assert.equal(sinLm.floor, conLm.floor, 'un LM PORCENTUAL no mueve el Min Price (sí mueve el Base)');
+  assert.ok(conLm.floor < conLm.base, 'sanidad estructural: el Min Price nunca puede quedar por encima del Base Price');
 
   // Y ese Base más alto SI netea el objetivo cotizado con el LM real activo a día 45:
   const q = quoteScenario({chId:'direct', days:45, nights:1, price:conLm.base}, {channels, discounts, windows, ceilings, fixedCost:100, varCost:0, lmConfig});

@@ -70,8 +70,13 @@ export function buildAlerts(config, model){
     worstPisoByCh.forEach(entry=>{
       if(!entry) return;
       const {q,d,n} = entry;
+      /* Fix sep 2026 (Piso vs Min Price): quoteScenario() ya topa el precio contra
+         `config.minPrice`, así que `q.payout` es el neto REAL que PriceLabs puede
+         producir. Cuando ese tope actuó hay que decirlo — si no, el mensaje culpa
+         a un LM que no llegó a aplicarse sobre el precio publicado. */
+      const capNote = q.minPriceApplied ? ` (el Min Price de ${f$(q.minPrice, config.currency)} ya topó el precio, así que ese LM no se aplica al publicado)` : '';
       if(model.base>0 && q.payout < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} (día ${d}, ${n} noche${n===1?'':'s'}) · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$(q.payout, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
+        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} (día ${d}, ${n} noche${n===1?'':'s'}) · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)}${capNote} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$(q.payout, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
     });
   });
   /* config contradictions */
