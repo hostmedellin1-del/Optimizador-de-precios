@@ -56,3 +56,26 @@ export function costForNightFn(costBreakdown, useDetailed, flatCostPerNight){
     ? (nights) => reservationCostBreakdown(costBreakdown, nights).perNight
     : () => flatCostPerNight;
 }
+
+/* Fuente unica del OBJETIVO (costo + margen) por duracion — hermano de
+   costForNightFn() de arriba, mismo patron. Fix sep 2026: `compute()` calcula UN
+   SOLO `net` (engine.js: `net = cost/(1-m/100)`) evaluado SIEMPRE contra el costo
+   de 1 noche, y ese mismo numero fijo se usaba en alerts.js/matrix.js como vara
+   para juzgar reservas de CUALQUIER duracion (misma raiz que el bug ya corregido
+   del VALOR del Piso y de las comparaciones "bajo costo" contra q.cost). El
+   margen es un PORCENTAJE, confirmado por el dueño ("es un porcentaje para
+   cualquier duracion") — no es que el 25% deba subir o bajar segun las noches, es
+   que ese 25% debe aplicarse sobre el costo REAL de esa duracion
+   (reservationCostBreakdown(...).perNight / costForNightFn(nights), nunca sobre
+   el costo de 1 noche fijo.
+   netForNightFn(margin) devuelve una funcion pura que, dado el costo YA
+   calculado de una duracion concreta (`costAtN`, tipicamente `q.cost` de
+   quoteScenario()), devuelve el objetivo de ESA duracion — misma formula que
+   `net` en engine.js, solo que parametrizada por costo en vez de fijada al de 1
+   noche. `model.net` (KPI global de Resumen) NO cambia de semantica: sigue
+   siendo el objetivo evaluado al costo de 1 noche — esta funcion es para
+   quien necesita el objetivo de UN escenario concreto de otra duracion. */
+export function netForNightFn(margin){
+  const m = Math.min(parseFloat(margin)||0, 90);
+  return (costAtN) => costAtN/(1-m/100);
+}

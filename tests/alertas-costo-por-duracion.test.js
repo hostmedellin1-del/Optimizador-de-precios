@@ -72,15 +72,37 @@ test('CASO REAL 902 — las alertas PISO falsas eran de estadías largas (27/34 
   assert.equal(alerts.filter(a=>a.tag==='PISO').length, 0);
 });
 
-test('CASO REAL 902 — DURACIÓN: "Larga estadía (≥28 noches)" deja de marcarse en rojo (cubre su costo real de ~42,6)', () => {
+test('CASO REAL 902 — DURACIÓN: "Larga estadía (≥28 noches)" ya no queda en rojo NI en warn (supera su objetivo REAL de 28 noches, no el fijo de 1 noche)', () => {
+  /* RECALCULADO (sep 2026, fix "objetivo por duración") — este test quedó
+     pinneado al bug que esa misma ronda documentaba como pendiente (ver
+     CLAUDE.md, "Dudoso / pendiente para el dueño": "el objetivo (model.net)
+     sigue siendo el de 1 noche... decisión pendiente"). El dueño confirmó que
+     el margen es un PORCENTAJE que se aplica sobre el costo REAL de cada
+     duración, no sobre el costo de 1 noche — así que la vara para "Larga
+     estadía (≥28 noches)" ya no puede ser 95.33 (=71.50/0.75, objetivo de 1
+     noche), tiene que ser 56.76 (=42.57/0.75, objetivo real de 28 noches).
+
+     Números verificados de forma independiente contra este mismo fixture
+     (quoteScenario({chId:'airbnb', days:45, nights:28, price:103}, config)):
+     q.payout=65.12, q.cost=42.57, objetivo real=q.cost/0.75=56.76. Como
+     65.12 > 56.76, la reserva de 28+ noches SÍ supera su objetivo real — ya
+     no hay nada que advertir, ni "bad" (bajo costo) ni "warn" (bajo
+     objetivo). Antes se comparaba 65 (netLos) contra 95.33 (model.net, el
+     objetivo de 1 noche) y salía "warn" — ese warn era la alerta falsa. */
   const config = config902();
   const model = compute(config);
   const alerts = alertsFor(config, {...model, effBase: 103});
   const largaEstadia = alerts.find(a=>a.tag==='DURACIÓN' && /Larga estadía/.test(a.msg));
-  assert.ok(largaEstadia, 'la alerta de Larga estadía debe seguir existiendo (netea bajo el OBJETIVO)');
-  assert.equal(largaEstadia.lvl, 'warn', `debe ser warn ("cubre costo, bajo objetivo"), no bad — dio ${largaEstadia.lvl}: ${largaEstadia.msg}`);
+  assert.equal(largaEstadia, undefined, `"Larga estadía" no debe generar ninguna alerta DURACIÓN (netea 65.12, sobre su objetivo real de 56.76) — salió: ${largaEstadia && largaEstadia.msg}`);
   const durBad = alerts.filter(a=>a.tag==='DURACIÓN' && a.lvl==='bad');
   assert.equal(durBad.length, 0, `ninguna alerta DURACIÓN debe quedar en rojo:\n${durBad.map(a=>a.msg).join('\n')}`);
+  /* Guarda del fix — con el respaldo real de la 902, NINGÚN descuento por
+     duración (Airbnb 7/14/21/28/35 noches, Expedia 7 noches) genera ya
+     alerta DURACIÓN: todos superan su objetivo real. Si alguno reaparece acá,
+     hay que verificar con números reales si es una alerta genuina o si el fix
+     se rompió — nunca "ajustar a ojo" este assert. */
+  const durAny = alerts.filter(a=>a.tag==='DURACIÓN');
+  assert.equal(durAny.length, 0, `no debe quedar ninguna alerta DURACIÓN con el respaldo real de la 902:\n${durAny.map(a=>a.lvl+' '+a.msg).join('\n')}`);
 });
 
 test('la alerta PISO SÍ se dispara cuando un escenario netea bajo SU propio costo (no se volvió ciega)', () => {

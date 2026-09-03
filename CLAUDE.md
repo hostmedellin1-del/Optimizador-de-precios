@@ -2280,12 +2280,11 @@ REAL (`cleanFeePerNight(c, avgNights)>0`).
 
 ### Dudoso / pendiente para el dueño
 
-- **El objetivo (`model.net`) sigue siendo el de 1 noche.** Una reserva de 28 noches que
-  cuesta 42,6/noche se sigue midiendo contra un objetivo de 95,33 (= 71,50 / 0,75), no
-  contra 56,76 (= 42,57 / 0,75). Por eso quedan alertas DURACIÓN en `warn` ("cubre costo,
-  bajo objetivo") que quizá el dueño consideraría rentables. Es la misma convención que ya
-  usaba ESTADÍA CORTA, así que se dejó igual a propósito: reescalar el margen objetivo por
-  duración es una decisión de negocio, no un bug de aritmética. **Decisión pendiente.**
+- ~~**El objetivo (`model.net`) sigue siendo el de 1 noche.**~~ **Corregido — ver "Ronda
+  sep 2026 (2) — objetivo por duración" más abajo.** El dueño confirmó que el margen es un
+  porcentaje que se aplica sobre el costo REAL de cada duración, no sobre el costo de 1
+  noche: ya no era una decisión de negocio pendiente, era el mismo bug de "costo de 1
+  noche aplicado a cualquier duración" del lado del objetivo.
 - **El aseo de Directo arranca en 0 y así se queda hasta que el dueño cargue el real.** Si
   de verdad le cobra aseo al huésped directo, ese 0 está inflando su Piso hoy mismo (74,83
   contra los 66,92 que daría con 25 de aseo, en la 902 con Airbnb en 30).
@@ -2294,3 +2293,86 @@ REAL (`cleanFeePerNight(c, avgNights)>0`).
   ahí y que cargar una tarifa de aseo casi no mueva el Piso. Es aritméticamente correcto,
   pero vale la pena que el dueño confirme si una estadía de 400 noches es un escenario real
   que quiere que proteja el Min Price.
+
+---
+
+## Ronda sep 2026 (2) — objetivo por duración
+
+Rama: `fix/objetivo-por-duracion`, ramificada desde `feat/aseo-por-canal`. **Sin publicar,
+sin merge a main** al momento de escribir esto — pendiente de auditoría antes de integrar.
+
+### El bug — misma familia que el fix del VALOR del Piso, del lado del objetivo
+
+`compute()` calcula UN SOLO `net` (engine.js: `net = cost/(1-m/100)`) evaluado SIEMPRE
+contra el costo de 1 noche — y `alerts.js`/`matrix.js` usaban ese mismo número fijo como
+vara para juzgar reservas de CUALQUIER duración (ramas "warn"/"cubre costo pero bajo
+objetivo" de DURACIÓN, ESTADÍA CORTA, y el veredicto "CUBRE COSTO, BAJO OBJETIVO" de la
+Matriz). El dueño confirmó explícitamente: el margen es un **porcentaje** para cualquier
+duración — no es que el 25% deba subir o bajar según las noches, es que ese 25% debe
+aplicarse sobre el **costo real de esa duración**, no sobre el costo de 1 noche.
+
+**Reproducción contra el respaldo real** (`revenue-ops-backup-2026-08-14.json`, unidad
+902, `normalizeUnit(raw)` + `state.windows=WINDOWS` + `costBreakdownConfirmed:true` +
+Expedia `cleanFee:35` + Booking `cleanFee:37.5`, margen 25%): el objetivo que usaba la app
+(fijo, de 1 noche) era 95,33 (=71,50/0,75) para CUALQUIER duración. El objetivo correcto
+por duración, con costo(n) = 41,5 + 30/n (fijos+consumo diluidos por noche + turno una
+sola vez):
+
+| noches | costo real/noche | objetivo correcto (costo/0,75) |
+|---|---|---|
+| 2  | 56,50 | 75,33 |
+| 4  | 49,00 | 65,33 |
+| 7  | 45,79 | 61,05 |
+| 14 | 43,64 | 58,19 |
+| 21 | 42,93 | 57,24 |
+| 28 | 42,57 | 56,76 |
+| 35 | 42,36 | 56,48 |
+
+Con el objetivo fijo (95,33), esto disparaba **8 alertas falsas** ("cubre costo pero bajo
+objetivo") en reservas que en realidad SÍ superan su objetivo real por buen margen (Airbnb
+2/4/7/14/21/28/35 noches, Expedia 7 noches) — todas neteaban por encima de su objetivo
+real (verificado corriendo `buildAlerts()` contra este mismo fixture antes y después del
+fix, no solo a mano).
+
+### Fix
+
+- **`netForNightFn(margin)`** (`src/domain/costs.js`), nueva — hermana de
+  `costForNightFn()`: dado el costo YA calculado de una duración concreta (`costAtN`,
+  típicamente `q.cost` de `quoteScenario()`), devuelve `costAtN/(1-margin/100)` — misma
+  fórmula que `net` en engine.js, parametrizada por costo en vez de fijada a 1 noche.
+  Clampea el margen a 90, igual que `compute()`.
+- **`model.net` (KPI global de Resumen) NO cambió de semántica** — sigue siendo el
+  objetivo evaluado al costo de 1 noche. No es ese número el que había que tocar: es
+  contra qué se compara una reserva de OTRA duración en `alerts.js`/`matrix.js`.
+- **`src/domain/alerts.js`** — las tres comparaciones `... < model.net` (DURACIÓN,
+  ESTADÍA CORTA 1n, ESTADÍA CORTA 2n, todas en su rama "warn") pasan a
+  `netForNight(q.cost)` (o `q1.cost`/`q2.cost` según el bloque) — el objetivo calculado
+  con el costo real de ESE escenario, exactamente como ya se usaba para la comparación de
+  costo puro. Los mensajes ahora dicen "tu objetivo para esa duración" en vez de citar el
+  número fijo.
+- **`src/domain/matrix.js`** — `buildMatrixVerdict()` tenía la misma comparación
+  (`worstAsNet.netV<model.net`) en la rama "CUBRE COSTO, BAJO OBJETIVO". Como esta
+  función no recibe `config` (solo `model`), el margen se recupera algebraicamente del
+  propio `model` (`model.net = model.cost/(1-m/100)` ⇒ `m = 100*(1-model.cost/model.net)`,
+  exacto cuando `model.cost>0`; si es 0, el margen no importa porque `netForNight(0)` da 0
+  para cualquier margen) — evita agregar un parámetro nuevo a la firma y no rompe ningún
+  test/caller existente que no lo pasaba. El mensaje ahora nombra la duración del peor
+  escenario y su objetivo real.
+
+### Verificación
+
+- **341/341 tests unitarios** (332 antes; +9 en `tests/objetivo-por-duracion.test.js`),
+  **lint limpio**, **66/66 e2e sin regresión**.
+- Contra el respaldo real: de las 8 alertas falsas listadas arriba, **0 siguen siendo
+  genuinas** tras el fix — verificado corriendo `buildAlerts()` contra el fixture completo
+  (no solo recalculando a mano): la lista de alertas DURACIÓN/ESTADÍA CORTA queda vacía,
+  sin que aparezca ninguna otra en su lugar.
+- **El Piso (`compute().floor`) no se movió**: sigue en 77,10 para la config de
+  producción — este fix es solo del objetivo/margen, nunca del Piso ni del costo (test
+  dedicado en `tests/objetivo-por-duracion.test.js`).
+- `tests/alertas-costo-por-duracion.test.js` — el test `'CASO REAL 902 — DURACIÓN:
+  "Larga estadía (≥28 noches)"...'` estaba pinneado al bug (esperaba una alerta `warn`
+  porque comparaba 65,12 contra 95,33). Recalculado, no ajustado a ojo: con el objetivo
+  real de 28 noches (56,76), 65,12 lo supera — la alerta correcta es que NO debe
+  aparecer ninguna alerta DURACIÓN para ese descuento. El test nuevo lo fija explícitamente
+  y deja los números verificados en el comentario.

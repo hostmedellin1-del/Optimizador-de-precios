@@ -33,6 +33,7 @@ import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays, isLmBlocked} from './pricelabs-lm.js';
 import {worstScenarioFactor} from './worstcase.js';
+import {netForNightFn} from './costs.js';
 
 export function buildAlerts(rawConfig, model){
   /* Salvaguarda (sep 2026, descubierta al migrar PISO/DURACIÓN a `q.cost`):
@@ -48,6 +49,14 @@ export function buildAlerts(rawConfig, model){
   const hasCostInputs = 'fixedCost' in rawConfig || 'varCost' in rawConfig || !!rawConfig.costBreakdown;
   const config = hasCostInputs ? rawConfig : {...rawConfig, fixedCost: model.cost, varCost: 0};
   const {discounts, channels, ceilings, windows, chTab} = config;
+  /* Fix sep 2026 ("objetivo por duracion", misma raiz que el fix del VALOR del
+     Piso y de "bajo costo" contra q.cost): el objetivo (costo+margen) tambien
+     cambia con la duracion, porque el margen es un PORCENTAJE que se aplica
+     sobre el costo REAL de esa duracion — no sobre el costo de 1 noche que usa
+     `model.net`. `netForNight(costAtN)` es la fuente unica (src/domain/costs.js)
+     que las ramas "warn"/"cubre costo pero bajo objetivo" de DURACIÓN y ESTADÍA
+     CORTA usan mas abajo, en vez de comparar contra `model.net` a secas. */
+  const netForNight = netForNightFn(config.margin);
   const A=[];
   const on = id=>{const d=discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
   /* TECHO/PISO por ventana: se enumeran TODOS los dias criticos de la ventana x
@@ -146,19 +155,28 @@ export function buildAlerts(rawConfig, model){
      902 eso marcaba en rojo "Larga estadía (≥28 noches) netea 65 < costo 72"
      cuando el costo real de una reserva de 28 noches es ~42.6 por noche. Ahora
      se usa `q.cost`, el costo de ESA reserva.
-     Lo que NO cambia: la comparacion contra el OBJETIVO sigue siendo
-     `model.net` (el neto objetivo global de la unidad), igual que en la alerta
-     ESTADIA CORTA. El objetivo es una politica del negocio, no una propiedad
-     del escenario — reescalarlo por duracion seria una decision de negocio
-     distinta, no este fix. */
+
+     Fix sep 2026 ("objetivo por duracion"): la comparacion contra el OBJETIVO
+     TAMBIEN dejo de ser `model.net` a secas. `model.net` es el objetivo
+     evaluado al costo de 1 noche (95.33 en la 902, con margen 25% sobre un
+     costo de 1 noche de 71.50) — usarlo como vara fija para CUALQUIER duracion
+     repetia exactamente el mismo bug que el costo puro: el margen es un
+     PORCENTAJE (confirmado por el dueño, "es un porcentaje para cualquier
+     duracion"), asi que el 25% debe aplicarse sobre el costo REAL de esa
+     duracion (`q.cost`), no sobre el costo de 1 noche. Con el respaldo real de
+     la 902 esto disparaba 7 alertas DURACIÓN falsas (Airbnb 4/7/14/21/28/35
+     noches, Expedia 7 noches) que en realidad SI superan su objetivo real —
+     ver tests/alertas-objetivo-por-duracion.test.js. `netForNight(q.cost)`
+     (src/domain/costs.js) es la fuente unica que reemplaza `model.net` aqui. */
   channels.forEach(c=>{
     discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
       const q = quoteScenario({chId:c.id, days:45, nights:d.minN||1, price:model.effBase}, config);
       const netLos = q.payout;
+      const objetivoLos = netForNight(q.cost);
       if(netLos < q.cost-0.5)
         A.push({lvl:'bad',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$c(netLos, config.currency)} por noche, bajo el costo real de esa reserva (${f$c(q.cost, config.currency)} por noche). Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
-      else if(netLos < model.net)
-        A.push({lvl:'warn',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos, config.currency)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net, config.currency)}. Válido si priorizas ocupación larga; revísalo si no.`});
+      else if(netLos < objetivoLos)
+        A.push({lvl:'warn',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos, config.currency)}/noche — cubre costo pero queda bajo tu objetivo para esa duración (${f$(objetivoLos, config.currency)}/noche). Válido si priorizas ocupación larga; revísalo si no.`});
     });
   });
   /* Fase 3 de usabilidad (ago 2026) — alerta ESTADÍA CORTA. Caso real que la
@@ -174,15 +192,24 @@ export function buildAlerts(rawConfig, model){
      `q.cost` — el costo de ESE escenario concreto que quoteScenario() ya
      devuelve — nunca contra `model.cost` (que es el costo "genérico", no el
      de una reserva de 1/2 noches en particular; el punto de esta alerta es
-     justamente que el costo por noche CAMBIA con la duración). */
+     justamente que el costo por noche CAMBIA con la duración).
+
+     Fix sep 2026 ("objetivo por duracion"): igual que el bloque DURACIÓN de
+     arriba, la rama "warn" (cubre costo pero bajo objetivo) ya NO compara
+     contra `model.net` a secas — usa `netForNight(q.cost)`, el objetivo
+     calculado sobre el costo REAL de esa duración. Para 1 noche esto es
+     matemáticamente idéntico a `model.net` (mismo costo, mismo margen: cero
+     regresión), pero para 2 noches (costo por noche distinto en cuanto el
+     aseo/turno se diluye entre 2 en vez de 1) ya no puede quedar comparado
+     contra el objetivo de 1 noche. */
   channels.forEach(c=>{
     const q1 = quoteScenario({chId:c.id, days:45, nights:1, price:model.effBase}, config);
     let oneNightBad = false;
     if(q1.payout < q1.cost-0.5){
       A.push({lvl:'bad', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 1 noche netea ${f$c(q1.payout, config.currency)}, pero el costo real de esa noche es ${f$c(q1.cost, config.currency)} — el aseo, la lavandería y los insumos se pagan completos aunque el huésped se quede una sola noche. Estás perdiendo plata en reservas cortas de este canal.`});
       oneNightBad = true;
-    } else if(q1.payout < model.net){
-      A.push({lvl:'warn', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 1 noche netea ${f$c(q1.payout, config.currency)} — cubre el costo de esa noche (${f$c(q1.cost, config.currency)}) pero queda bajo tu objetivo de ${f$(model.net, config.currency)}.`});
+    } else if(q1.payout < netForNight(q1.cost)){
+      A.push({lvl:'warn', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 1 noche netea ${f$c(q1.payout, config.currency)} — cubre el costo de esa noche (${f$c(q1.cost, config.currency)}) pero queda bajo tu objetivo para esa duración (${f$(netForNight(q1.cost), config.currency)}).`});
     }
     /* Si 1 noche ya dio "bad", no se agrega también la de 2 noches para el
        mismo canal — se reporta solo el peor caso, para no llenar la
@@ -191,8 +218,8 @@ export function buildAlerts(rawConfig, model){
     const q2 = quoteScenario({chId:c.id, days:45, nights:2, price:model.effBase}, config);
     if(q2.payout < q2.cost-0.5){
       A.push({lvl:'bad', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 2 noches netea ${f$c(q2.payout, config.currency)}, pero el costo real de esas 2 noches es ${f$c(q2.cost, config.currency)} — el aseo, la lavandería y los insumos se pagan completos sin importar que sean pocas noches. Estás perdiendo plata en reservas cortas de este canal.`});
-    } else if(q2.payout < model.net){
-      A.push({lvl:'warn', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 2 noches netea ${f$c(q2.payout, config.currency)} — cubre el costo de esas 2 noches (${f$c(q2.cost, config.currency)}) pero queda bajo tu objetivo de ${f$(model.net, config.currency)}.`});
+    } else if(q2.payout < netForNight(q2.cost)){
+      A.push({lvl:'warn', tag:'ESTADÍA CORTA', tab:chTab[c.id], msg:`${c.name}: una reserva de 2 noches netea ${f$c(q2.payout, config.currency)} — cubre el costo de esas 2 noches (${f$c(q2.cost, config.currency)}) pero queda bajo tu objetivo para esa duración (${f$(netForNight(q2.cost), config.currency)}).`});
     }
   });
   if(model.floor>model.base&&model.base>0)

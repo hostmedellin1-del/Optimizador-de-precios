@@ -14,6 +14,7 @@ import {quoteScenario} from './quote.js';
 import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays} from './pricelabs-lm.js';
 import {fP, f$} from './format.js';
+import {netForNightFn} from './costs.js';
 
 /* config = {channels, discounts, windows, ceilings, ...costBreakdown/fixedCost/
    varCost/lmConfig (todo lo que necesita quoteScenario)}
@@ -109,6 +110,22 @@ export function buildMatrixVerdict({model, ceil, worstTecho, perChannel, currenc
   const lmCaveat = worst.q.lmBlocked
     ? ` (asume LM ${worst.q.lmMode==='ceiling_auto'?'automático':'"'+worst.q.lmMode+'"'} sin verificar — el número real podría variar, confírmalo en Resumen → "Last-Minute de PriceLabs")`
     : '';
+  /* Fix sep 2026 ("objetivo por duracion", misma raiz que "BAJO COSTO" arriba
+     y que el fix equivalente en alerts.js): "CUBRE COSTO, BAJO OBJETIVO"
+     comparaba `worstAsNet.netV` (el payout del escenario del canal mas
+     ajustado, que puede ser de CUALQUIER duracion) contra `model.net` — el
+     objetivo evaluado SIEMPRE al costo de 1 noche. El margen es un
+     PORCENTAJE que debe aplicarse sobre el costo REAL de ESE escenario
+     (`worstAsNet.costV`), no sobre el de 1 noche.
+     El margen se recupera del propio `model` (`model.net = model.cost/(1-m/100)`,
+     ver engine.js) en vez de requerir un parametro nuevo en la firma: esta
+     funcion no recibe `config`, y derivarlo de `model.cost`/`model.net` es
+     matematicamente exacto (y evita que buildMatrixVerdict() necesite un
+     segundo canal de entrada del mismo margen que ya viaja implicito en el
+     modelo) — si `model.cost` es 0, el margen no importa: `netForNight(0)`
+     da 0 para cualquier margen valido. */
+  const marginPct = model.cost>0 ? 100*(1-model.cost/model.net) : 0;
+  const netForNight = netForNightFn(marginPct);
   let vLvl, vTag, vMsg;
   if(breach){
     vLvl='bad'; vTag='TECHO EXCEDIDO';
@@ -118,9 +135,9 @@ export function buildMatrixVerdict({model, ceil, worstTecho, perChannel, currenc
        `model.cost` (el costo de 1 noche) — ver el comentario de arriba. */
     vLvl='bad'; vTag='BAJO COSTO';
     vMsg=`Con ${fP(lm)} de LM${minCapNote}, ${worstAsNet.c.name} te dejaría ${f$(worstAsNet.netV,currency)} en su peor escenario (${worst.night} noche${worst.night===1?'':'s'}) — menos que el costo real de esa reserva (${f$(worstAsNet.costV,currency)} por noche). Súbele el Offset a ${worstAsNet.c.name} en su pestaña, o baja su descuento nativo.${lmCaveat}`;
-  } else if(worstAsNet.netV<model.net){
+  } else if(worstAsNet.netV<netForNight(worstAsNet.costV)){
     vLvl='warn'; vTag='CUBRE COSTO, BAJO OBJETIVO';
-    vMsg=`Todos los canales quedan sobre tu costo, pero ${worstAsNet.c.name} solo te deja ${f$(worstAsNet.netV,currency)} — por debajo de tu margen objetivo (${f$(model.net,currency)}). Revisa su Offset si quieres acercarlo.${lmCaveat}`;
+    vMsg=`Todos los canales quedan sobre tu costo, pero ${worstAsNet.c.name} solo te deja ${f$(worstAsNet.netV,currency)} en su peor escenario (${worst.night} noche${worst.night===1?'':'s'}) — por debajo de su margen objetivo para esa duración (${f$(netForNight(worstAsNet.costV),currency)}). Revisa su Offset si quieres acercarlo.${lmCaveat}`;
   } else if(worst.q.lmBlocked){
     vLvl='warn'; vTag='LM SIN VERIFICAR — NO USAR COMO RECOMENDACIÓN';
     vMsg = `Esta ventana solo sale "rentable" asumiendo Last-Minute ${worst.q.lmMode==='ceiling_auto'
