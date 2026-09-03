@@ -10,9 +10,21 @@
    (~USD 92 en PriceLabs), la señal de que algo estaba mal.
 
    Fix: `cost` ahora acepta también una FUNCION `(nights)=>number` (el costo
-   REAL de esa duración, via costForNightFn() en costs.js) — con eso, el Piso
-   corregido da ≈108.18 (Expedia, día 0, 1 noche). Ver worstcase.js y
-   engine.js para el detalle del fix. */
+   REAL de esa duración, via costForNightFn() en costs.js) — con eso, el peor
+   caso pasó a ser Expedia, día 0, 1 noche. Ver worstcase.js y engine.js para
+   el detalle del fix.
+
+   SEGUNDA CORRECCIÓN (sep 2026, fix Piso vs Min Price): aquel fix dejó el Piso
+   en ≈108.18, un número que seguía siendo imposible — quedaba POR ENCIMA del
+   Base Price real de PriceLabs para esta unidad (92), y un Min mayor que el
+   Base no existe. La causa era otra: el `floor` incluía el factor del
+   Last-Minute porcentual en el denominador, o sea calculaba "el precio mínimo
+   ANTES del LM". El Min Price de PriceLabs es un piso sobre el precio DESPUÉS
+   del LM porcentual ("Percentage-based last-minute discounts will still respect
+   the Minimum Price as a floor"). Sacando ese factor, el Piso da 77.89 —
+   exactamente 108.1760 x 0.72, donde 28% es el LM gradual del día 0 — y queda
+   por debajo del Base (92), como tiene que ser. Ver el docblock de
+   src/domain/worstcase.js para las tres verificaciones independientes. */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {compute} from '../src/domain/engine.js';
@@ -83,28 +95,55 @@ test('costos reales de la 902: reservationCostBreakdown confirma 71.50/noche a 1
   assert.ok(Math.abs(reservationCostBreakdown(cb, 27).perNight - 42.61111111111111) < 1e-9);
 });
 
-test('CASO OBLIGATORIO 902 — Piso corregido: ≈108.18 (Expedia, 1 noche), YA NO ≈138.69 (Airbnb, 27 noches)', () => {
+test('CASO OBLIGATORIO 902 — Piso/Min Price corregido: 77.89 (Expedia, día 0, 1 noche); NI 138.69 (costo fijo) NI 108.18 (LM en el denominador)', () => {
   const config = unit902Config();
   const model = compute(config);
 
   assert.equal(model.costBlocked, false, 'los costos detallados estan confirmados, no deben bloquear');
   assert.equal(model.lmBlocked, false, 'LM gradual verificado no deben bloquear');
 
-  // El numero VIEJO (bug, costo fijo de 1 noche aplicado a 27 noches) ya NO debe salir.
-  assert.ok(Math.abs(model.floor - 138.68912932933407) > 1, `el Piso NO debe seguir dando el numero viejo inflado (~138.69) — dio ${model.floor}`);
+  // Numero VIEJO #1 (costo fijo de 1 noche aplicado a 27 noches) — no debe volver.
+  assert.ok(Math.abs(model.floor - 138.68912932933407) > 1, `el Piso NO debe volver al numero de la primera version (~138.69) — dio ${model.floor}`);
+  // Numero VIEJO #2 (LM porcentual dentro del denominador) — tampoco.
+  assert.ok(Math.abs(model.floor - 108.1759864439603) > 1, `el Piso NO debe volver al numero con LM en el denominador (~108.18) — dio ${model.floor}`);
 
-  // El numero CORREGIDO: Expedia, 1 noche, ~108.18.
+  // El numero CORREGIDO: Expedia, dia 0, 1 noche, 77.89.
   assert.equal(model.floorChId, 'expedia', `el canal que fija el Piso corregido debe ser Expedia, no ${model.floorChId}`);
   assert.ok(model.floorCh.includes('1 noche'), `el motivo del Piso debe citar 1 noche, no una estadia larga — dio "${model.floorCh}"`);
-  assert.ok(Math.abs(model.floor - 108.1759864439603) < 0.05, `el Piso corregido debe ser ~108.18 — dio ${model.floor}`);
+  assert.ok(Math.abs(model.floor - 77.8867102396514) < 0.005, `el Piso corregido debe ser 77.89 — dio ${model.floor}`);
+
+  /* Relacion exacta con el numero viejo: el LM gradual de la 902 es 28% en el
+     dia 0 (maxPct 28 sobre 6 dias), y ese era justo el factor que sobraba en el
+     denominador. No es una coincidencia ni un ajuste a ojo. */
+  assert.ok(Math.abs(model.floor - 108.1759864439603*(1-0.28)) < 1e-9,
+    'el Piso corregido debe ser EXACTAMENTE el viejo x (1 - LM del peor dia)');
+
+  /* SANIDAD ESTRUCTURAL — la señal que destapó el bug. El Base Price real de
+     PriceLabs para esta unidad es 92; un Min Price por encima del Base es
+     imposible (PriceLabs nunca publicaría un precio que su propio piso rechaza).
+     108.18 rompía esto; 77.89 no. */
+  const BASE_PRICELABS_REAL_902 = 92;
+  assert.ok(model.floor < BASE_PRICELABS_REAL_902,
+    `el Min Price (${model.floor.toFixed(2)}) debe quedar POR DEBAJO del Base de PriceLabs (${BASE_PRICELABS_REAL_902})`);
 });
 
-test('CASO OBLIGATORIO 902 — por canal: Airbnb 91.02 / Booking 90.92 / Expedia 108.18 / Directo 103.93 (el maximo, Expedia, protege)', () => {
+test('CASO OBLIGATORIO 902 — precio post-LM requerido por canal: Airbnb 77.10 (día 60) / Booking 65.46 / Expedia 77.89 / Directo 74.83', () => {
   const config = unit902Config();
   const {channels, discounts, windows, ceilings, lmConfig, costBreakdown} = config;
   const costForNight = costForNightFn(costBreakdown, true, 71.5);
 
-  const expected = {airbnb:91.01783949654133, booking:90.91729831936514, expedia:108.1759864439603, direct:103.93046107331823};
+  /* Todos son el numero viejo x 0.72 (el LM del dia 0). Airbnb es el unico que
+     ademas CAMBIA de escenario: con el LM fuera del denominador, su peor caso
+     deja de ser el dia 0 y pasa a ser el dia 60 — el early-bird de 2 meses
+     (ab_eb2, 15%) es un descuento mas profundo que cualquier cosa que Airbnb
+     aplique en el dia 0, y antes quedaba tapado porque el LM solo existe cerca
+     del check-in. 91.0178 x 0.72 = 65.53 (dia 0) < 77.0975 (dia 60). */
+  const expected = {
+    airbnb: {p:77.09746404412913, day:60, night:1},
+    booking:{p:65.4604547899429,  day:0,  night:1},
+    expedia:{p:77.8867102396514,  day:0,  night:1},
+    direct: {p:74.82993197278913, day:0,  night:1}
+  };
   for(const c of channels){
     const {worstFactor, worstFeePerNight, worstDay, worstNight, pf} = worstScenarioFactor({
       chId:c.id, channels, discounts, windows, ceilings, lmConfig, cost: costForNight
@@ -113,9 +152,9 @@ test('CASO OBLIGATORIO 902 — por canal: Airbnb 91.02 / Booking 90.92 / Expedia
     const p = worstFactor>0
       ? (worstFeePerNight>0 ? Math.max(0, 71.5/pf-worstFeePerNight)/worstFactor : 71.5/(worstFactor*pf))
       : Infinity;
-    assert.equal(worstDay, 0, `${c.id}: dia critico esperado 0, dio ${worstDay}`);
-    assert.equal(worstNight, 1, `${c.id}: noche critica esperada 1, dio ${worstNight}`);
-    assert.ok(Math.abs(p - expected[c.id]) < 0.05, `${c.id}: precio requerido esperado ~${expected[c.id]}, dio ${p}`);
+    assert.equal(worstDay, expected[c.id].day, `${c.id}: dia critico esperado ${expected[c.id].day}, dio ${worstDay}`);
+    assert.equal(worstNight, expected[c.id].night, `${c.id}: noche critica esperada ${expected[c.id].night}, dio ${worstNight}`);
+    assert.ok(Math.abs(p - expected[c.id].p) < 0.005, `${c.id}: precio requerido esperado ${expected[c.id].p}, dio ${p}`);
   }
 });
 
@@ -136,14 +175,27 @@ test('no-regresion — worstScenarioFactor(cost:numero) es identico a worstScena
   }
 });
 
-test('no-regresion — sin cost (undefined), el comportamiento de siempre (busqueda solo por factor) no cambia', () => {
+test('sin cost (undefined), el peor factor es offset x nativo OTA — el LM porcentual ya NO entra', () => {
   const channels = freshChannels();
-  const discounts = freshDiscounts();
   const windows = freshWindows();
   const ceilings = defaultCeilings(windows);
   const lmConfig = {...defaultLmConfig(), mode:'flat', verified:true, flat:{pct:50, fromDay:0, toDay:3, on:true}};
-  const result = worstScenarioFactor({chId:'direct', channels, discounts, windows, ceilings, lmConfig});
-  assert.equal(result.worstFactor, 0.5);
+
+  /* Directo sin ningún descuento nativo activo y sin offset: el peor factor es 1.
+     Antes de sep 2026 este test fijaba 0.5 — el LM plano de 50% entraba en el
+     factor. Ya no: el resultado de worstScenarioFactor() es el Min Price, y
+     PriceLabs topa contra el Min el precio que ya trae el LM porcentual adentro
+     (ver src/domain/worstcase.js). */
+  const sinNativos = freshDiscounts().map(d=>({...d, on:false}));
+  const soloLm = worstScenarioFactor({chId:'direct', channels, discounts:sinNativos, windows, ceilings, lmConfig});
+  assert.equal(soloLm.worstFactor, 1, 'un LM porcentual de 50% no puede mover el factor del Min Price');
+
+  /* Y el factor SÍ sigue reaccionando a un descuento nativo real del canal:
+     Last-minute DIRECTO (di_lm, un descuento del canal, no de PriceLabs) al 40%
+     en días 0-3 deja el factor en 0.6. */
+  const conNativo = sinNativos.map(d=>d.id==='di_lm' ? {...d, on:true, pct:40} : d);
+  const result = worstScenarioFactor({chId:'direct', channels, discounts:conNativo, windows, ceilings, lmConfig});
+  assert.ok(Math.abs(result.worstFactor - 0.6) < 1e-12, `factor esperado 0.6, dio ${result.worstFactor}`);
   assert.equal(result.worstDay, 0);
   assert.equal(result.worstNight, 1);
 });

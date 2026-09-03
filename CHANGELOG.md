@@ -5,6 +5,86 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.26.0] — El Piso ES el Min Price de PriceLabs (y el Min topa DESPUÉS del Last-Minute)
+
+**Corregido — el `floor` incluía el factor del Last-Minute porcentual en su denominador.**
+La app documentaba el `floor` de `compute()` como "el Min Price de PriceLabs", pero
+`worstScenarioFactor()` (`src/domain/worstcase.js`) calculaba
+`combinedFactor = (1-lmPct/100)*(1+offset)*nativoOTA`. Con el LM ahí dentro, el número que
+salía era el precio mínimo **ANTES** del descuento de última hora — y el Min Price de
+PriceLabs es un piso sobre el precio **DESPUÉS** de ese descuento. Consecuencia: el Piso
+sobreestimaba el Min por exactamente `1/(1-LM_del_peor_día)`.
+
+La señal que lo destapó: en la unidad 902 el Piso daba **USD 108,18** contra un Base real
+en PriceLabs de **92**. Un Min por encima del Base es estructuralmente imposible.
+
+Verificado de tres formas independientes antes de tocar código:
+1. Base de conocimiento oficial de PriceLabs, textual: *"only a Fixed Last-Minute Price can
+   override the Minimum Price and push the final price below it. Percentage-based
+   last-minute discounts will still respect the Minimum Price as a floor."*
+2. Precios diarios reales del listing 15195 (Base 92): del día 7 en adelante publica 86-90;
+   en los días 0-6 publica 65-83 — el precio publicado ya trae el LM adentro.
+3. Arquitectura confirmada por Dani: PriceLabs entrega a Kunas el precio de la noche ya
+   topado contra el Min; Kunas le suma el % (Offset) de cada OTA; recién ahí la OTA aplica
+   sus descuentos nativos y su comisión.
+
+Cadena real que el motor modela ahora:
+`precio_publicado = max(Min, precio_con_LM) → × (1+offset) → × nativoOTA → + aseo → × payoutFactor`
+
+Piso corregido de la 902: **USD 77,89** (Expedia, día 0, 1 noche) = 108,18 × 0,72, donde
+28 % es el LM gradual del día 0. Por canal, precio post-LM requerido: Airbnb **77,10**
+(día 60 — el peor caso de Airbnb deja de ser el día 0 y pasa a ser su early-bird de 2
+meses, que antes quedaba tapado por el LM), Booking **65,46**, Expedia **77,89**,
+Directo **74,83**. Reproducido contra el backup real (`revenue-ops-backup-2026-08-14.json`),
+no solo contra el catálogo de los tests. El Min queda ahora por debajo del Base de
+PriceLabs (92), como tiene que ser.
+
+**Sin cambios — el modo `fixed_price`.** Un Fixed Last-Minute Price es el único LM que sí
+puede publicar por debajo del Min. La rama de `priceOverride`/`infeasible` de
+`worstScenarioFactor()` queda exactamente igual: son escenarios que ningún Min arregla y
+se siguen reportando como error bloqueante, no como un Piso más alto.
+
+**Agregado — `config.minPrice` en `quoteScenario()`.** El pipeline de cotización bajaba el
+precio con el LM sin topar contra ningún Min, así que cotizar exactamente al Piso en el
+día 0 mostraba pérdida y la app se contradecía a sí misma. Ahora
+`priceAfterLm = max(minPrice, price*(1-lm/100))` para los modos porcentuales;
+`fixed_price` queda sin topar. Se eligió un campo propio en vez de reusar `config.floor`
+porque `floor` ya tiene otro rol (el umbral de la advertencia "tu precio LM fijo está bajo
+el Piso"): mezclar un umbral de texto con un tope matemático hace imposible saber cuál
+pretendía cada caller. `minPrice` ausente/0 ⇒ sin tope, cero regresión.
+
+El tope se propagó a todo lo que cotiza: Simulador (aparece como un paso propio del
+waterfall, "↑ Min Price de PriceLabs"), Matriz, alertas PISO/DURACIÓN/ESTADÍA CORTA y el
+laboratorio de promociones — todos reciben `minPrice: model.floor` desde `index.html`, así
+que Piso, Simulador y alertas dicen lo mismo. El Min REAL de la cuenta (snapshot de
+`pricelabs-sync.js`) sigue sin entrar al motor de cotización a propósito: puede estar
+viejo, y ya existe un aviso dedicado (`minBelowFloor`) cuando no coincide con el Piso.
+
+**Corregida la interpretación de jul 2026, sin borrarla.** El docblock de `worstcase.js`
+describía un "fix CRÍTICO" que metió el LM en el denominador del Piso a partir de este
+caso: Directo, costo 100, margen 0, LM plano 50 % verificado en días 0-3, Piso 109,89,
+cotizar ahí en el día 0 netea 50. La premisa (que el LM puede empujar por debajo del Min)
+era falsa; lo que ese caso demostraba de verdad era el hueco del tope. Con `minPrice`
+puesto, el mismo escenario netea exacto 100 con el Piso original de 109,89 — sin inflarlo
+a 219,78. La historia queda escrita en `worstcase.js`, `tests/fase-lm-floor.test.js` y
+CLAUDE.md § 2, corregida y explicada, no eliminada.
+
+**Tests pinneados al comportamiento viejo — recalculados, no forzados.** Cada número nuevo
+se rehizo a mano fuera del motor antes de escribirlo, y el porqué quedó en el propio test:
+`tests/floor-cost-por-noche.test.js` 108,18 → **77,89**;
+`tests/floor-cleanfee.test.js` 91,02 → **55,70** y el caso legado 140,22 → **85,82**;
+`tests/long-stay-lm.test.js` 103,94 → **84,81** (el peor caso pasa a ser la estancia
+larga); `tests/fase-base-property.test.js` pasa a afirmar que el LM porcentual **no** mueve
+el Piso (sí mueve el Base) y que el Min queda por debajo del Base.
+Nuevo `tests/piso-vs-min-pricelabs.test.js` (10 casos): los 4 modos porcentuales no mueven
+el Piso, `fixed_price` sigue generando `infeasible`, el tope del Min dentro de
+`quoteScenario()` (incluido "sin `minPrice` no hay tope") y la propiedad de coherencia
+"cotizar al Piso nunca netea bajo costo".
+
+**Verificación**: 306/306 unitarios, lint limpio, 62/62 e2e, más el chequeo end-to-end
+contra el backup real de la 902 (Piso 77,89 · peor caso Expedia día 0 / 1 noche · Min por
+debajo del Base 92 · cotizar al Piso netea exacto el costo 71,50).
+
 ## [0.25.0] — Corrección crítica del Piso + aseo fijo en Booking y Expedia
 
 **Corregido — el Piso usaba el costo de 1 noche para CUALQUIER duración de la búsqueda

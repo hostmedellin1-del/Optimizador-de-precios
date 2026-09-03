@@ -61,6 +61,15 @@ export function validatePricelabsSyncFile(raw){
   return {valid:errors.length===0, errors};
 }
 
+/* `sync.min` (el Min Price REAL de la cuenta de PriceLabs) contra `model.floor`
+   (el Min Price que esta app recomienda) es una comparación válida — pero solo
+   desde el fix de sep 2026. Antes NO lo era: `model.floor` incluía el factor del
+   Last-Minute porcentual en su denominador, o sea era "el precio mínimo ANTES del
+   LM", mientras que el Min Price de PriceLabs es un piso sobre el precio DESPUÉS
+   del LM. Se estaban restando dos números de momentos distintos de la noche, y la
+   app reportaba "tu Min está por debajo de tu piso real" cada vez que había un LM
+   profundo configurado (unidad 902: sync.min razonable vs floor 108.18, con un
+   Base real de 92). Ver src/domain/worstcase.js. */
 export function comparePricelabsSync(model, sync){
   if(!sync) return null;
   const staleDays = Math.floor((Date.now()-Date.parse(sync.fetchedAt))/86400000);
