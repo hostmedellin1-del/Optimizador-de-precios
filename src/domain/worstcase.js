@@ -163,5 +163,17 @@ export function worstScenarioFactor({chId, channels, discounts, windows, ceiling
     });
   });
   if(worstFactor===Infinity) worstFactor=0; // todo el dominio era precio-fijo inviable
-  return {worstFactor, worstFeePerNight, worstDay, worstNight, infeasible, pf};
+  /* `worstRequiredPrice` (solo cuando se paso `cost`): el precio que ese peor
+     escenario EXIGE, ya calculado arriba con el costo real de SU duracion. Se
+     expone para que compute() (engine.js) no pueda volver a divergir de esta
+     busqueda — el bug de sep 2026 fue exactamente eso: la seleccion usaba el
+     costo por duracion y el valor final volvia a dividir el costo de 1 noche.
+     tests/floor-cost-por-noche.test.js pinnea que compute().floor coincide con
+     el maximo de este campo entre canales.
+     `null` cuando no se paso `cost` (no hay precio que calcular) y tambien
+     cuando TODO el dominio resulto ser precio-fijo inviable (worstRequiredPrice
+     seguiria en -Infinity, un valor que no significa nada para un caller — ese
+     caso ya se reporta por `infeasible` y engine.js lo trata como Infinity). */
+  const hasRequiredPrice = hasCost && worstRequiredPrice > -Infinity;
+  return {worstFactor, worstFeePerNight, worstDay, worstNight, worstRequiredPrice: hasRequiredPrice ? worstRequiredPrice : null, infeasible, pf};
 }

@@ -189,7 +189,7 @@ export function extraCommPct(c){
 }
 
 /* Tarifa de aseo fija por reserva, diluida por noche según la estadía dada.
-   Devuelve 0 para canales sin aseo (Directo no tiene este concepto).
+   Devuelve 0 para cualquier canal que no declare un campo de aseo.
    Airbnb: reusa la regla 1-2 noches / 3+ del catálogo (`cleanFeeShort`/`cleanFeeLong`).
    Booking/Expedia (ago 2026, confirmado por Dani revisando sus propias Extranets):
    ambos cobran un aseo fijo "por estancia"/"per stay" — una sola vez por reserva,
@@ -200,14 +200,21 @@ export function extraCommPct(c){
    Igual que Airbnb, ninguno de los dos lo descuenta con sus promociones nativas, pero
    sí paga comisión sobre él — eso sale solo del resto del pipeline (quote.js suma el
    aseo DESPUÉS de los descuentos nativos y ANTES de la comisión), sin tocar ninguna
-   otra fórmula. */
+   otra fórmula.
+   Directo (sep 2026, a pedido del dueño: "dame un espacio para poder subir esos
+   items de aseo para cada OTA"): mismo campo plano `cleanFee` que Booking y
+   Expedia. Directo no tiene comisión de OTA, pero sí `bankFeePct`, y el aseo
+   pasa por `payoutFactor()` igual que en los demás — NO tiene ninguna regla
+   propia. Antes devolvía 0 siempre; ese 0 era la razón real de que Directo
+   fuera casi siempre el canal que MANDA el Piso (los otros tres cobran aseo y
+   él no). Sigue arrancando en 0 hasta que el dueño cargue el valor real. */
 export function cleanFeePerNight(c, nights){
   const n = Math.max(1, nights||1);
   if(c.id==='airbnb'){
     const feeTotal = n<=2 ? (parseFloat(c.cleanFeeShort)||0) : (parseFloat(c.cleanFeeLong)||0);
     return feeTotal/n;
   }
-  if(c.id==='booking' || c.id==='expedia'){
+  if(c.id==='booking' || c.id==='expedia' || c.id==='direct'){
     return (parseFloat(c.cleanFee)||0)/n;
   }
   return 0;
@@ -321,11 +328,28 @@ export function compute(config){
         chId: c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: costForNight
       });
       lmInfeasible.push(...infeasible);
-      /* Conserva la aritmética histórica cuando el aseo es 0: además de ser
+      /* Fix sep 2026 (segunda mitad del fix "el Piso usaba el costo de 1 noche
+         para CUALQUIER duración"): el VALOR usa el costo real de `worstNight`,
+         no `cost` (que es siempre el costo de UNA noche).
+         La primera mitad de ese fix arregló la SELECCIÓN — worstScenarioFactor()
+         ya recibe `costForNight` y elige el peor escenario con el costo real de
+         cada duración — pero este paso siguiente se quedó dividiendo el costo de
+         1 noche. Cuando el peor escenario caía en una estadía larga, el Piso se
+         inflaba: unidad 902 con el aseo corto de Airbnb en 30, el peor caso era
+         Airbnb día 0 / 28 noches y el Piso daba 113.22 evaluando 71.50/noche
+         (costo de 1 noche) en vez de los 42.57/noche reales de 28 noches; el
+         número correcto es 74.83 (lo fija Directo, día 0, 1 noche).
+         Señal de que estaba mal: subir una tarifa de aseo — que es INGRESO — no
+         puede subir el Piso jamás (ver tests/floor-aseo-monotonia.test.js).
+         `costForNight(1)` es idénticamente `cost` (misma expresión, ver
+         costForNightFn en costs.js), así que los escenarios de 1 noche — el
+         estado real de producción de la 902 — no cambian ni un bit.
+         Conserva la aritmética histórica cuando el aseo es 0: además de ser
          algebraicamente idéntica, evita cambiar ni un bit de los resultados
          heredados por redondeo de punto flotante. */
+      const costAtWorst = costForNight(worstNight);
       const p = worstFactor>0
-        ? (worstFeePerNight>0 ? Math.max(0, cost/pf-worstFeePerNight)/worstFactor : cost/(worstFactor*pf))
+        ? (worstFeePerNight>0 ? Math.max(0, costAtWorst/pf-worstFeePerNight)/worstFactor : costAtWorst/(worstFactor*pf))
         : Infinity;
       if(p>floor){floor=p;floorChId=c.id;floorCh=c.name+' (peor escenario real: día '+worstDay+', '+worstNight+' noche'+(worstNight===1?'':'s')+(worstFeePerNight>0?', aseo diluido':'')+(extraCommPct(c)>0?' + comisión extra '+fP(extraCommPct(c)):'')+(off!==0?' + offset '+fP(off*100):'')+')';}
     } else {

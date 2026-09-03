@@ -485,9 +485,12 @@ daba 0% cuando el offset REAL necesario era +46.5%.
   Esa asimetría Piso-sin-LM / Base-con-LM es deliberada y es lo que hace que el Min quede
   por debajo del Base; no "unificarlas" sin releer la sección 2.
 - `suggestedOffset(chId, effBase, netObjetivo)` — ver sección 2. Usa `state.avgNights`.
-- `cleanFeePerNight(c, nights)` — tarifa de aseo de Airbnb (fija por reserva) diluida por
-  noche según la duración dada; devuelve 0 para canales sin aseo. La usan `suggestedOffset`,
-  el "neto estimado" de la pestaña de canal, la alerta DURACIÓN, y el Simulador.
+- `cleanFeePerNight(c, nights)` — tarifa de aseo fija por reserva, diluida por noche según
+  la duración dada. **Los CUATRO canales la tienen** (sep 2026): Airbnb con su split
+  `cleanFeeShort`/`cleanFeeLong`; Booking, Expedia y Directo con un único `cleanFee`.
+  Devuelve 0 para cualquier canal que no declare el campo o lo tenga en 0. La usan
+  `suggestedOffset`, el "neto estimado" de la pestaña de canal, la alerta DURACIÓN, el
+  Simulador, `worstScenarioFactor()` y el panel "Tarifas de aseo por canal" de Resumen.
 - Tarifa de aseo de Airbnb (`cleanFeeShort`/`cleanFeeLong` en `state.channels` — solo el
   canal `airbnb` tiene estos campos). Fija por reserva, no por noche: 1–2 noches usa
   `cleanFeeShort`, 3+ usa `cleanFeeLong`. Airbnb no la descuenta con los promos de noche,
@@ -636,6 +639,19 @@ número global quede bloqueado — no solo el canal que hoy resulta ser el más 
   hueco real que el caso de jul 2026 destapaba. Fix: `config.minPrice` (`src/domain/quote.js`),
   `priceAfterLm = max(minPrice, price*(1-lm/100))` para modos porcentuales; `fixed_price`
   sin topar. No reusar `config.floor` para esto: son dos roles distintos, ver sección 2.
+- **El VALOR del Piso dividía el costo de 1 noche aunque el peor escenario fuera de más
+  noches** (sep 2026 — segunda mitad del fix "el Piso usaba el costo de 1 noche para
+  CUALQUIER duración"). La SELECCIÓN ya usaba `costForNight`; el paso siguiente en
+  `compute()` volvía a usar `cost`. Debe usar `costForNight(worstNight)`. La propiedad que
+  lo delata, y que ahora es test: **subir una tarifa de aseo (que es INGRESO) nunca puede
+  subir el Piso**. Ver la ronda de sep 2026 al final de este archivo.
+- **Las alertas PISO/DURACIÓN y el veredicto de la Matriz comparaban contra `model.cost`
+  (1 noche) escenarios de 27/34 noches** — misma raíz. Deben comparar contra `q.cost`
+  (el costo de ESE escenario, que `quoteScenario()` ya devuelve), como siempre hizo la
+  alerta ESTADÍA CORTA. Y el peor caso por canal debe elegirse por MARGEN
+  (`payout - cost`), no por menor payout: con costo constante son la misma elección, con
+  desglose detallado no, y elegir por payout puede esconder una estadía corta que sí
+  vende bajo costo.
 
 ---
 
@@ -2088,3 +2104,275 @@ sale solo. Verificado con los números reales: a 1 noche, `cleanFeePerNight` da 
 35 (Expedia) y 37,5 (Booking); a 4 noches, 8,75 y 9,375. Tests nuevos:
 `tests/cleanfee-booking-expedia.test.js` (15). **290/290 unitarios, lint limpio, 62/62
 e2e, sin regresión** (Airbnb no cambió ni un centavo).
+
+---
+
+## Ronda sep 2026 — el VALOR del Piso por duración, alertas falsas, y el aseo de los 4 canales
+
+Rama: `feat/aseo-por-canal`. Dos cosas independientes en una pasada: un bug del motor y
+una mejora de UI pedida por el dueño.
+
+### 1. Bug — el VALOR del Piso usaba el costo de 1 noche aunque el peor caso fuera más largo
+
+**Es la segunda mitad del fix de sep 2026 que ya está en la sección 6** ("el Piso usaba el
+costo de 1 noche para CUALQUIER duración"). Aquella ronda arregló la **selección**:
+`worstScenarioFactor()` (`worstcase.js`) recibe `cost: costForNight` y elige el peor
+escenario con el costo real de cada duración. Pero el paso siguiente, en `compute()`
+(`engine.js`, el cálculo del precio requerido), seguía dividiendo `cost` — el costo de UNA
+noche — aunque el escenario elegido fuera de 28.
+
+**Reproducción (unidad 902, respaldo real `revenue-ops-backup-2026-08-14.json`, con
+Expedia 35 y Booking 37,50 confirmados por el dueño):**
+
+| `airbnb.cleanFeeShort` | app con el bug | correcto | peor caso correcto |
+|---|---|---|---|
+| 20 | 77,10 | **77,10** | Airbnb, día 60, 1 noche |
+| 25 | 74,83 | **74,83** | Directo, día 0, 1 noche |
+| 30 | **113,22** ✗ | **74,83** | Directo, día 0, 1 noche |
+
+El 113,22 era Airbnb día 0 / 28 noches evaluado con 71,50/noche (costo de 1 noche) en vez
+de los 42,57/noche reales de 28 noches.
+
+**Fix**: `const costAtWorst = costForNight(worstNight)` en `compute()`. `costForNight(1)` es
+idénticamente `cost` (misma expresión, ver `costForNightFn()` en `costs.js`), así que
+**ningún escenario de 1 noche cambia ni un bit** — el estado de producción de la 902 sigue
+dando exactamente 77,10.
+
+**Propiedad que fija esto para siempre** (`tests/floor-aseo-monotonia.test.js`): la tarifa
+de aseo es INGRESO, así que **subirla nunca puede subir el Piso** — es monótona no
+creciente. Se prueba sobre los 5 campos de aseo (Airbnb corto/largo, Booking, Expedia,
+Directo) × 9 montos, con desglose detallado y con modelo simple.
+
+**Guardia estructural** (`tests/floor-cost-por-noche.test.js`): `worstScenarioFactor()`
+ahora devuelve también `worstRequiredPrice` — el precio que ese peor escenario exige, ya
+calculado con el costo de SU duración — y un test exige que `compute().floor` sea el máximo
+de ese campo entre canales (tolerancia 1e-9). Si alguien vuelve a dividir el costo de 1
+noche en `engine.js`, o cambia una de las dos fórmulas sin la otra, el test falla sin
+depender de que el peor caso caiga o no en una estadía larga. La tolerancia de 1e-9 (no
+igualdad exacta) es porque `engine.js` conserva a propósito el orden histórico
+`costo/(factor*pf)` cuando el aseo es 0, mientras `worstcase.js` calcula
+`(costo/pf)/factor`: algebraicamente idénticos, distintos en el último bit.
+
+### 2. Misma raíz en las alertas y en la Matriz
+
+`alerts.js` comparaba `q.payout < model.cost` — con `model.cost` = costo de 1 noche —
+aunque `q` fuera un escenario de 27 o 34 noches. Con el respaldo real eso disparaba **7
+alertas PISO falsas** (una por ventana, dos en la 0–1 día) y marcaba en rojo dos descuentos
+por duración que sí cubren su costo.
+
+- **PISO y DURACIÓN** ahora comparan contra `q.cost`, igual que la alerta ESTADÍA CORTA
+  (ago 2026) siempre hizo. La comparación contra el OBJETIVO sigue usando `model.net` —
+  mismo criterio que ESTADÍA CORTA; reescalar el objetivo por duración sería una decisión
+  de negocio distinta, no este fix (queda anotado como pendiente para el dueño).
+- **Selección del peor caso por canal**: pasa de menor `payout` a menor MARGEN
+  (`payout - cost`), en `alerts.js` y en `matrix.js`. Con costo constante (modelo simple)
+  las dos reglas eligen exactamente lo mismo — cero regresión. Con desglose detallado no:
+  elegir por payout podía esconder un escenario corto que SÍ vende bajo costo detrás de una
+  estadía larga con payout menor pero margen positivo (falso NEGATIVO, el peligroso).
+- **Matriz**: `buildMatrixVerdict()` compara "BAJO COSTO" contra el costo del escenario del
+  canal más ajustado, y el `%` de LM que nombra el mensaje sale de ESE mismo escenario
+  (antes venía de `worstPayoutRow`, otro escenario distinto). `worstScenariosInWindow()`
+  devuelve un `worstCaseRow` nuevo (peor margen global) que es lo que resume el detalle de
+  la Matriz — el encabezado pasó de "Peor payout real detectado" a **"Peor caso real
+  detectado"**, y ahora muestra también el neto y el costo de ese escenario.
+  `worstPayoutRow` se conserva sin cambios (tiene tests propios que lo fijan).
+- **Otros dos lugares con la misma confusión, corregidos en la misma pasada**: la alerta
+  REALIDAD calculaba el "margen realmente alcanzable" como `1 - model.cost/peorNeto` sobre
+  un escenario que `worstScenarioFactor()` puede haber elegido en una estadía larga — ahora
+  usa `q.cost` y elige el canal peor parado por ese margen; y el semáforo "⚠ bajo costo" del
+  neto estimado de cada pestaña de canal comparaba contra `model.cost` un neto evaluado a la
+  estadía PROMEDIO (`state.avgNights`) — ahora compara contra el costo de esa misma
+  duración. Tras esto **no queda ninguna comparación de "bajo costo" contra `model.cost` en
+  la app**: `model.cost` solo se usa donde corresponde (el KPI "Costo total/noche", el
+  cálculo de `net`, los mensajes de "costo sin confirmar" y la fila de portafolio).
+
+- **Salvaguarda nueva en `buildAlerts()`**: `quoteScenario()` deriva `q.cost` de los campos
+  de costo del config. Un caller que los omita obtendría `q.cost === 0` y TODA alerta de
+  "vendes bajo costo" desaparecería en silencio — la peor falla posible acá. Si el config
+  no trae NINGÚN campo de costo, se completa con `model.cost` (sin desglose el costo es
+  constante para toda duración, así que el relleno es exacto, no una aproximación).
+  `index.html` los pasa desde ago 2026; esto cubre a `tests/regression.test.js` (P3) y a
+  cualquier caller futuro.
+
+**Alertas con el respaldo real: 23 antes → 16 después.** Desaparecen las 7 PISO falsas;
+dos DURACIÓN bajan de `bad` a `warn` (siguen avisando que quedan bajo el objetivo). Las 5
+TECHO y el resto no se movieron.
+
+### 3. UI — "Tarifas de aseo por canal" y el aseo de Directo
+
+Pedido textual del dueño: *"dame un espacio para poder subir esos items de aseo para cada
+OTA"*.
+
+**Directo ahora tiene aseo.** `cleanFeePerNight()` devolvía 0 para `direct` siempre — no era
+una regla de negocio, era un hueco ("fuera de alcance" decía el comentario de ago 2026), y
+ese 0 es la razón real de que Directo suela ser el canal que MANDA el Piso (los otros tres
+cobran aseo y él no). Lleva el mismo campo plano `cleanFee` que Booking/Expedia: una vez por
+reserva, diluido por noche. Directo no paga comisión de OTA pero sí `bankFeePct`, y el aseo
+pasa por `payoutFactor()` igual que en los demás — **ninguna regla propia**. Arranca en 0.
+Tocado: catálogo (`discounts.js`), `cleanFeePerNight()` (`engine.js`), `normalizeChannel()`
+(`persistence.js`, mismo `nonNegField` que los otros) e input en su pestaña. La validación
+de rango de `index.html` ya era genérica por nombre de campo (`cleanFee`), no hizo falta
+tocarla. Una unidad guardada antes de este cambio no trae el campo y cae al default 0, sin
+warning y sin mover ningún número.
+
+**Panel único, en Resumen, después de "Costos por noche"** (`#cleanFeesSection`,
+`renderCleanFees()`). Decisión de ubicación, documentada también en el código: se evaluó
+meterlo DENTRO de "Costos por noche" (donde ya vive la tabla de costo por duración, que
+enseña la misma idea de dilución) y se descartó porque **el aseo es INGRESO, no costo**, y
+sumarlo a una tarjeta titulada "Costos por noche" invita justo al error que la pantalla
+quiere evitar. Queda como sección propia inmediatamente después, para que las dos tablas de
+dilución (costo que baja por noche / ingreso que baja por noche) se lean juntas sin
+mezclarse.
+
+Una fila por canal, con su input (Airbnb mantiene sus dos tramos; Booking, Expedia y
+Directo uno solo) y **tres columnas de solo lectura: cuánto aporta por noche a 1, 3 y 7
+noches** — el punto entero de la pantalla, porque la dilución de un cargo fijo es el
+concepto que al dueño le costó ver. Esas columnas salen de `cleanFeePerNight()`, la misma
+función que usa el motor; no se recalcula nada acá. Se muestran con `f$c` (centavos): a
+enteros, 25/7 = 3,57 se vería como "USD 4" y se perdería el dato.
+
+**Sin estado duplicado**: los inputs del panel usan los MISMOS `data-chid`/`data-chf` que
+los de la pestaña de cada canal, y el listener de `change` está delegado en `document`, así
+que ambos escriben sobre el único `state.channels[i].cleanFee*` y `renderAll()` repinta las
+dos vistas. No hay copia local ni sincronización a mano en ninguna dirección. Consecuencia
+práctica para los tests e2e: un selector `[data-chid=…][data-chf=…]` sin acotar resuelve
+ahora a DOS elementos y Playwright falla por strict mode — hay que acotar a
+`.tab-panel[data-tab="ch-…"]` o a `#cleanFeesMount`.
+
+De paso: el texto "…+ bancaria + aseo diluido" de la pestaña de canal se decidía con una
+lista de ids a mano (`'airbnb'||'booking'||'expedia'`) que quedó desactualizada al agregar
+Directo y además mentía cuando el canal tenía el campo en 0. Ahora pregunta por el aporte
+REAL (`cleanFeePerNight(c, avgNights)>0`).
+
+### Verificación
+
+- **332 tests unitarios en verde** (306 antes; +26), **lint limpio**, **66 e2e en verde**
+  (60 antes; +6, cero fallos).
+- Archivos de test nuevos: `tests/floor-aseo-monotonia.test.js` (7),
+  `tests/alertas-costo-por-duracion.test.js` (6), `tests/cleanfee-directo.test.js` (6),
+  `tests/matrix-costo-por-duracion.test.js` (4), `e2e/cleanfee-panel.spec.js` (4).
+- Se comprobó que los tests nuevos **fallan** si se reintroduce el bug (5 fallos al volver
+  `costForNight(worstNight)` a `cost`).
+- Contra el respaldo real: producción (Airbnb 20/25, Expedia 35, Booking 37,50, Directo 0)
+  → Piso **77,10**, sin moverse; con Airbnb en 30 → **74,83**, no 113,22.
+- `unit902Config()` se extrajo de `tests/floor-cost-por-noche.test.js` a
+  `tests/helpers/state-factory.js` (verbatim, sin cambiar un valor — lo prueba que los
+  tests existentes siguieron pasando): más de un archivo necesita exactamente esa unidad y
+  duplicarla permitiría que dos tests "pasaran" contra dos 902 distintas.
+
+### Tests viejos recalculados (con el porqué, no ajustados a ojo)
+
+1. `tests/cleanfee-booking-expedia.test.js` — "cleanFeePerNight Directo: siempre 0, con o
+   sin cleanFee inventado". Pinneaba que Directo NUNCA cobra aseo, cierto solo porque el
+   campo no existía ("fuera de alcance", ago 2026). Ahora prueba lo que sigue siendo una
+   garantía real: **un Directo SIN `cleanFee` configurado sigue aportando 0** (cero
+   regresión para unidades guardadas), y con `cleanFee` se diluye exactamente igual que
+   Booking/Expedia.
+2. `tests/cleanfee-booking-expedia.test.js` — "cleanFee NO aparece en airbnb ni en direct".
+   `direct` sale de esa lista (ya es un campo real, en 0). **Airbnb sigue afuera**: su aseo
+   tiene dos tramos, así que un `cleanFee` plano ahí seguiría siendo un campo inventado que
+   ninguna fórmula lee.
+3. `e2e/smoke.spec.js` y `e2e/matrix-detail.spec.js` — el encabezado del detalle de la
+   Matriz se renombró a "Peor caso real detectado" y la columna de neto ahora incluye el
+   costo del escenario; se actualizaron el texto esperado y el regex.
+4. `e2e/duplicate-unit.spec.js` — selector acotado a la pestaña del canal (strict mode, ver
+   arriba), y se agregó la comprobación de que el panel de Resumen muestra el mismo valor.
+
+### Dudoso / pendiente para el dueño
+
+- ~~**El objetivo (`model.net`) sigue siendo el de 1 noche.**~~ **Corregido — ver "Ronda
+  sep 2026 (2) — objetivo por duración" más abajo.** El dueño confirmó que el margen es un
+  porcentaje que se aplica sobre el costo REAL de cada duración, no sobre el costo de 1
+  noche: ya no era una decisión de negocio pendiente, era el mismo bug de "costo de 1
+  noche aplicado a cualquier duración" del lado del objetivo.
+- **El aseo de Directo arranca en 0 y así se queda hasta que el dueño cargue el real.** Si
+  de verdad le cobra aseo al huésped directo, ese 0 está inflando su Piso hoy mismo (74,83
+  contra los 66,92 que daría con 25 de aseo, en la 902 con Airbnb en 30).
+- **La ventana de 400 noches diluye casi a cero cualquier aseo.** `criticalNights()` incluye
+  400; en el modelo simple (costo constante por noche) eso hace que el peor caso pueda caer
+  ahí y que cargar una tarifa de aseo casi no mueva el Piso. Es aritméticamente correcto,
+  pero vale la pena que el dueño confirme si una estadía de 400 noches es un escenario real
+  que quiere que proteja el Min Price.
+
+---
+
+## Ronda sep 2026 (2) — objetivo por duración
+
+Rama: `fix/objetivo-por-duracion`, ramificada desde `feat/aseo-por-canal`. **Sin publicar,
+sin merge a main** al momento de escribir esto — pendiente de auditoría antes de integrar.
+
+### El bug — misma familia que el fix del VALOR del Piso, del lado del objetivo
+
+`compute()` calcula UN SOLO `net` (engine.js: `net = cost/(1-m/100)`) evaluado SIEMPRE
+contra el costo de 1 noche — y `alerts.js`/`matrix.js` usaban ese mismo número fijo como
+vara para juzgar reservas de CUALQUIER duración (ramas "warn"/"cubre costo pero bajo
+objetivo" de DURACIÓN, ESTADÍA CORTA, y el veredicto "CUBRE COSTO, BAJO OBJETIVO" de la
+Matriz). El dueño confirmó explícitamente: el margen es un **porcentaje** para cualquier
+duración — no es que el 25% deba subir o bajar según las noches, es que ese 25% debe
+aplicarse sobre el **costo real de esa duración**, no sobre el costo de 1 noche.
+
+**Reproducción contra el respaldo real** (`revenue-ops-backup-2026-08-14.json`, unidad
+902, `normalizeUnit(raw)` + `state.windows=WINDOWS` + `costBreakdownConfirmed:true` +
+Expedia `cleanFee:35` + Booking `cleanFee:37.5`, margen 25%): el objetivo que usaba la app
+(fijo, de 1 noche) era 95,33 (=71,50/0,75) para CUALQUIER duración. El objetivo correcto
+por duración, con costo(n) = 41,5 + 30/n (fijos+consumo diluidos por noche + turno una
+sola vez):
+
+| noches | costo real/noche | objetivo correcto (costo/0,75) |
+|---|---|---|
+| 2  | 56,50 | 75,33 |
+| 4  | 49,00 | 65,33 |
+| 7  | 45,79 | 61,05 |
+| 14 | 43,64 | 58,19 |
+| 21 | 42,93 | 57,24 |
+| 28 | 42,57 | 56,76 |
+| 35 | 42,36 | 56,48 |
+
+Con el objetivo fijo (95,33), esto disparaba **8 alertas falsas** ("cubre costo pero bajo
+objetivo") en reservas que en realidad SÍ superan su objetivo real por buen margen (Airbnb
+2/4/7/14/21/28/35 noches, Expedia 7 noches) — todas neteaban por encima de su objetivo
+real (verificado corriendo `buildAlerts()` contra este mismo fixture antes y después del
+fix, no solo a mano).
+
+### Fix
+
+- **`netForNightFn(margin)`** (`src/domain/costs.js`), nueva — hermana de
+  `costForNightFn()`: dado el costo YA calculado de una duración concreta (`costAtN`,
+  típicamente `q.cost` de `quoteScenario()`), devuelve `costAtN/(1-margin/100)` — misma
+  fórmula que `net` en engine.js, parametrizada por costo en vez de fijada a 1 noche.
+  Clampea el margen a 90, igual que `compute()`.
+- **`model.net` (KPI global de Resumen) NO cambió de semántica** — sigue siendo el
+  objetivo evaluado al costo de 1 noche. No es ese número el que había que tocar: es
+  contra qué se compara una reserva de OTRA duración en `alerts.js`/`matrix.js`.
+- **`src/domain/alerts.js`** — las tres comparaciones `... < model.net` (DURACIÓN,
+  ESTADÍA CORTA 1n, ESTADÍA CORTA 2n, todas en su rama "warn") pasan a
+  `netForNight(q.cost)` (o `q1.cost`/`q2.cost` según el bloque) — el objetivo calculado
+  con el costo real de ESE escenario, exactamente como ya se usaba para la comparación de
+  costo puro. Los mensajes ahora dicen "tu objetivo para esa duración" en vez de citar el
+  número fijo.
+- **`src/domain/matrix.js`** — `buildMatrixVerdict()` tenía la misma comparación
+  (`worstAsNet.netV<model.net`) en la rama "CUBRE COSTO, BAJO OBJETIVO". Como esta
+  función no recibe `config` (solo `model`), el margen se recupera algebraicamente del
+  propio `model` (`model.net = model.cost/(1-m/100)` ⇒ `m = 100*(1-model.cost/model.net)`,
+  exacto cuando `model.cost>0`; si es 0, el margen no importa porque `netForNight(0)` da 0
+  para cualquier margen) — evita agregar un parámetro nuevo a la firma y no rompe ningún
+  test/caller existente que no lo pasaba. El mensaje ahora nombra la duración del peor
+  escenario y su objetivo real.
+
+### Verificación
+
+- **341/341 tests unitarios** (332 antes; +9 en `tests/objetivo-por-duracion.test.js`),
+  **lint limpio**, **66/66 e2e sin regresión**.
+- Contra el respaldo real: de las 8 alertas falsas listadas arriba, **0 siguen siendo
+  genuinas** tras el fix — verificado corriendo `buildAlerts()` contra el fixture completo
+  (no solo recalculando a mano): la lista de alertas DURACIÓN/ESTADÍA CORTA queda vacía,
+  sin que aparezca ninguna otra en su lugar.
+- **El Piso (`compute().floor`) no se movió**: sigue en 77,10 para la config de
+  producción — este fix es solo del objetivo/margen, nunca del Piso ni del costo (test
+  dedicado en `tests/objetivo-por-duracion.test.js`).
+- `tests/alertas-costo-por-duracion.test.js` — el test `'CASO REAL 902 — DURACIÓN:
+  "Larga estadía (≥28 noches)"...'` estaba pinneado al bug (esperaba una alerta `warn`
+  porque comparaba 65,12 contra 95,33). Recalculado, no ajustado a ojo: con el objetivo
+  real de 28 noches (56,76), 65,12 lo supera — la alerta correcta es que NO debe
+  aparecer ninguna alerta DURACIÓN para ese descuento. El test nuevo lo fija explícitamente
+  y deja los números verificados en el comentario.

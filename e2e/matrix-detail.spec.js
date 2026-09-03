@@ -23,7 +23,14 @@ test('Techos por ventana: se editan en Resumen con el mismo control y la Matriz 
   await expect(page.locator('#matrixBody tr').first().locator('td').nth(1)).toHaveText('41%');
 });
 
-test('Matriz: el detalle de cada ventana muestra día/noches reales, nunca "undefined", y coincide con el canal de peor payout', async ({page}) => {
+/* Actualizado sep 2026: el encabezado del detalle pasó de "Peor payout real
+   detectado" a "Peor caso real detectado" y ahora resume el peor MARGEN de la
+   ventana (`worstCaseRow`), el mismo criterio con el que se arma la columna
+   "Neto para ti" por canal — antes las dos listas medían cosas distintas (menor
+   payout arriba, menor payout por canal abajo) y con el desglose detallado
+   podían nombrar días/noches que no se correspondían. La columna de neto
+   también muestra ahora el costo de ese escenario, de ahí el regex nuevo. */
+test('Matriz: el detalle de cada ventana muestra día/noches reales, nunca "undefined", y coincide con el canal del peor caso', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="comparacion"]').click();
 
@@ -38,18 +45,18 @@ test('Matriz: el detalle de cada ventana muestra día/noches reales, nunca "unde
 
     expect(detailText, `fila ${i}: no debe contener "undefined" en ningún lado`).not.toContain('undefined');
 
-    const worstMatch = detailText.match(/Peor payout real detectado: día (\d+), (\d+) noches? \(([^)]+)\)/);
+    const worstMatch = detailText.match(/Peor caso real detectado: día (\d+), (\d+) noches? \(([^)]+)\)/);
     expect(worstMatch, `fila ${i}: debe mostrar "día N" y "N noches" reales — texto: ${detailText}`).not.toBeNull();
     const [, worstDay, worstNight, worstChannel] = worstMatch;
     expect(Number.isFinite(Number(worstDay))).toBe(true);
     expect(Number.isFinite(Number(worstNight))).toBe(true);
 
     // Cruce: la columna "Neto para ti" lista, POR CANAL, su propio (día, noches)
-    // de peor payout — el minimo de esos payouts debe ser el mismo canal/día/
-    // noche que "Peor payout real detectado" (worstPayoutRow es el minimo GLOBAL
-    // sobre el mismo grid que alimenta cada entrada por canal).
+    // de peor MARGEN — el peor de esos debe ser el mismo canal/día/noche que
+    // "Peor caso real detectado" (worstCaseRow es el minimo GLOBAL por el mismo
+    // criterio, sobre el mismo grid que alimenta cada entrada por canal).
     const netText = await row.locator('.cell-ch').last().innerText();
-    const entries = [...netText.matchAll(/([^:\n]+): [A-Z]{3}\s?[\d.,]+ \(día (\d+), (\d+)n, LM [\d.]+%\)/g)]
+    const entries = [...netText.matchAll(/([^:\n]+): [A-Z]{3}\s?[\d.,]+ \(día (\d+), (\d+)n, LM [\d.]+% · costo [A-Z]{3}\s?[\d.,]+\/noche\)/g)]
       .map(m => ({channel: m[1].trim(), day: m[2], night: m[3]}));
     expect(entries.length, `fila ${i}: debe poder leerse al menos un canal de la columna Neto`).toBeGreaterThan(0);
     const matchingChannel = entries.find(e => worstChannel.includes(e.channel) || e.channel.includes(worstChannel));

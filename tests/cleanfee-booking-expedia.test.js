@@ -56,14 +56,25 @@ test('cleanFeePerNight Airbnb: regresion exacta, mismos valores que floor-cleanf
   assert.equal(cleanFeePerNight(a902, 1), 20);
 });
 
-// 3. cleanFeePerNight() para Directo sigue devolviendo 0 siempre.
-test('cleanFeePerNight Directo: siempre 0, con o sin cleanFee inventado', () => {
+/* 3. RECALCULADO en sep 2026 — este test pinneaba "Directo NUNCA cobra aseo",
+   que era cierto SOLO porque el canal todavia no tenia el campo ("fuera de
+   alcance" decia el comentario original de ago 2026). El dueno pidio
+   explicitamente el aseo para los cuatro canales, asi que Directo ahora tiene el
+   MISMO `cleanFee` plano que Booking/Expedia (ver src/domain/engine.js). Lo que
+   se conserva del test viejo, y es lo unico que seguia siendo una garantia real:
+   un Directo SIN `cleanFee` configurado sigue aportando 0 — cero regresion para
+   toda unidad guardada antes de este cambio. */
+test('cleanFeePerNight Directo: 0 sin cleanFee; con cleanFee se diluye igual que Booking/Expedia', () => {
   const direct={id:'direct'};
   assert.equal(cleanFeePerNight(direct, 1), 0);
   assert.equal(cleanFeePerNight(direct, 10), 0);
-  // aunque alguien le pegue un cleanFee a mano, Directo no lo usa (fuera de alcance).
   const directWithFee={id:'direct', cleanFee:99};
-  assert.equal(cleanFeePerNight(directWithFee, 1), 0);
+  assert.equal(cleanFeePerNight(directWithFee, 1), 99);
+  assert.equal(cleanFeePerNight(directWithFee, 3), 33);
+  // mismo comportamiento exacto que Booking/Expedia con el mismo monto
+  assert.equal(cleanFeePerNight(directWithFee, 7), cleanFeePerNight({id:'booking', cleanFee:99}, 7));
+  // el TOTAL por reserva no depende de la duracion: es una sola vez, como en las OTAs
+  assert.equal(cleanFeePerNight(directWithFee, 5)*5, 99);
 });
 
 // 4. quoteScenario(): un descuento nativo activo NO reduce el aseo.
@@ -190,18 +201,41 @@ test('normalizeUnit: cleanFee valido en booking/expedia se conserva tal cual, si
   assert.equal(warnings.some(w=>w.includes('cleanFee')), false);
 });
 
-test('normalizeUnit: cleanFee NO aparece en airbnb ni en direct (mismo criterio que preferredPct/acceleratorPct)', () => {
+/* RECALCULADO en sep 2026: `direct` salio de esta lista porque el dueno pidio
+   el aseo tambien para Directo — ya no es "un campo fuera de alcance", es un
+   campo real del canal (arranca en 0). Airbnb sigue afuera: su aseo tiene DOS
+   tramos (`cleanFeeShort`/`cleanFeeLong`), asi que un `cleanFee` plano ahi
+   seguiria siendo un campo inventado que ninguna formula lee. */
+test('normalizeUnit: cleanFee NO aparece en airbnb (usa cleanFeeShort/Long); SI en direct, en 0 por defecto', () => {
   const {state}=normalizeUnit({name:'Campo fuera de alcance'});
   assert.equal('cleanFee' in state.channels.find(c=>c.id==='airbnb'), false);
-  assert.equal('cleanFee' in state.channels.find(c=>c.id==='direct'), false);
+  assert.equal(state.channels.find(c=>c.id==='direct').cleanFee, 0);
 });
 
-test('normalizeUnit: un cleanFee inventado en airbnb/direct en el payload crudo se ignora (no se copia)', () => {
-  const {state,warnings}=normalizeUnit({name:'Payload con cleanFee de mas', channels:[
+test('normalizeUnit: un cleanFee inventado en airbnb se ignora; en direct se conserva y se valida', () => {
+  const {state,warnings}=normalizeUnit({name:'Payload con cleanFee', channels:[
     {id:'airbnb', cleanFee:99},
     {id:'direct', cleanFee:99}
   ]});
   assert.equal('cleanFee' in state.channels.find(c=>c.id==='airbnb'), false);
-  assert.equal('cleanFee' in state.channels.find(c=>c.id==='direct'), false);
+  assert.equal(state.channels.find(c=>c.id==='direct').cleanFee, 99);
   assert.equal(warnings.some(w=>w.includes('cleanFee')), false);
+});
+
+/* Unidad guardada ANTES de que Directo tuviera aseo: no trae el campo y debe
+   caer al default del catalogo (0) sin warning — cero cambio de numeros. */
+test('normalizeUnit: unidad vieja sin cleanFee en direct cae a 0, sin warning', () => {
+  const {state,warnings}=normalizeUnit({name:'Unidad vieja', channels:[
+    {id:'direct', comm:3, bankFeePct:6, offsetPct:0}
+  ]});
+  assert.equal(state.channels.find(c=>c.id==='direct').cleanFee, 0);
+  assert.equal(warnings.length, 0);
+});
+
+/* Un cleanFee negativo en Directo se rechaza igual que en Booking/Expedia
+   (nonNegField: cae al default con warning explicito, nunca Math.max(0,x)). */
+test('normalizeUnit: cleanFee negativo en direct se rechaza a favor del default, con warning', () => {
+  const {state,warnings}=normalizeUnit({name:'Aseo negativo', channels:[{id:'direct', cleanFee:-5}]});
+  assert.equal(state.channels.find(c=>c.id==='direct').cleanFee, 0);
+  assert.ok(warnings.some(w=>w.includes('channels.direct.cleanFee')), 'debe advertir sobre channels.direct.cleanFee');
 });

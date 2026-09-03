@@ -135,11 +135,14 @@ test('importación con payload XSS: no se ejecuta ningún script, el nombre se m
   await page.locator('#deleteUnit').click();
 });
 
-test('Matriz: la fila muestra "Peor payout real detectado" (no solo mayor descuento nativo)', async ({page}) => {
+/* Renombrado sep 2026: el encabezado pasó de "Peor payout real detectado" al
+   peor CASO (menor margen), que es el mismo criterio con el que se arma la
+   columna por canal — ver src/domain/matrix.js (worstCaseRow). */
+test('Matriz: la fila muestra "Peor caso real detectado" (no solo mayor descuento nativo)', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('[data-tabbtn="comparacion"]').click();
   await page.locator('.matrix-detail summary').first().click();
   const text = await page.locator('.matrix-detail').first().innerText();
-  expect(text).toContain('Peor payout real detectado');
+  expect(text).toContain('Peor caso real detectado');
   expect(page.__errors).toEqual([]);
 });

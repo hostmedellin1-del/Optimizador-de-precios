@@ -101,6 +101,13 @@ function normalizeChannel(raw, def, warnings){
     out.acceleratorPct = pctField(raw||{}, 'acceleratorPct', def.acceleratorPct||0, warnings, `channels.${def.id}`, {min:0, max:100});
     out.cleanFee = nonNegField(raw||{}, 'cleanFee', def.cleanFee||0, warnings, `channels.${def.id}`, {min:0});
   }
+  /* Directo (sep 2026): misma forma exacta que booking/expedia — un solo
+     `cleanFee` no negativo. Una unidad guardada ANTES de que Directo tuviera
+     este campo simplemente no lo trae: cae al default del catalogo (0), sin
+     warning y sin cambiar ningun numero. */
+  if(def.id==='direct'){
+    out.cleanFee = nonNegField(raw||{}, 'cleanFee', def.cleanFee||0, warnings, `channels.${def.id}`, {min:0});
+  }
   /* Contrato de moneda (revision externa): null = "misma moneda que la
      unidad" (el default seguro) — solo 'USD'/'COP' son valores validos
      (única whitelist que soporta la app). Cualquier otra
