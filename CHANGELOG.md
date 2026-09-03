@@ -5,6 +5,41 @@ es la entrada superior junto con el contenido de `main`; las referencias a módu
 retirados dentro de entradas anteriores son historia, no estado actual. Formato: fase de
 la auditoría técnica → qué cambió → por qué.
 
+## [0.28.0] — El objetivo (costo+margen) también usa el costo real de cada duración
+
+**Corregido — DURACIÓN y ESTADÍA CORTA comparaban contra `model.net`, el objetivo fijado
+al costo de 1 noche, aunque el escenario evaluado fuera de 7, 14, 21, 28 o 35 noches.**
+Misma raíz que el fix del valor del Piso (0.27.0) y el de "bajo costo" contra `q.cost`:
+el margen configurado (25 % en la 902) es un **porcentaje** — confirmado por Dani, "es un
+porcentaje para cualquier duración" — que debe aplicarse sobre el costo REAL de esa
+duración, no sobre el costo de 1 noche que usa `model.net` (95,33 en la 902).
+
+Reproducido contra el respaldo real con las tarifas de aseo cargadas (Expedia 35, Booking
+37,50): 8 alertas "cubre costo pero queda bajo tu objetivo" resultaron falsas — las 8
+reservas evaluadas SÍ superaban su objetivo real, solo que la app las medía contra el de
+1 noche:
+
+| Noches | Costo real/noche | Objetivo real (costo × 1/(1-25%)) | Objetivo que usaba la app |
+|---|---|---|---|
+| 7 | 45,79 | **61,05** | 95,33 |
+| 14 | 43,64 | **58,19** | 95,33 |
+| 21 | 42,93 | **57,24** | 95,33 |
+| 28 | 42,57 | **56,76** | 95,33 |
+| 35 | 42,36 | **56,48** | 95,33 |
+
+Fix: `netForNightFn(margin)` (`src/domain/costs.js`), hermana de `costForNightFn()` —
+dado el costo real de una duración, devuelve el objetivo de esa duración. Aplicado en
+`alerts.js` (DURACIÓN, ESTADÍA CORTA) y `matrix.js` ("CUBRE COSTO, BAJO OBJETIVO", donde
+el margen se recupera de `model.cost`/`model.net` porque esa función no recibe `config`).
+
+`model.net` (el KPI global de Resumen) no cambia de semántica — sigue siendo el objetivo
+de 1 noche; el fix es de las vistas que juzgan un escenario de una duración concreta.
+Verificado: con el respaldo real, 0/8 alertas siguen siendo falsas tras el fix, y un caso
+sintético con offset agresivo confirma que la alerta sigue disparando cuando el problema
+es real (no se volvió ciega). El Piso (77,10) y `model.net` (95,33) no se mueven.
+
+341/341 unitarios, lint limpio, 66/66 e2e.
+
 ## [0.27.0] — El Piso por duración real, alertas sin falsos positivos, y aseo en los 4 canales
 
 **Corregido — el VALOR del Piso usaba el costo de 1 noche aunque el peor escenario fuera
