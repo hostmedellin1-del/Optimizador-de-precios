@@ -13,7 +13,13 @@ export const CHANNELS = [
   {id:'airbnb', name:'Airbnb', comm:15.5, offsetPct:0, bankFeePct:0, cleanFeeShort:0, cleanFeeLong:0, settlementCurrency:null},
   {id:'booking', name:'Booking.com', comm:18, offsetPct:0, bankFeePct:6, preferredPct:0, cleanFee:0, settlementCurrency:null},
   {id:'expedia', name:'Expedia', comm:25, offsetPct:0, bankFeePct:0, acceleratorPct:0, cleanFee:0, settlementCurrency:null},
-  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6, settlementCurrency:null}
+  /* `cleanFee` en Directo (sep 2026, a pedido del dueño): mismo campo plano que
+     Booking/Expedia — un cargo de aseo cobrado UNA vez por reserva. Directo no
+     paga comision de OTA, pero si `bankFeePct`, asi que el aseo pasa por
+     payoutFactor() exactamente igual que en los otros tres canales; no tiene
+     ninguna regla propia. Arranca en 0: hasta ahora Directo era el unico canal
+     sin aseo y por eso es el que suele MANDAR el Piso. */
+  {id:'direct', name:'Directo', comm:3, offsetPct:0, bankFeePct:6, cleanFee:0, settlementCurrency:null}
 ];
 
 /* Discount catalog. kind: constant | window (booking-window days) | los (min nights)

@@ -88,7 +88,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>Offset</strong>: ajuste específico por canal que se aplica después del precio de PriceLabs.</li>
     </ul>
     <p>No publica precios, no cambia nada en PriceLabs, Kunas, Airbnb, Booking.com o Expedia, y no reemplaza la revisión de la extranet, facturas o reglas reales de cada canal.</p>
-    <p>En Airbnb, la tarifa de aseo (la que cobras aparte por reserva) ahora entra en el cálculo del Min Price y del Base Price: es un ingreso real, se paga completo por reserva y se diluye entre las noches de la estadía. Antes el modelo la ignoraba por completo.</p>
+    <p>La tarifa de aseo (la que cobras aparte por reserva) entra en el cálculo del Min Price y del Base Price: es un ingreso real, se paga completo por reserva y se diluye entre las noches de la estadía. <strong>Los cuatro canales pueden cobrarla</strong> — Airbnb, Booking.com, Expedia y también Directo — y se cargan todas juntas en Resumen → <strong>Tarifas de aseo por canal</strong>. Como es plata que entra, cargar una tarifa de aseo <strong>nunca sube</strong> tu Min Price: como mucho lo baja.</p>
     <p>En estadías de 28 noches o más, el Min Price deja de asumir que Last-Minute está activo todo el mes: Dani confirmó que PriceLabs solo baja el precio los últimos días antes del check-in, nunca durante una reserva de un mes completo hecha el mismo día. El Simulador (cotización manual de un caso puntual) no cambia — sigue aplicando el Last-Minute configurado tal cual, sin recortes.</p>
   </section>
 
@@ -158,7 +158,9 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
   <section id="pestanas">
     <h2>5. Para qué sirve cada pestaña</h2>
     <h3>Resumen</h3>
-    <p>Es la pantalla de configuración y decisión principal: costos, KPIs, Last-Minute y techos. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
+    <p>Es la pantalla de configuración y decisión principal: costos, KPIs, tarifas de aseo, Last-Minute y techos. Modifica aquí <strong>Techo total por ventana</strong>; en Comparación solo se muestra.</p>
+    <p><strong>Tarifas de aseo por canal.</strong> Justo debajo de "Costos por noche" hay una tabla con los cuatro canales y lo que le cobras al huésped por limpieza. Airbnb tiene dos tramos (1–2 noches y 3+); Booking.com, Expedia y Directo tienen un solo monto por reserva. Al lado de cada input verás <strong>cuánto aporta ese cargo por noche a 1, 3 y 7 noches</strong>: como se cobra una sola vez por reserva, cuanto más larga es la estadía menos aporta por noche (una tarifa de USD 35 son 35 por noche en una reserva de 1 noche, pero 5 por noche en una de 7). Es el mismo dato que aparece en la pestaña de cada canal: si lo cambias en un lado, cambia en el otro.</p>
+    <p>Dónde encontrar el monto real de cada uno: Airbnb (Precios → Tarifas), Extranet de Booking.com ("Additional fees &amp; charges" → suplemento de limpieza "por estancia"), Expedia Partner Central ("Facility and service fees" → Cleaning fee, "Per stay") y, en Directo, lo que le cobres tú al huésped. Todos arrancan en <strong>0</strong>: nadie inventó un monto. Ojo con Directo — mientras esté en 0 es el único canal que no cobra aseo, y por eso suele ser el que termina fijando tu Min Price.</p>
     <h3>¿Cómo se calcula?</h3>
     <p>Es el simulador de una reserva concreta. Ingresa <strong>Precio calculado por PriceLabs (antes de LM/offset)</strong>, <strong>Canal</strong>, <strong>Días antes del check-in</strong> y <strong>Noches de estadía</strong>. Verás el flujo paso a paso: precio, descuentos, comisiones, neto, margen y markup. Sirve para entender o probar un caso; una simulación manual puede mostrarse aun cuando la recomendación global está bloqueada, por lo que debes leer sus avisos de confiabilidad.</p>
     <h3>Airbnb, Booking.com, Expedia y Directo</h3>
@@ -167,7 +169,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--sur
       <li><strong>Comisión [canal] %</strong> y <strong>Comisión bancaria/pasarela %</strong>.</li>
       <li><strong>Offset % sobre PriceLabs (tu markup real)</strong>.</li>
       <li>Comisiones, comisión bancaria/pasarela, Offset y descuentos que tú hayas comprobado en ese canal.</li>
-      <li>En Airbnb, <strong>Tarifa de aseo — reservas 1–2 noches</strong> y <strong>Tarifa de aseo — reservas 3+ noches</strong>.</li>
+      <li>La <strong>tarifa de aseo</strong> del canal: en Airbnb, <strong>1–2 noches</strong> y <strong>3+ noches</strong>; en Booking.com, Expedia y Directo, <strong>una vez por reserva</strong>. Es el mismo dato que la tabla "Tarifas de aseo por canal" de Resumen — se edita indistintamente en cualquiera de los dos lugares.</li>
       <li>En Booking.com, <strong>Alojamientos preferentes %</strong>, y en Expedia, <strong>Aceleradores %</strong>: son comisión ADICIONAL que la OTA te cobra por un programa de visibilidad, no un descuento al huésped — no bajan el precio que ve el huésped, pero sí bajan lo que te queda a ti. Arrancan en <strong>0%</strong>, nadie inventó un porcentaje: confirma el valor real en tu Extranet de Booking o en Expedia Partner Central antes de activarlos.</li>
       <li><strong>Descuentos activos hoy</strong> y <strong>Ver catálogo completo</strong> para el resto.</li>
     </ul>

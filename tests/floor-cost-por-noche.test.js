@@ -31,63 +31,13 @@ import {compute} from '../src/domain/engine.js';
 import {worstScenarioFactor} from '../src/domain/worstcase.js';
 import {reservationCostBreakdown, costForNightFn} from '../src/domain/costs.js';
 import {defaultLmConfig} from '../src/catalog/discounts.js';
-import {freshChannels, freshDiscounts, freshWindows, defaultCeilings} from './helpers/state-factory.js';
+import {freshChannels, freshDiscounts, freshWindows, defaultCeilings, unit902Config} from './helpers/state-factory.js';
 
-/* ---------- Caso real, unidad 902 ---------- */
-
-function unit902Config(){
-  const channels = freshChannels();
-  const discounts = freshDiscounts();
-  const windows = freshWindows();
-  const setCh = (id, patch) => Object.assign(channels.find(c=>c.id===id), patch);
-  const setD = (id, patch) => {
-    const d = discounts.find(x=>x.id===id);
-    if(!d) throw new Error('discount id no encontrado en el catalogo: '+id);
-    Object.assign(d, patch);
-  };
-
-  setCh('airbnb',  {comm:15.5, offsetPct:16, bankFeePct:0, cleanFeeShort:20, cleanFeeLong:25});
-  setCh('booking', {comm:21,   offsetPct:75, bankFeePct:6});
-  setCh('expedia', {comm:25,   offsetPct:70, bankFeePct:0});
-  setCh('direct',  {comm:3,    offsetPct:5,  bankFeePct:6});
-
-  setD('ab_los2', {pct:14, on:true});             // ≥7 noches
-  setD('ab_los3', {pct:14, on:true});              // ≥14 noches
-  setD('ab_los4', {pct:25, on:true});              // ≥28 noches (ya es el default del catálogo)
-  setD('ab_los5', {pct:10, on:true, minN:4});       // ≥4 noches
-  setD('ab_los6', {pct:15, on:true, minN:21});      // ≥21 noches
-  setD('ab_los7', {pct:21, on:true, minN:35});      // ≥35 noches
-  setD('ab_eb2',  {pct:15, on:true});               // ≥60 días
-  setD('ab_topguest', {pct:15, on:true});
-
-  setD('bk_gen', {pct:10, on:true});                // Genius
-  setD('bk_mob', {pct:10, on:true});                // Mobile
-  setD('bk_cty', {pct:5,  on:true});                // Country
-
-  setD('ex_mod',  {pct:20, on:true});               // VIP (siempre activa)
-  setD('ex_mob',  {pct:10, on:true});                // Mobile-only
-  setD('ex_los1', {pct:15, on:true});               // ≥7 noches
-
-  const costBreakdown = {
-    rent:700, admin:140, utilities:108, insurance:5, tech:22, occNights:26,
-    cleaning:20, laundry:5, consumables:4, supplies:5
-  };
-
-  const lmConfig = {
-    ...defaultLmConfig(),
-    mode:'gradual', verified:true,
-    gradual:{maxPct:28, days:6, on:true}
-  };
-
-  const ceilings = {w0:40, w1:30, w2:15, w3:0, w4:0, w5:15};
-
-  return {
-    channels, discounts, windows,
-    costBreakdown, costBreakdownConfirmed:true,
-    lmConfig, ceilings, margin:25,
-    fixedCost:0, varCost:0
-  };
-}
+/* ---------- Caso real, unidad 902 ----------
+   `unit902Config()` vive ahora en tests/helpers/state-factory.js (sep 2026):
+   mas de un test necesita exactamente esta unidad y duplicarla permitiria que
+   dos tests "pasaran" contra dos 902 distintas. La definicion se movio verbatim,
+   sin cambiar un solo valor. */
 
 test('costos reales de la 902: reservationCostBreakdown confirma 71.50/noche a 1 noche y ≈42.61/noche a 27', () => {
   const cb = unit902Config().costBreakdown;
@@ -145,17 +95,62 @@ test('CASO OBLIGATORIO 902 — precio post-LM requerido por canal: Airbnb 77.10 
     direct: {p:74.82993197278913, day:0,  night:1}
   };
   for(const c of channels){
-    const {worstFactor, worstFeePerNight, worstDay, worstNight, pf} = worstScenarioFactor({
+    const {worstFactor, worstFeePerNight, worstDay, worstNight, worstRequiredPrice, pf} = worstScenarioFactor({
       chId:c.id, channels, discounts, windows, ceilings, lmConfig, cost: costForNight
     });
-    // el offset del canal ya esta incluido dentro de worstFactor (worstScenarioFactor lo aplica internamente)
+    /* El offset del canal ya esta incluido dentro de worstFactor
+       (worstScenarioFactor lo aplica internamente).
+       `costForNight(worstNight)`, NUNCA 71.5 fijo (fix sep 2026, engine.js):
+       acá los cuatro peores casos son de 1 noche, asi que da exactamente el
+       mismo numero — pero escribirlo con el costo por duracion es lo que
+       impide que este test vuelva a "confirmar" la formula equivocada. */
+    const costAtWorst = costForNight(worstNight);
     const p = worstFactor>0
-      ? (worstFeePerNight>0 ? Math.max(0, 71.5/pf-worstFeePerNight)/worstFactor : 71.5/(worstFactor*pf))
+      ? (worstFeePerNight>0 ? Math.max(0, costAtWorst/pf-worstFeePerNight)/worstFactor : costAtWorst/(worstFactor*pf))
       : Infinity;
     assert.equal(worstDay, expected[c.id].day, `${c.id}: dia critico esperado ${expected[c.id].day}, dio ${worstDay}`);
     assert.equal(worstNight, expected[c.id].night, `${c.id}: noche critica esperada ${expected[c.id].night}, dio ${worstNight}`);
     assert.ok(Math.abs(p - expected[c.id].p) < 0.005, `${c.id}: precio requerido esperado ${expected[c.id].p}, dio ${p}`);
+    /* Tolerancia de 1e-9, no igualdad exacta: cuando el aseo es 0, engine.js
+       conserva a proposito el orden historico `costo/(factor*pf)` mientras que
+       worstcase.js calcula `(costo/pf)/factor` — algebraicamente identicos,
+       distintos en el ultimo bit de punto flotante (Expedia: ...96514 vs
+       ...965139). Esa preservacion es deliberada (ver el comentario en
+       engine.js) y 1e-9 sigue detectando el bug que este test vigila, que valia
+       decenas de dolares. */
+    assert.ok(Math.abs(p - worstRequiredPrice) < 1e-9, `${c.id}: el precio requerido debe coincidir con el que la busqueda ya calculo (worstRequiredPrice ${worstRequiredPrice}), dio ${p}`);
   }
+});
+
+/* INVARIANTE ESTRUCTURAL (sep 2026) — el guardia que impide que este bug vuelva
+   una tercera vez. `compute().floor` no puede ser otra cosa que el MAXIMO, entre
+   canales, del precio que la propia busqueda del peor escenario ya calculo con
+   el costo real de SU duracion. Si alguien vuelve a dividir el costo de 1 noche
+   en engine.js (o cambia una de las dos formulas sin la otra), este test falla,
+   sin depender de que el peor caso caiga o no en una estadia larga. */
+test('INVARIANTE — compute().floor === max(worstRequiredPrice) entre canales, con el costo real de cada duracion', () => {
+  const config = unit902Config();
+  // aseo real confirmado por el dueno + un aseo alto en Airbnb, para forzar que
+  // el peor caso de algun canal caiga en una estadia LARGA (donde vivia el bug).
+  Object.assign(config.channels.find(c=>c.id==='expedia'), {cleanFee:35});
+  Object.assign(config.channels.find(c=>c.id==='booking'), {cleanFee:37.5});
+  Object.assign(config.channels.find(c=>c.id==='airbnb'),  {cleanFeeShort:30});
+  const model = compute(config);
+  const costForNight = costForNightFn(config.costBreakdown, true, model.cost);
+
+  let expectedFloor = 0, expectedChId = null, someWorstNightIsLong = false;
+  for(const c of config.channels){
+    const r = worstScenarioFactor({
+      chId:c.id, channels:config.channels, discounts:config.discounts, windows:config.windows,
+      ceilings:config.ceilings, lmConfig:config.lmConfig, cost: costForNight
+    });
+    if(r.worstNight > 1) someWorstNightIsLong = true;
+    if(r.worstRequiredPrice > expectedFloor){ expectedFloor = r.worstRequiredPrice; expectedChId = c.id; }
+  }
+  assert.ok(someWorstNightIsLong, 'el escenario de prueba debe tener al menos un canal cuyo peor caso NO sea de 1 noche — si no, el test no prueba nada');
+  // 1e-9 por el mismo motivo que arriba (orden de operaciones cuando el aseo es 0).
+  assert.ok(Math.abs(model.floor - expectedFloor) < 1e-9, `floor esperado ${expectedFloor}, dio ${model.floor}`);
+  assert.equal(model.floorChId, expectedChId);
 });
 
 /* ---------- Guarda de no-regresion: cost como NUMERO da EXACTAMENTE lo mismo

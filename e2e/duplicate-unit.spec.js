@@ -76,7 +76,14 @@ test('Duplicar crea una nueva unidad bloqueada: conserva configuración, reinici
   await expect(page.locator('#kBase')).toHaveText('—');
   await page.locator('[data-tabbtn="ch-airbnb"]').click();
   await expect(page.locator('[data-chid="airbnb"][data-chf="comm"]')).toHaveValue('16.4');
-  await expect(page.locator('[data-chid="airbnb"][data-chf="cleanFeeShort"]')).toHaveValue('28');
+  /* Selector acotado a la pestaña del canal (sep 2026): el mismo campo aparece
+     ahora TAMBIEN en "Tarifas de aseo por canal" (Resumen), y los dos inputs
+     comparten `data-chid`/`data-chf` a proposito — son dos vistas del mismo
+     `state.channels[i].cleanFeeShort`, sin estado duplicado. Sin acotar, el
+     locator resuelve a dos elementos y Playwright falla por strict mode. */
+  await expect(page.locator('.tab-panel[data-tab="ch-airbnb"] [data-chid="airbnb"][data-chf="cleanFeeShort"]')).toHaveValue('28');
+  // y la vista consolidada de Resumen debe mostrar EXACTAMENTE el mismo valor
+  await expect(page.locator('#cleanFeesMount [data-chid="airbnb"][data-chf="cleanFeeShort"]')).toHaveValue('28');
   await expect(page.locator('[data-did="ab_new"][data-f="pct"]')).toHaveValue('19');
   await expect(page.locator('[data-did="ab_new"][data-f="on"]')).toBeChecked();
   await expect(page.locator('[data-did="ab_nonref"][data-f="pct"]')).toHaveValue('7');

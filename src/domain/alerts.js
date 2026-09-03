@@ -34,7 +34,19 @@ import {criticalDaysInWindow, criticalNights} from './thresholds.js';
 import {lmCriticalDays, isLmBlocked} from './pricelabs-lm.js';
 import {worstScenarioFactor} from './worstcase.js';
 
-export function buildAlerts(config, model){
+export function buildAlerts(rawConfig, model){
+  /* Salvaguarda (sep 2026, descubierta al migrar PISO/DURACIÓN a `q.cost`):
+     quoteScenario() deriva `q.cost` de los campos de costo del config
+     (`fixedCost`/`varCost`/`costBreakdown`). index.html los pasa desde ago 2026,
+     pero un caller que los omita obtendría `q.cost === 0` — y entonces TODA
+     alerta de "vendes bajo costo" desaparecería en silencio, que es la peor
+     falla posible en una herramienta de plata. Cuando el config no trae NINGÚN
+     campo de costo, se completa con `model.cost`: sin desglose el costo es
+     constante para cualquier duración, así que ese relleno no es una
+     aproximación, es exactamente el mismo número que el modelo simple usa.
+     Si el caller SÍ trae campos de costo, no se toca nada. */
+  const hasCostInputs = 'fixedCost' in rawConfig || 'varCost' in rawConfig || !!rawConfig.costBreakdown;
+  const config = hasCostInputs ? rawConfig : {...rawConfig, fixedCost: model.cost, varCost: 0};
   const {discounts, channels, ceilings, windows, chTab} = config;
   const A=[];
   const on = id=>{const d=discounts.find(x=>x.id===id);return d&&d.on&&pct(d.pct)>0;};
@@ -43,7 +55,24 @@ export function buildAlerts(config, model){
      TECHO es una politica compartida (un solo techo por ventana), asi que basta
      encontrar el (dia,noche,canal) que da el nativo mas profundo en toda la
      ventana. PISO es por canal (cada canal puede tener su propio peor dia/noche
-     real dentro de la misma ventana), asi que se rastrea el peor payout POR canal. */
+     real dentro de la misma ventana), asi que se rastrea el peor caso POR canal.
+
+     Fix sep 2026 — "el costo de 1 noche aplicado a cualquier duracion", misma
+     raiz que el fix del VALOR del Piso en compute() (ver engine.js): la
+     comparacion era `q.payout < model.cost`, con `model.cost` = costo de UNA
+     noche, aunque `q` fuera un escenario de 27 o 34 noches, donde el costo real
+     por noche de la 902 es ~42.6 y no 71.5. Resultado: 6 alertas PISO FALSAS en
+     estadias largas con el backup real. Ahora se compara contra `q.cost` — el
+     costo de ESE escenario, que quoteScenario() ya devuelve — igual que la
+     alerta ESTADIA CORTA (mas abajo), que siempre lo hizo bien.
+
+     Corolario del mismo fix: el peor caso por canal ya NO se elige por menor
+     `payout` a secas, sino por menor MARGEN (`payout - cost`). Con el costo
+     constante (modelo simple fixedCost+varCost) las dos reglas son identicas,
+     asi que no hay regresion; con el desglose detallado activo NO lo son, y
+     elegir por payout podia esconder un escenario corto que SI vende bajo costo
+     detras de una estadia larga con payout menor pero margen positivo (falso
+     NEGATIVO). El escenario reportado es entonces el de peor margen real. */
   const nightsGrid = criticalNights(discounts);
   /* Fase 4: si hay un LM configurable (flat/gradual/precio fijo/tramos), sus
      bordes de dia tambien son puntos donde el peor caso puede vivir — no solo
@@ -59,7 +88,7 @@ export function buildAlerts(config, model){
           const q = quoteScenario({chId:c.id, days:d, nights:n, price:model.effBase}, config, {excludeLmOnLongStay:true});
           if(!worstTecho || q.maxNAtScenario>worstTecho.q.maxNAtScenario) worstTecho={q,d,n};
           const cur = worstPisoByCh.get(c.id);
-          if(!cur || q.payout<cur.q.payout) worstPisoByCh.set(c.id, {q,d,n});
+          if(!cur || (q.payout-q.cost)<(cur.q.payout-cur.q.cost)) worstPisoByCh.set(c.id, {q,d,n});
         });
       });
     });
@@ -75,8 +104,10 @@ export function buildAlerts(config, model){
          producir. Cuando ese tope actuó hay que decirlo — si no, el mensaje culpa
          a un LM que no llegó a aplicarse sobre el precio publicado. */
       const capNote = q.minPriceApplied ? ` (el Min Price de ${f$(q.minPrice, config.currency)} ya topó el precio, así que ese LM no se aplica al publicado)` : '';
-      if(model.base>0 && q.payout < model.cost-0.5)
-        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} (día ${d}, ${n} noche${n===1?'':'s'}) · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)}${capNote} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$(q.payout, config.currency)} < costo ${f$(model.cost, config.currency)}.`});
+      /* `q.cost`, NO `model.cost` — ver el comentario de arriba: el costo por
+         noche de una reserva de 27 noches no es el de una de 1 noche. */
+      if(model.base>0 && q.payout < q.cost-0.5)
+        A.push({lvl:'bad',tag:'PISO',tab:'comparacion',msg:`${w.label} (día ${d}, ${n} noche${n===1?'':'s'}) · ${q.ch.name}: al precio de referencia (${f$(model.effBase, config.currency)}) con LM ${fP(q.lm)}${capNote} + nativos ${fP(q.nativoPct)} + comisión + bancaria + aseo, netearías ${f$c(q.payout, config.currency)} < el costo real de esa reserva de ${n} noche${n===1?'':'s'} (${f$c(q.cost, config.currency)} por noche).`});
     });
   });
   /* config contradictions */
@@ -107,13 +138,25 @@ export function buildAlerts(config, model){
   if(bkStack>=25) A.push({lvl:'warn',tag:'APILADO',tab:'ch-booking',msg:`Booking a 1 día vista: los nativos combinados suman ${fP(bkStack)} (Genius × Mobile × deal se multiplican). Verifica que ese total sea intencional.`});
   /* Descuentos por duración: no aparecen en la matriz (usa 1 noche). Se evalúan aquí,
      vía quoteScenario() — ya no reimplementa offset+nativo+aseo+payoutFactor aparte
-     (esa formula paralela usaba totalPct redondeado y no incluia el techo/LM). */
+     (esa formula paralela usaba totalPct redondeado y no incluia el techo/LM).
+
+     Fix sep 2026 (misma raiz que el bloque PISO de arriba): el "bajo costo" se
+     comparaba contra `model.cost` — el costo de UNA noche — en una alerta que
+     por definicion evalua estadias LARGAS (`kind:'los'`, minN noches). Con la
+     902 eso marcaba en rojo "Larga estadía (≥28 noches) netea 65 < costo 72"
+     cuando el costo real de una reserva de 28 noches es ~42.6 por noche. Ahora
+     se usa `q.cost`, el costo de ESA reserva.
+     Lo que NO cambia: la comparacion contra el OBJETIVO sigue siendo
+     `model.net` (el neto objetivo global de la unidad), igual que en la alerta
+     ESTADIA CORTA. El objetivo es una politica del negocio, no una propiedad
+     del escenario — reescalarlo por duracion seria una decision de negocio
+     distinta, no este fix. */
   channels.forEach(c=>{
     discounts.filter(d=>d.ch===c.id && d.kind==='los' && d.on && pct(d.pct)>0).forEach(d=>{
       const q = quoteScenario({chId:c.id, days:45, nights:d.minN||1, price:model.effBase}, config);
       const netLos = q.payout;
-      if(netLos < model.cost-0.5)
-        A.push({lvl:'bad',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos, config.currency)} por noche, bajo tu costo de ${f$(model.cost, config.currency)}. Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
+      if(netLos < q.cost-0.5)
+        A.push({lvl:'bad',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$c(netLos, config.currency)} por noche, bajo el costo real de esa reserva (${f$c(q.cost, config.currency)} por noche). Este descuento no aparece en el panel por ventana (ese usa 1 noche), pero sí te puede vender bajo costo.`});
       else if(netLos < model.net)
         A.push({lvl:'warn',tag:'DURACIÓN',tab:chTab[c.id],msg:`${c.name} · ${d.name}: una reserva de ${d.minN}+ noches netea ${f$(netLos, config.currency)}/noche — cubre costo pero queda bajo tu objetivo de ${f$(model.net, config.currency)}. Válido si priorizas ocupación larga; revísalo si no.`});
     });
@@ -167,13 +210,21 @@ export function buildAlerts(config, model){
          worstScenarioFactor() (la misma enumeracion OTA+LM que protege el Piso)
          para encontrar el peor escenario real de cada canal, y quoteScenario()
          para cotizarlo — cero formula financiera propia. */
-      let peorNeto=Infinity, peorCh='';
+      /* Fix sep 2026 (misma raiz que PISO/DURACION/Matriz): el margen alcanzable
+         es `1 - costo/neto` con el costo de ESE escenario (`q.cost`), no con
+         `model.cost` (el de 1 noche) — el escenario que devuelve
+         worstScenarioFactor() puede ser una estadia larga, donde el costo por
+         noche es mucho menor. Y el canal peor parado se elige por ese MARGEN,
+         no por el menor neto: con costo constante son la misma eleccion, con
+         desglose detallado no. */
+      let peorMargen=Infinity, peorCh='';
       channels.forEach(c=>{
         const {worstDay, worstNight} = worstScenarioFactor({chId:c.id, channels, discounts, windows, ceilings: config.ceilings, lmConfig: config.lmConfig, cost: model.costForNight});
         const q = quoteScenario({chId:c.id, days:worstDay, nights:worstNight, price:mb}, config);
-        if(q.payout<peorNeto){peorNeto=q.payout;peorCh=c.name;}
+        const margen = q.payout>0 ? 100*(1-q.cost/q.payout) : -Infinity;
+        if(margen<peorMargen){peorMargen=margen;peorCh=c.name;}
       });
-      const achievable = peorNeto>0 ? 100*(1-model.cost/peorNeto) : 0;
+      const achievable = isFinite(peorMargen) ? peorMargen : 0;
       A.push({lvl:'warn',tag:'REALIDAD',tab:'resumen',msg:`El Base que exige tu margen de ${fP(pct(config.margin))} es ${f$(model.base, config.currency)}, pero el mercado paga ~${f$(mb, config.currency)}. Ese margen no es alcanzable a precio de mercado. Margen realmente alcanzable en el peor caso real (${peorCh}, incluye LM y aseo): ~${fP(Math.max(0,achievable))}. Ajusta la expectativa o reduce descuentos/costos.`});
     }
   }
